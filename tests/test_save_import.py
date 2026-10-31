@@ -325,6 +325,28 @@ def test_the_transfer_market_is_written_from_the_newest_save(world_connection):
     assert world_connection.execute(text("select count(*) from transfer_offers")).scalar_one() == 1
 
 
+def test_a_bid_answered_in_a_later_save_keeps_the_day_of_its_answer(world_connection):
+    """Juventus's bid for Valera, open in one save and rejected in the next (18 Jan 2064): the change is dated, and a
+    save older than the newest read later does not open the bid again."""
+    from app.services import fm_save
+
+    _seed_teams(world_connection)
+    open_day, answered = date(2064, 1, 18), date(2064, 1, 25)
+    world_connection.execute(world.WorldPerson.__table__.insert(), [{"fm_uid": 2002510270, "name": "Nacho Valera", "as_of": open_day}])
+
+    def read(day, status):
+        reader = _FakeReader(day, [], {541: 630})
+        reader.people, reader.person_uid = {2002510270: None}, {529736: 2002510270}
+        reader.parts = {"transfer_offers": [fm_save.TransferOffer(529736, 541, 541, 71_000_000, status, open_day, date(2064, 1, 25), date(2064, 1, 25))]}
+        reader._write_transfer_market(world_connection)
+        return tuple(world_connection.execute(text("select status, status_changed_on from transfer_offers")).one())
+
+    assert read(open_day, 0x00) == ("made", None)
+    assert read(answered, 0x02) == ("rejected", "2064-01-25")
+    assert read(answered, 0x02) == ("rejected", "2064-01-25")  # the same save again: the day stays
+    assert read(open_day, 0x00) == ("rejected", "2064-01-25")  # the older save is read again: it stays rejected
+
+
 def test_the_players_recent_games_are_written_for_his_own_teams_only(world_connection):
     from app.services import fm_save
 

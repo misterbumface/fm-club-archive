@@ -217,6 +217,19 @@ def test_the_market_tells_who_wants_a_followed_clubs_player_and_the_big_bids(sma
     assert bid.headline == "Arsenal bid £43.0m for Sam Scorer (collapsed)" and bid.facts["his_club"] == "Chelsea" and bid.facts["fee_pounds"] == 43_000_000
 
 
+def test_a_bid_from_an_earlier_cycle_is_news_again_when_it_is_answered(small_world):
+    _season(small_world)
+    bid = {"team_uid": ARSENAL, "person_uid": SCORER, "squad_uid": ARSENAL, "fee": 43_000_000, "offered_on": date(2063, 6, 1),
+           "until": date(2063, 6, 8), "completes_on": date(2063, 6, 8), "as_of": AS_OF}
+    with small_world.begin() as c:
+        c.execute(world.WorldTransferOffer.__table__.insert(), [{**bid, "status": "made", "status_changed_on": None}])
+    assert "transfer_bid" not in _found(small_world)  # made before this cycle, and no answer: old news
+    with small_world.begin() as c:
+        c.execute(world.WorldTransferOffer.__table__.update().values(status="rejected", status_changed_on=UNTIL))
+    (answered,) = _found(small_world)["transfer_bid"]
+    assert answered.headline == "Arsenal bid £43.0m for Sam Scorer (rejected)" and answered.facts["status_known_since"] == str(UNTIL)
+
+
 def test_a_world_cup_in_play_gets_reports_previews_a_round_up_and_our_players(small_world):
     from app.services import tournament_leads
     from tests.test_world_pages import ENGLAND

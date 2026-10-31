@@ -750,6 +750,7 @@ class WorldTransferOffer(db.Model):
     loan_wage: Mapped[int | None] = mapped_column(Integer)  # the record's sum for a loan: most likely the weekly wage share (unverified)
     fee_guaranteed: Mapped[int | None] = mapped_column(Integer)  # the offer as the game states it (fee + its 01 01 clauses)
     fee_max: Mapped[int | None] = mapped_column(Integer)  # with every conditional add-on
+    status_changed_on: Mapped[date | None] = mapped_column(Date)  # the save that first showed a new status (a bid rejected after it was seen open)
     as_of: Mapped[date] = mapped_column(Date, nullable=False)
 
 

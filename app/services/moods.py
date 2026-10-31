@@ -26,16 +26,21 @@ JADED = 400
 FAVOURED = fm_save.FAVOURED_LEVEL
 
 
+# Words for the morale levels whose game words are not known yet: a story says "his morale is poor", never "seven out of
+# twenty" (31 Oct 2026: three printed stories gave the number, which breaks the world).
+_MORALE_FILL = ((15, "Very Good"), (9, "Fair"), (6, "Poor"), (3, "Very Poor"), (0, "Abysmal"))
+
+
 def morale_word(value: int | None) -> str | None:
     if value is None:
         return None
-    return fm_save.MORALE_WORDS.get(value) or f"{value} of 20"
+    return fm_save.MORALE_WORDS.get(value) or next(word for floor, word in _MORALE_FILL if value >= floor)
 
 
 def happiness_word(value: int | None) -> str | None:
     if value is None:
         return None
-    return next((word for limit, word in fm_save.HAPPINESS_WORDS if value >= limit), f"below Happy ({value})")
+    return next((word for limit, word in fm_save.HAPPINESS_WORDS if value >= limit), "Not happy")
 
 
 def morale_tone(value: int | None) -> str:

@@ -50,7 +50,10 @@ def test_a_players_mood_tells_his_concerns_backers_and_favoured_personnel(small_
     _moods(small_world)
     with small_world.connect() as c:
         mood = moods.person_mood(c, STAR)
-        assert (mood["morale_word"], mood["happiness_word"]) == ("Fair", "below Happy (-40)")
+        assert (mood["morale_word"], mood["happiness_word"]) == ("Fair", "Not happy")
+        # every level has a word, so no story can say "seven out of twenty"
+        assert [moods.morale_word(v) for v in (15, 10, 7, 4, 1)] == ["Very Good", "Fair", "Poor", "Very Poor", "Abysmal"]
+        assert not any(ch.isdigit() for v in range(0, 21) for ch in moods.morale_word(v))
         (concern,) = mood["open"]
         assert concern["text"] == "Left out of English Premier Division squad" and concern["told_team_mates"]
         assert [b["uid"] for b in mood["backers"]] == [102, 103, 104]

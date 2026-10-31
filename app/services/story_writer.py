@@ -53,6 +53,8 @@ ARTICLE_RULES = (
     "of mind (frame_of_mind) are facts of the same kind: a friend, a manager he is close to, a man he dislikes, an open "
     "grievance may colour a quote or a line; no other relationship exists, and no number of them is given. What he said "
     "at press conferences (in_the_press) is given as the game's headlines and tones: use their spirit in your own words. "
+    "Morale, happiness, fitness and character are told in words, the way a club or a newspaper would put them; never as a "
+    "score or a scale (no 'seven out of twenty'), which belongs to the game's screens, not to the world. "
 ) + _CRAFT
 FACT_RULES = ARTICLE_RULES + (
     " Older texts in the notebook (old_story, older_texts, match_reports, preview) are colour: use their atmosphere, but "

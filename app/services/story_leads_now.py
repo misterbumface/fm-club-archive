@@ -985,16 +985,16 @@ def transfer_market(w) -> list:
     for market, found in one_market.items():
         leads.extend(sorted(found, key=lambda l: -l.score)[:SHOPPING_STORIES if market == "shopping" else SAME_MARKET])
     for b in w.rows("select o.id, o.team_uid bidder_uid, o.person_uid, coalesce(o.fee_guaranteed, o.fee) fee, o.fee_max, o.status, "
-                    "o.offered_on, o.completes_on, p.name, "
+                    "o.offered_on, o.completes_on, o.status_changed_on, p.name, "
                     "p.team_uid owner_uid, t.name bidder from transfer_offers o join people p on p.fm_uid = o.person_uid "
-                    "join teams t on t.fm_uid = o.team_uid where o.offered_on > :s and o.offered_on <= :u and coalesce(o.loan, 0) = 0 "
+                    f"join teams t on t.fm_uid = o.team_uid where {_BID_NEWS} and coalesce(o.loan, 0) = 0 "
                     "order by o.fee desc limit 60", s=str(w.since), u=str(w.until)):
         bidder, owner = b["bidder_uid"], b["owner_uid"]
         if not (w.followed(bidder) or (owner and w.followed(owner)) or b["fee"] >= BID_FEE):
             continue
         facts = {"player": b["name"], "his_club": w.name(owner) if owner else None, "bidder": b["bidder"], "fee_pounds": b["fee"],
                  "fee_euros": round(b["fee"] * 1.166), "rising_with_add_ons_to_pounds": b["fee_max"] if b["fee_max"] and b["fee_max"] > b["fee"] else None,
-                 "status": b["status"], "bid_date": str(b["offered_on"]),
+                 "status": b["status"], "bid_date": str(b["offered_on"]), "status_known_since": _changed(b),
                  "completes_on": str(b["completes_on"]) if b["status"] == "agreed" and b["completes_on"] else None}
         leads.append(Lead("transfer_bid", f"{b['bidder']} bid £{b['fee'] / 1e6:.1f}m for {b['name']} ({b['status']})",
                           date.fromisoformat(str(b["offered_on"])), (w.rep(bidder) or 3000) / 1000 * 10 * (1.2 if b["status"] in ("agreed", "collapsed") else 1.0),
@@ -1002,9 +1002,9 @@ def transfer_market(w) -> list:
                           w.beats_for(bidder, owner) | {"transfers"}, slug=f"{b['person_uid']}:{bidder}:{b['offered_on']}:{b['status']}"))
     # loan offers for a followed club's player, or from a followed club (King's Lynn for Chelsea's Spyrou, 3 Dec 2063)
     try:
-        loans = w.rows("select o.team_uid bidder_uid, o.person_uid, o.status, o.offered_on, o.completes_on, p.name, p.team_uid owner_uid, "
-                       "t.name bidder from transfer_offers o join people p on p.fm_uid = o.person_uid join teams t on t.fm_uid = o.team_uid "
-                       "where o.loan = 1 and o.offered_on > :s and o.offered_on <= :u", s=str(w.since), u=str(w.until))
+        loans = w.rows("select o.team_uid bidder_uid, o.person_uid, o.status, o.offered_on, o.completes_on, o.status_changed_on, p.name, "
+                       "p.team_uid owner_uid, t.name bidder from transfer_offers o join people p on p.fm_uid = o.person_uid "
+                       f"join teams t on t.fm_uid = o.team_uid where o.loan = 1 and {_BID_NEWS}", s=str(w.since), u=str(w.until))
     except Exception:  # noqa: BLE001 - an archive imported before loan offers were read
         loans = []
     for b in loans:
@@ -1013,14 +1013,25 @@ def transfer_market(w) -> list:
             continue
         known = b["status"] in ("made", "agreed", "completed", "collapsed", "withdrawn", "rejected")
         facts = {"player": b["name"], "his_club": w.name(owner) if owner else None, "the_club_asking": b["bidder"],
-                 "offer_date": str(b["offered_on"]), "outcome": b["status"] if known else "not known (do not guess one)",
+                 "offer_date": str(b["offered_on"]), "outcome": b["status"] if known else "not known (do not guess one)", "outcome_known_since": _changed(b),
                  "loan_until": str(b["completes_on"]) if b["completes_on"] and b["completes_on"] != b["offered_on"] else None,
                  **_record_facts(w, b["person_uid"], owner)}
         leads.append(Lead("loan_offer", f"{b['bidder']} ask to borrow {b['name']} ({w.name(owner)})", date.fromisoformat(str(b["offered_on"])),
                           (w.rep(owner) or 3000) / 1000 * TRANSFER_SCALE, {k: v for k, v in facts.items() if v},
                           [f"person:{b['person_uid']}", f"club:{bidder}"] + ([f"club:{owner}"] if owner else []),
-                          w.beats_for(bidder, owner) | {"transfers"}, slug=f"{b['person_uid']}:{bidder}:{b['offered_on']}"))
+                          w.beats_for(bidder, owner) | {"transfers"}, slug=f"{b['person_uid']}:{bidder}:{b['offered_on']}:{b['status']}"))
     return leads
+
+
+# a bid is news when it is made, and again when its answer comes in a later cycle (made then, rejected now)
+_ANSWERS = ("rejected", "withdrawn", "collapsed", "agreed")
+_BID_NEWS = ("((o.offered_on > :s and o.offered_on <= :u) or (o.status_changed_on > :s and o.status_changed_on <= :u "
+             f"and o.status in ({', '.join(repr(a) for a in _ANSWERS)})))")
+
+
+def _changed(bid) -> str | None:
+    """The day the answer to an older bid was first seen, when that is what makes it news."""
+    return str(bid["status_changed_on"]) if bid["status_changed_on"] and str(bid["status_changed_on"]) > str(bid["offered_on"]) else None
 
 
 # -- the promise kept ------------------------------------------------------------------------------------------------------

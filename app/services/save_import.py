@@ -738,8 +738,17 @@ class _SaveReader:
                  "loan": int(o.loan), "loan_wage": o.loan_wage, "fee_guaranteed": o.fee_guaranteed, "fee_max": o.fee_max,
                  "as_of": self.game_date} for o in offers]
         bids = [b for b in bids if b["team_uid"] in self.known_teams and b["person_uid"] in self.people and b["offered_on"]]
+        # a bid seen before with another status changed in this save (Juventus's open bid for Valera, rejected later: 18 Jan 2064)
+        table = world.WorldTransferOffer.__table__
+        stored = {(r.team_uid, r.person_uid, r.fee, r.offered_on): r for r in connection.execute(
+            select(table.c.team_uid, table.c.person_uid, table.c.fee, table.c.offered_on, table.c.status, table.c.status_changed_on, table.c.as_of))}
+        for b in bids:
+            before = stored.get((b["team_uid"], b["person_uid"], b["fee"], b["offered_on"]))
+            changed = before is not None and before.status != b["status"] and before.as_of < self.game_date
+            b["status_changed_on"] = self.game_date if changed else before.status_changed_on if before is not None else None
+        # guarded: an older save read later does not turn a rejected bid back into an open one
         self._put(connection, world.WorldTransferOffer, list(_unique(bids, key=lambda b: (b["team_uid"], b["person_uid"], b["fee"], b["offered_on"]))),
-                  ["team_uid", "person_uid", "fee", "offered_on"])
+                  ["team_uid", "person_uid", "fee", "offered_on"], guarded=True)
 
     def _write_stadiums(self, connection: Connection) -> None:
         """Every stadium's place on the map, by its FM uid."""
