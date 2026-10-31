@@ -1,0 +1,65 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% set g = page.game %}
+{% set home_goals, away_goals = g.score.split('-') %}
+{% block title %}{{ g.home.name }} {{ g.score }} {{ g.away.name }} · {{ site_name }}{% endblock %}
+{% block description %}{{ g.competition or 'Match' }}: {{ g.home.name }} {{ g.score }} {{ g.away.name }}, {{ g.date.strftime('%-d %B %Y') }}{% endblock %}
+{% block when %}{{ g.date.strftime('%A %-d %B %Y') }}{% endblock %}
+
+{% macro bench(side) -%}
+{% if side.subs or side.unused %}<ul class="bench">
+  {% for pl in side.subs %}<li><span><span class="no">{{ pl.shirt_number or '' }}</span><a href="{{ player_url(pl.person_uid, pl.name) or '#' }}">{{ pl.name or 'Unknown' }}</a> <span class="muted">↑{{ pl.minute_on }}'</span>{{ ' ⚽' * (pl.goals or 0) }}</span>
+    {% if pl.rating_shown %}<span class="rating {{ 'hi' if pl.rating_shown >= 7.5 }}">{{ '%.1f' % pl.rating_shown }}</span>{% endif %}</li>{% endfor %}
+  {% if side.unused %}<li class="muted"><span>Unused: {% for pl in side.unused %}<a href="{{ player_url(pl.person_uid, pl.name) or '#' }}">{{ pl.name or 'Unknown' }}</a>{{ ', ' if not loop.last }}{% endfor %}</span></li>{% endif %}
+</ul>{% endif %}
+{%- endmacro %}
+{% block hero %}
+<section class="mhero"><div class="wrap">
+  <div class="comp"><b>{{ g.competition or 'Match' }}</b> · {{ g.date.strftime('%A %-d %B %Y') }}</div>
+  <div class="teams">
+    <a class="team" href="{{ club_url(g.home_uid, g.home) }}">{% if g.home_crest %}<img class="crest" src="{{ g.home_crest }}" alt="">{% endif %}
+      <span class="name">{{ g.home.name }}</span></a>
+    <div><div class="score"><b>{{ home_goals }}</b><b>{{ away_goals }}</b></div>{% if g.note %}<div class="after">{{ g.note }}</div>{% else %}<div class="after">Full time</div>{% endif %}</div>
+    <a class="team" href="{{ club_url(g.away_uid, g.away) }}">{% if g.away_crest %}<img class="crest" src="{{ g.away_crest }}" alt="">{% endif %}
+      <span class="name">{{ g.away.name }}</span></a>
+  </div>
+  {% if page.goals[0] or page.goals[1] %}<div class="scorers">{% for side in (0, 1) %}<div class="goals">{% for s in page.goals[side] %}<span><a href="{{ player_url(s.uid, s.name) or '#' }}">{{ s.name }}</a> {{ s.when }}</span><br>{% endfor %}</div>{% endfor %}</div>{% endif %}
+  <div class="facts">
+    {% if page.report and page.report.stadium %}<span>🏟 <b>{{ page.report.stadium }}</b></span>{% endif %}
+    {% if page.fixture.attendance %}<span>Attendance <b>{{ '{:,}'.format(page.fixture.attendance) }}</b></span>{% endif %}
+    {% if page.report and page.report.referee_name %}<span>Referee <b>{{ page.report.referee_name }}</b></span>{% endif %}
+    {% if page.report and page.report.player_of_the_match %}<span>Player of the Match <b>{{ page.report.player_of_the_match }}</b></span>{% endif %}
+  </div>
+</div></section>
+<div class="mtabs"><div class="wrap"><nav>
+  {% if page.text or items %}<a href="#report">Report</a>{% endif %}{% if page.lineups %}<a href="#lineups">Line-ups</a>{% endif %}{% if page.stats %}<a href="#stats">Stats</a>{% endif %}
+</nav></div></div>
+{% endblock %}
+{% block body %}
+{% if page.text or items %}<section class="mpart" id="report"><h2>Report</h2>
+  {% if page.text %}<article class="report">{% if page.text.title %}<h3>{{ page.text.title }}</h3>{% endif %}{{ paragraphs(page.text.body) }}</article>{% endif %}
+  {% if items %}<div class="list">{% for a in items %}<a class="card" href="{{ story_url(a) }}">{{ p.image(a) }}<div><h3>{{ a.headline }}</h3>{% if a.standfirst %}<p>{{ a.standfirst }}</p>{% endif %}{{ p.tag(a) }}</div></a>{% endfor %}</div>{% endif %}
+</section>{% endif %}
+{% if page.lineups %}<section class="mpart" id="lineups"><h2>Line-ups</h2>
+  <div class="pitches">{% for side in page.lineups %}<div>
+    <div class="side-head">{% set t = g.home if loop.first else g.away %}{% set c = g.home_crest if loop.first else g.away_crest %}{% if c %}<img class="crest" src="{{ c }}" alt="">{% endif %}{{ t.name }}{% if side.shape %}<small>{{ side.shape }}</small>{% endif %}</div>
+    {{ p.pitch(side, away=not loop.first) }}{{ bench(side) }}
+  </div>{% endfor %}</div>
+</section>{% endif %}
+{% if page.stats %}<section class="mpart" id="stats"><h2>Match stats</h2>
+  <div class="stats">{% for st in page.stats %}<div class="stat">
+    <div class="nums"><b>{{ st.home }}</b><span>{{ st.label }}</span><b>{{ st.away }}</b></div>
+    <div class="bar"><i class="h" style="width: {{ st.share }}%"></i><i class="a" style="width: {{ 100 - st.share }}%"></i></div></div>{% endfor %}</div>
+</section>{% endif %}
+{% if page.known %}<section class="mpart" id="known"><h2>The players we know of</h2>
+  <p style="color:var(--muted);font-size:13px">The full report of this match is gone. These are the rows the game kept for the players it follows.</p>
+  <div class="pitches">{% for side in page.known %}<div>
+    <div class="side-head">{% set t = g.home if loop.first else g.away %}{% set c = g.home_crest if loop.first else g.away_crest %}{% if c %}<img class="crest" src="{{ c }}" alt="">{% endif %}{{ t.name }}</div>
+    <table class="career"><tr><th>Player</th><th>Min</th><th>Rating</th><th>Goals</th><th>xG</th></tr>
+    {% for r in side %}<tr><td><a href="{{ player_url(r.person_uid, r.name) }}">{{ r.name }}</a></td>
+      {% if r.status == 'played' %}<td>{{ r.minutes }}{% if r.minute_off %} <span style="color:var(--muted)">off {{ r.minute_off }}</span>{% endif %}</td><td>{% if r.rating %}<span class="rating-chip {{ 'hi' if r.rating >= 7.5 }}">{{ '%.1f' % r.rating }}</span>{% endif %}</td><td>{{ r.goals or '' }}{% if r.assists %} <span style="color:var(--muted)">+{{ r.assists }}a</span>{% endif %}</td><td>{{ '%.2f' % r.xg if r.xg else '' }}</td>
+      {% else %}<td colspan="4" style="color:var(--muted)">{{ r.status_word }}</td>{% endif %}</tr>{% endfor %}</table>
+  </div>{% endfor %}</div>
+</section>{% endif %}
+{% if not page.text and not items and not page.lineups and not page.known %}<p style="margin-top:30px">The game kept no detailed report of this match.</p>{% endif %}
+{% endblock %}

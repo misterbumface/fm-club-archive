@@ -1,0 +1,33 @@
+{% extends "world/base.html" %}
+{% block title %}Story leads{% endblock %}
+{% block body %}
+<div class="crumbs"><a href="{{ url_for('world_soccer.index') }}">World Soccer</a> › Story leads</div>
+<div class="hero"><div><h1>Story leads</h1>
+  <div class="sub">{% if until %}{{ leads|length }} leads from {{ since.strftime('%-d %B %Y') }} to {{ until.strftime('%-d %B %Y') }}, best first.
+  {% else %}No save is imported yet: the leads come from the saves.{% endif %}
+  The outlets write from these: choose an outlet and a length, then “Write” for a draft (it takes up to a minute). <a href="{{ url_for('settings.outlets') }}">Outlets</a></div></div></div>
+<form class="leads-window" method="get">
+  <label>From <input type="date" name="since" value="{{ since.isoformat() if since else '' }}"></label>
+  <label>to <input type="date" name="until" value="{{ until.isoformat() if until else '' }}"></label>
+  <select name="kind"><option value="">every kind</option>{% for k in all_kinds %}<option value="{{ k }}" {{ 'selected' if k == kind }}>{{ k.replace('_', ' ') }}</option>{% endfor %}</select>
+  <button class="btn" type="submit">Find</button>
+</form>
+<div class="card" style="margin-top:14px"><table>
+  <tr><th class="n">Score</th><th>Kind</th><th>Lead</th><th>Date</th><th>Beats</th></tr>
+  {% for row in rows %}{% set lead = row.lead %}<tr>
+    <td class="n"><b>{{ '%.0f' % lead.score }}</b></td>
+    <td><span class="pill">{{ lead.kind.replace('_', ' ') }}</span></td>
+    <td>{{ lead.headline }}
+      <div class="note">{% for ref in lead.refs %}{% set path = ref_path(ref) %}{% if path %}<a href="{{ path }}">{{ ref.split(':')[0] }}</a>{% if not loop.last %} · {% endif %}{% endif %}{% endfor %}</div>
+      {% if row.outlets %}<form class="lead-write" method="post" action="{{ url_for('world_soccer.write_lead') }}">
+        <input type="hidden" name="lead" value="{{ row.data|tojson|forceescape }}">
+        <input type="hidden" name="published" value="{{ until.isoformat() if until else '' }}">
+        <select name="outlet_id" aria-label="Outlet">{% for outlet in row.outlets %}<option value="{{ outlet.id }}">{{ outlet.name }}</option>{% endfor %}</select>
+        <select name="prominence" aria-label="Length">{% for key in prominences %}<option value="{{ key }}" {{ 'selected' if key == 'standard' }}>{{ key }}</option>{% endfor %}</select>
+        <button class="btn" type="submit">Write</button>
+      </form>{% else %}<div class="note">No outlet takes this lead.</div>{% endif %}</td>
+    <td class="muted">{{ lead.date }}</td>
+    <td class="muted">{% for beat in lead.beats|sort %}{{ nations.get(beat.split(':')[1]|int, beat) if beat.startswith('nation:') else beat }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+  </tr>{% else %}<tr><td colspan="5" class="muted">No leads in this window.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

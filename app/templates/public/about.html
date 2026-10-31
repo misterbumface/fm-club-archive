@@ -1,0 +1,103 @@
+{% extends "public/base.html" %}
+{% block title %}About · {{ site_name }}{% endblock %}
+{% block description %}What {{ site_name }} is: the sports pages of one Football Manager 2024 world, written from the game's own saves.{% endblock %}
+{% macro fact(value, label) %}{% if value %}<div><b>{{ '{:,}'.format(value) if value is number else value }}</b><span>{{ label }}</span></div>{% endif %}{% endmacro %}
+{% block body %}
+<div class="article about">
+  <article>
+    <h1>About {{ site_name }}</h1>
+    <p class="stand">{{ site_name }} is the sports pages of a world that does not exist. Every club, player, match and transfer here comes from one long game of Football Manager 2024.</p>
+    <div class="body">
+      <p>The game has been played for many seasons, far past the years of the real players, so the people you read about are the game's own: players it made up, who grew from academy kids into legends. None of them is a real person. The real football clubs are still here, but their history after 2023 is the game's.</p>
+      <p>Nothing on the site is typed in by hand. A small app on a Mac reads the game's saved files, works out what happened, and writes the paper.</p>
+    </div>
+
+    {% if counts.matches %}<h2>The world so far</h2>
+    <div class="facts">
+      {{ fact(counts.matches, 'matches played') }}
+      {{ fact(counts.goals, 'goals scored') }}
+      {{ fact(counts.people, 'players and staff') }}
+      {{ fact(counts.clubs, 'clubs') }}
+      {{ fact(counts.transfers, 'transfers') }}
+      {{ fact(counts.stories, 'stories printed') }}
+    </div>{% endif %}
+
+    <h2>How it works</h2>
+    <ol>
+      <li><b>The game is played.</b> A manager plays the save in Football Manager as usual and keeps a saved game every so often.</li>
+      <li><b>The save is read.</b> A save file is not made to be read by other programs. The app decodes it directly and takes out the whole world: every league and cup, every fixture and goal, every player's season, the transfers, the injuries, the awards, the club finances, the press conferences and the dressing-room moods.</li>
+      <li><b>The facts are kept.</b> Each save adds to one database. An older save can fill in what a newer save has forgotten, so the record goes back further than any one save.</li>
+      <li><b>The news is found.</b> The app compares the world with the last edition and looks for stories: a title race, an upset, a long unbeaten run, a record broken, a record transfer, a young player breaking through, a manager under pressure, a legend retiring.</li>
+      <li><b>The stories are written.</b> An AI language model writes each story from a short file of facts about it, and from nothing else. {% if counts.papers and counts.papers > 1 %}There are {{ counts.papers }} papers, each with its own country, voice and beat, so one result can read very differently in two of them.{% endif %}</li>
+      <li><b>The stories are checked.</b> Before a story is kept, the app checks its scores, years and numbers against the facts. A story with a mistake goes back once with the mistakes listed; a second wrong draft is thrown away.</li>
+      <li><b>The paper goes to print.</b> The new edition is published, and the site is turned into plain pages and put online, so it stays up when the Mac is asleep.</li>
+    </ol>
+
+    <h2>What the paper knows</h2>
+    <div class="body">
+      <p>A Football Manager save is almost half a gigabyte of packed numbers with no labels. Most of what is below was found the slow way: change one thing in the game's editor, save, and compare the two files byte by byte until the change shows. Here is what the writers get to work with.</p>
+    </div>
+    <h3>Every result, and how it happened</h3>
+    <ul>
+      <li>Every fixture the world has played since the game began, in every country, with every goal and who scored it, the penalties and the own goals, extra time and shoot-outs, crowds and away fans.</li>
+      <li>For the games the save still keeps in full: the game's own match report, every player's rating, shots and expected goals (xG). The league xG tables agree with the game's own to the decimal, so the paper can tell a lucky team from a good one, and a misfiring striker from a clinical one.</li>
+      <li>The team sheets: who started where, the formation, the tactic's mentality and style. That is how the paper notices a team leaving its usual system, a star left on the bench while fit, or a teenager taking a regular's place.</li>
+    </ul>
+    <h3>The players, down to their character</h3>
+    <ul>
+      <li>Every attribute of every player on the game's 1 to 20 scale, his positions, his better foot, his height, his career season by season, his injuries by name, his contract, his wages and how tired he is after weeks of games.</li>
+      <li>The hidden personality the game never shows you: ambition, loyalty, professionalism, temperament, how he handles pressure, how he plays in big games, how consistent he is, and more. Only the extremes reach the writers, in plain words, as a club would know them: "a big-game player", "a model professional", "a short fuse", "goes missing in big games".</li>
+      <li>The dressing room: morale and happiness, what a player is unhappy about and since when, whether he has told his team-mates, which team-mates have taken his side, and who sticks together. A player sulking about his playing time in the game becomes a story here.</li>
+    </ul>
+    <h3>The managers, the boards and the press room</h3>
+    <ul>
+      <li>Every manager's career, matched to his results. The game does not say which team a career list belongs to, so the app finds it by the record: 190 of 199 lists agree with the managers' own records.</li>
+      <li>Each coach's preferred formations, mentality and pressing; the board losing patience; sackings, vacancies and appointments.</li>
+      <li>Every answer given in a press conference. When two managers have a go at each other, the paper calls it a war of words and looks ahead to the game between them.</li>
+    </ul>
+    <h3>The clubs, the money and the market</h3>
+    <ul>
+      <li>Every transfer and fee, the bids and the interest that never became a deal (the rumour mill), wages, and contracts running down.</li>
+      <li>Club finances and debts, stadiums, reputations, rivalries, and the people a club's fans love or loathe.</li>
+    </ul>
+    <h3>History</h3>
+    <ul>
+      <li>The roll of honour of every competition, back to the 1870s for the oldest cups; every award winner, every team of the season, every record.</li>
+      <li>Saves add up, so a player who retired years ago is still here. That is where the legends, the dynasties, the great finals, the milestones and the "where are they now" pieces come from.</li>
+    </ul>
+
+    <h2>How the scouts work</h2>
+    <div class="body">
+      <p>The game gives every player a current ability and a hidden potential. Nobody in the world is supposed to know the potential, and nobody here does either: it decides which teenagers get written about, but it never reaches the writer.</p>
+      <p>Every cycle, the scouts look at every player aged 15 to 19 in the world. A teenager stands out first by how far ahead of his age group he is now, and only then by how high his ceiling looks. The writer gets what a scout could see: his age, his club, his games and goals this season, his best qualities, and one scout's line about him. A player who has only just moved is left to the transfer pages.</p>
+      <p>Then the paper keeps score. A year after a scouting report, the same paper looks the player up again: his moves, his seasons, his injuries, what he has become. It says whether its own call was right, early or wrong. If it was right or early, it looks again a year later. If it was wrong, it drops him.</p>
+    </div>
+
+    <h2>How the writers stay honest</h2>
+    <ul>
+      <li>Each story starts from a notebook: the facts of that story, with names, seasons and scores already written out, so the writer never has to look anything up or guess.</li>
+      <li>When a writer wants a fact the notebook lacks, it asks the archive, the way a reporter rings the statistician. The answer goes into the notebook, so the fact check counts it.</li>
+      <li>Every score, year and big number in the draft must be in the notebook. If one is not, the draft goes back once; a second wrong draft is thrown away.</li>
+      <li>The papers have staff: invented journalists, each with a persona, a style and some quirks, writing for papers with their own country and loyalties. A writer's voice can change how a story reads, never what it says.</li>
+    </ul>
+
+    <h2>The pictures</h2>
+    <div class="body">
+      <p>The game has no photos of its made-up players, so the faces are drawn by AI image models from what the game knows about each man: his age, his nationality, his look and his club's shirt. The same faces go back into the game as a face pack. Match photos and illustrations are made the same way. They are pictures of people who do not exist.</p>
+    </div>
+
+    <h2>The code</h2>
+    <div class="body">
+      <p>The app is open source, under the MIT licence: <a href="https://github.com/misterbumface/fm-club-archive">github.com/misterbumface/fm-club-archive</a>. It runs on a Mac, it reads your own Football Manager 2024 saves, and it needs a key for an AI writing model. Point it at your own save and it will make the paper of your world.</p>
+    </div>
+
+    <h2>What it is not</h2>
+    <ul>
+      <li>It is not real football news. Treat it as you would a novel set in a football world.</li>
+      <li>It is not perfect. The game keeps less about its early years, and an AI writer can still slip. When a mistake is found, the edition is corrected and printed again.</li>
+      <li>It is not made by, or connected with, Sports Interactive, SEGA or any club.</li>
+    </ul>
+    {% if counts.newest %}<p class="muted">The newest save read is from {{ counts.newest }}, in the game's calendar.</p>{% endif %}
+  </article>
+</div>
+{% endblock %}

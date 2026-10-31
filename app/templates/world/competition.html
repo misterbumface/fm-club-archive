@@ -1,0 +1,68 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% block title %}{{ comp.name }}{% endblock %}
+{% block body %}
+{% set champion = competitions.get(parts[0].competition_uid) if parts else None %}
+{{ m.trail(crumbs('competition', comp.fm_uid)) }}
+<div class="hero">{% if trophy_url(comp.fm_uid) %}<img class="crest" src="{{ trophy_url(comp.fm_uid) }}" alt="">{% endif %}<div>
+  <h1>{{ comp.name }}</h1><div class="sub">{{ editions|length }} editions · FM uid {{ comp.fm_uid }}</div></div></div>
+{{ m.upload('competition', comp.fm_uid, (('trophy', 'Trophy'),)) }}
+{% set tab_items = [('now', 'Table' if now.is_league else ('Groups' if now.groups else 'Now'), now.season)] %}
+{% if clubs %}{% set tab_items = tab_items + [('clubs', 'Clubs', clubs|length)] %}{% endif %}
+{{ m.tabs(tab_items + [('history', 'History', editions|length ~ ' editions' if editions else None)]) }}
+
+<section class="tab-panel" id="now">
+{% if now.is_league and now.table %}
+<h2>{{ 'Final table' if now.finished else 'The table' }} <small>{{ now.season }}{% if now.next_season_starts %} · the new season starts {{ now.next_season_starts }}{% endif %}</small></h2>
+<div class="card">{{ m.standings(now.table, teams) }}</div>
+{% if now.xg_table %}
+{% macro gap(value, good_when_up=True) -%}
+<span class="xg-gap {{ 'up' if (value > 0) == good_when_up else 'down' }}">{{ '%+.1f' % value if value|abs >= 0.05 else '0' }}</span>
+{%- endmacro %}
+<h2>Expected goals and points <small>from the {{ now.xg_table|sum(attribute='games') // 2 }} games with a match report; expected points from each game's xG</small></h2>
+<div class="card xg-card"><table class="xg-table"><tr><th class="n">Pos</th><th class="n">xPts pos</th><th>Club</th><th class="n">P</th>
+  <th class="n">xG</th><th class="n">xGA</th><th class="n">xPts</th><th class="n">Pts</th></tr>
+  {% for t in now.xg_table %}<tr><td class="n">{{ t.place }}</td><td class="n">{{ t.xpts_place }}</td><td>{{ m.team(t.team_uid, teams) }}</td>
+    <td class="n">{{ t.games }}</td>
+    <td class="n" title="{{ t.goals_for }} scored">{{ '%.1f' % t.xg }} {{ gap(t.goals_vs_xg) }}</td>
+    <td class="n" title="{{ t.goals_against }} conceded">{{ '%.1f' % t.xga }} {{ gap(t.conceded_vs_xga, False) }}</td>
+    <td class="n">{{ '%.1f' % t.xpts }} {{ gap(t.points_vs_xpts) }}</td><td class="n">{{ t.points }}</td></tr>{% endfor %}</table>
+  <p class="note">The figure beside each value is the real one minus the expected: goals scored above xG, goals conceded above xG against
+    (red: worse than expected), points above expected points.</p></div>
+{% endif %}
+{% elif now.groups %}
+<h2>{{ 'The league phase' if now.groups|length == 1 and now.groups[0].name == 'League phase' else 'The groups' }}
+  <small>{{ now.edition.label or now.season }} · <a href="{{ url_for('world.edition', uid=comp.fm_uid, year=now.edition.year) }}">the whole edition ›</a></small></h2>
+<div class="group-grid">{% for r in now.groups %}<div class="card"><h3>{{ r.name }}</h3>{{ m.standings(r.table, teams) }}</div>{% endfor %}</div>
+{% if now.knockout %}<div class="zone-legend"><span class="zone-through">into the knockout rounds</span><span class="zone-play-off">into the play-off round</span><span class="zone-out">out</span></div>{% endif %}
+{% elif not now.recent and not now.upcoming %}<h2>Now</h2><div class="card muted">No matches of this competition in the archive yet.</div>
+{% endif %}
+<div class="grid">
+{% if now.recent %}<section><h2>{{ 'Last results' if now.finished else 'Latest round' }}</h2><div class="card">
+  {% for f in now.recent %}{% call m.result(f, teams) %}{{ f.date }}{% endcall %}{% endfor %}</div></section>{% endif %}
+{% if now.upcoming %}<section><h2>Next fixtures</h2><div class="card">
+  {% for f in now.upcoming %}{% call m.result(f, teams) %}{{ f.date }}{% endcall %}{% endfor %}</div></section>{% endif %}
+</div>
+</section>
+
+{% if clubs %}<section class="tab-panel" id="clubs">
+<h2>The clubs <small>{{ now.next_season or now.season or '' }}</small></h2>
+<div class="club-grid">{% for t in clubs %}<a class="club-tile" href="{{ m.team_href(t.fm_uid, t) }}" title="{{ t.name }}">
+  {% if crest_url(t) %}<img src="{{ crest_url(t) }}" alt="" loading="lazy">{% else %}<span class="club-tile-ph">{{ t.name[:1] }}</span>{% endif %}
+  <span>{{ t.name }}</span></a>{% endfor %}</div>
+</section>{% endif %}
+
+<section class="tab-panel" id="history">
+<div class="lead">
+<section><h2>Every edition{% if champion %} <small>the champion is the {{ champion.name }} winner</small>{% endif %}</h2><div class="card"><table>
+  <tr><th>Edition</th><th>{{ 'Champion' if champion else 'Winner' }}</th><th>Runner-up</th><th>Third</th>{% for p in parts[1:] %}<th>{{ competitions.get(p.competition_uid, {}).get('short_name', '') }}</th>{% endfor %}<th class="n">Decided</th></tr>
+  {% for e in editions %}<tr>
+    <td>{% if e.own is defined and not e.own %}<a href="{{ url_for('world.edition', uid=e.champion_uid, year=e.year) }}">{{ e.season_label }}</a>{% else %}<a href="{{ url_for('world.edition', uid=comp.fm_uid, year=e.year) }}">{{ e.season_label }}</a>{% endif %}</td>
+    <td>{{ m.team(e.places.get(1), teams) if e.places.get(1) else '—' }}</td><td>{{ m.team(e.places.get(2), teams) if e.places.get(2) else '' }}</td>
+    <td>{{ m.team(e.places.get(3), teams) if e.places.get(3) else '' }}</td>
+    {% for p in parts[1:] %}<td>{{ m.team(p.winners.get(e.year), teams) if p.winners.get(e.year) else '' }}</td>{% endfor %}
+    <td class="n muted">{{ e.decided_on|decided }}</td></tr>{% endfor %}</table></div></section>
+<section><h2>Most titles</h2><div class="card"><table>{% for uid, n in most_titles %}<tr><td>{{ m.team(uid, teams) }}</td><td class="n"><b>{{ n }}</b></td></tr>{% else %}<tr><td class="muted">The save keeps no winners for this competition.</td></tr>{% endfor %}</table></div></section>
+</div>
+</section>
+{% endblock %}

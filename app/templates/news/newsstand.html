@@ -1,0 +1,35 @@
+{% extends "world/base.html" %}
+{% block title %}Newsstand{% endblock %}
+{% block body %}
+<div class="hero"><div><h1>The newsstand</h1>
+  <div class="sub">The world's papers and magazines, newest first.{% if drafts %} <a href="{{ url_for('news.desk') }}">{{ drafts }} draft edition{{ '' if drafts == 1 else 's' }} on the desk</a>.{% endif %}</div></div></div>
+{% if waiting and not job.busy %}<div class="card desk-job" style="margin-top:14px">A new save is waiting: <b>{{ waiting.name }}</b>
+  (saved {{ waiting.modified.strftime('%-d %b, %H:%M') }}).
+  <form class="job-form" data-working="Importing…" method="post" action="{{ url_for('news.import_save') }}" style="display:inline"><input type="hidden" name="save" value="{{ waiting.name }}">
+  <input type="hidden" name="next" value="{{ url_for('news.newsstand') }}">
+  <button class="btn primary" type="submit">Import it and print the papers</button></form></div>{% endif %}
+{% set hide_old_job = true %}{% include "news/_job.html" %}
+<div class="newsstand">
+{% for stand in stands %}
+  <section class="stand {{ 'is-empty' if not stand.issue }}">
+    <a class="stand-masthead" href="{{ url_for('news.outlet_page', slug=stand.outlet.slug) }}">{{ stand.outlet.name }}</a>
+    {% if stand.issue %}
+      <div class="stand-date">{{ stand.issue.publication_date.strftime("%-d %B %Y") }}</div>
+      {% for item in stand.articles %}{% set article = item.row %}
+        {% if loop.first %}
+          <a class="stand-lead" href="{{ url_for('news.edition', slug=stand.outlet.slug, issue_id=stand.issue.id) }}#article-{{ article.id }}">
+            {% if item.picture %}<img class="{{ 'is-badge' if item.badge }}" src="{{ item.picture }}" alt="" loading="lazy">{% endif %}
+            <h2>{{ article.headline }}</h2>
+            {% if article.standfirst %}<p>{{ article.standfirst }}</p>{% endif %}
+          </a>
+        {% else %}
+          <a class="stand-more" href="{{ url_for('news.edition', slug=stand.outlet.slug, issue_id=stand.issue.id) }}#article-{{ article.id }}">{{ article.headline }}</a>
+        {% endif %}
+      {% endfor %}
+    {% else %}
+      <p class="note">No edition yet.</p>
+    {% endif %}
+  </section>
+{% endfor %}
+</div>
+{% endblock %}

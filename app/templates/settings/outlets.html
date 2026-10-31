@@ -1,0 +1,86 @@
+{% extends "world/base.html" %}
+{% block title %}Outlets{% endblock %}
+{% block body %}
+<div class="crumbs"><a href="{{ url_for('settings.index') }}">Settings</a> › Outlets</div>
+<div class="hero"><div><h1>Outlets</h1>
+  <div class="sub">The newspapers and magazines that write about the world. Each takes the story leads on its beat
+  and writes them in its own voice. Rename them, change their voices, or switch them off.</div></div></div>
+
+<section class="card outlet-card" id="followed" style="margin-top:18px">
+  <h3>Followed clubs</h3>
+  <p class="note">Stories about these clubs get the “home” beat and count one and a half times. The English Daily takes the home beat.</p>
+  <ul class="outlet-followed">
+    {% for club in followed %}<li><a href="/clubs/{{ club.uid }}">{{ club.name }}</a>
+      <form method="post" action="{{ url_for('settings.followed_clubs') }}"><input type="hidden" name="remove" value="{{ club.uid }}">
+        <button class="btn" type="submit">Remove</button></form></li>
+    {% else %}<li class="muted">No followed clubs.</li>{% endfor %}
+  </ul>
+  <form class="leads-window" method="post" action="{{ url_for('settings.followed_clubs') }}">
+    <label>Add a club <input name="club" placeholder="Club name or FM id" size="28"></label>
+    <button class="btn" type="submit">Add</button>
+  </form>
+</section>
+
+<details class="card outlet-card" style="margin-top:18px">
+  <summary><b>Beats</b> <span class="note">— what each beat word means</span></summary>
+  <table>
+    <tr><td><code>world</code></td><td>stories that matter anywhere: titles, finals, upsets, records, big moves</td></tr>
+    <tr><td><code>nation:765</code></td><td>stories about one country’s clubs, competitions or national team (765 is England; ids below)</td></tr>
+    <tr><td><code>home</code></td><td>stories about the followed clubs</td></tr>
+    <tr><td><code>transfers</code></td><td>moves, record fees and spending</td></tr>
+    <tr><td><code>young</code></td><td>rising stars, academy scorers, young award winners</td></tr>
+    <tr><td><code>history</code></td><td>anniversaries, legends, ended careers, all-time lists</td></tr>
+    <tr><td><code>numbers</code></td><td>milestones, big wins, scoring records</td></tr>
+  </table>
+</details>
+
+{% for outlet in outlets %}
+<form method="post" class="card outlet-card {{ '' if outlet.active else 'is-off' }}" id="outlet-{{ outlet.id }}" style="margin-top:18px">
+  <input type="hidden" name="outlet_id" value="{{ outlet.id }}">
+  <div class="outlet-head">
+    <h3>{{ outlet.name }}</h3>
+    <label class="outlet-active"><input type="checkbox" name="active" {{ 'checked' if outlet.active }}> Writes editions</label>
+  </div>
+  <div class="outlet-fields">
+    <label>Name <input name="name" value="{{ outlet.name }}" required></label>
+    <label>Tagline <input name="tagline" value="{{ outlet.tagline or '' }}"></label>
+    <label>Byline <input name="byline" value="{{ outlet.byline }}"></label>
+    <label>Beats <input name="beats" value="{{ outlet.beats|join(', ') }}" required>
+      <span class="note">{% for beat in outlet.beats %}{% if beat.startswith('nation:') %}{{ nations.get(beat.split(':')[1]|int, beat) }}{% else %}{{ beat }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</span></label>
+    <label>Articles per edition <input type="number" name="articles_per_edition" min="1" max="30" value="{{ outlet.articles_per_edition }}"></label>
+    <label>Lowest lead score <input type="number" name="min_score" min="0" step="5" value="{{ '%.0f' % outlet.min_score }}"></label>
+    <label class="wide">Voice <textarea name="voice" rows="3" required>{{ outlet.voice }}</textarea></label>
+  </div>
+  <button class="btn primary" type="submit">Save {{ outlet.name }}</button>
+</form>
+<div class="card outlet-staff">
+  <h4>{{ outlet.name }}’s writers</h4>
+  {% for writer in outlet.writers %}
+  <details class="writer-card {{ '' if writer.active else 'is-off' }}" id="writer-{{ writer.id }}">
+    <summary><b>{{ writer.name }}</b> <span class="note">{{ writer.style }}</span></summary>
+    <form method="post" action="{{ url_for('settings.save_writer', writer_id=writer.id) }}" class="outlet-fields">
+      <label>Name <input name="name" value="{{ writer.name }}" required></label>
+      <label>Writes for <select name="outlet_id">{% for other in outlets %}<option value="{{ other.id }}" {{ 'selected' if other.id == outlet.id }}>{{ other.name }}</option>{% endfor %}</select></label>
+      <label class="outlet-active"><input type="checkbox" name="active" {{ 'checked' if writer.active }}> Writes now</label>
+      <label class="wide">Persona: who they are <textarea name="persona" rows="2" required>{{ writer.persona }}</textarea></label>
+      <label class="wide">Style: how they write <textarea name="style" rows="2" required>{{ writer.style }}</textarea></label>
+      <label class="wide">Quirks: habits, pet subjects, favourite words <textarea name="quirks" rows="2">{{ writer.quirks or '' }}</textarea></label>
+      <div><button class="btn primary" type="submit">Save {{ writer.name }}</button> <a href="{{ url_for('news.writer', writer_id=writer.id) }}">Their page</a></div>
+    </form>
+  </details>
+  {% endfor %}
+  <details class="writer-card">
+    <summary>Add a writer to {{ outlet.name }}</summary>
+    <form method="post" action="{{ url_for('settings.add_writer', outlet_id=outlet.id) }}" class="outlet-fields">
+      <label>Name <input name="name" required></label>
+      <label class="wide">Persona: who they are <textarea name="persona" rows="2" required></textarea></label>
+      <label class="wide">Style: how they write <textarea name="style" rows="2" required></textarea></label>
+      <label class="wide">Quirks <textarea name="quirks" rows="2"></textarea></label>
+      <div><button class="btn primary" type="submit">Add the writer</button></div>
+    </form>
+  </details>
+</div>
+{% endfor %}
+
+<p class="note" style="margin-top:18px">Nation ids for beats: {% for uid, name in nations.items()|sort(attribute='1') if name in ('England', 'Spain', 'Italy', 'Germany', 'France', 'Romania', 'Portugal', 'Netherlands', 'Brazil', 'Argentina', 'Scotland', 'United States') %}{{ name }} {{ uid }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+{% endblock %}

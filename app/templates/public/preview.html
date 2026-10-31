@@ -1,0 +1,53 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% set g = page.game %}
+{% block title %}{{ g.home.name }} v {{ g.away.name }}: preview · {{ site_name }}{% endblock %}
+{% block description %}{{ g.competition or 'Match' }}: {{ g.home.name }} v {{ g.away.name }}, {{ g.date.strftime('%-d %B %Y') }}{% endblock %}
+{% block when %}{{ g.date.strftime('%A %-d %B %Y') }}{% endblock %}
+{% macro standing(side) -%}
+{% if side.place %}<span class="standing">{{ side.position }} · {{ side.place.points }} pts</span>{% endif %}
+<span class="form">{% for r in side.form|reverse %}<i class="{{ r.outcome }}">{{ r.outcome }}</i>{% endfor %}</span>
+{%- endmacro %}
+{% block hero %}
+<section class="mhero"><div class="wrap">
+  <div class="comp"><b>{{ g.competition or 'Match' }}</b> · {{ g.date.strftime('%A %-d %B %Y') }}</div>
+  <div class="teams">
+    <a class="team" href="{{ club_url(g.home_uid, g.home) }}">{% if g.home_crest %}<img class="crest" src="{{ g.home_crest }}" alt="">{% endif %}
+      <span class="name">{{ g.home.name }}</span>{{ standing(page.sides[0]) }}</a>
+    <div><div class="score vs"><b>v</b></div><div class="after">{{ g.date.strftime('%-d %b') }}</div></div>
+    <a class="team" href="{{ club_url(g.away_uid, g.away) }}">{% if g.away_crest %}<img class="crest" src="{{ g.away_crest }}" alt="">{% endif %}
+      <span class="name">{{ g.away.name }}</span>{{ standing(page.sides[1]) }}</a>
+  </div>
+</div></section>
+<div class="mtabs"><div class="wrap"><nav>
+  {% if page.text or items %}<a href="#preview">Preview</a>{% endif %}
+  {% if page.sides[0].pitch or page.sides[1].pitch %}<a href="#lineups">Expected line-ups</a>{% endif %}
+  <a href="#form">Form</a>{% if page.meetings %}<a href="#meetings">Head to head</a>{% endif %}
+</nav></div></div>
+{% endblock %}
+{% block body %}
+{% if page.text or items %}<section class="mpart" id="preview"><h2>Preview</h2>
+  {% if page.text %}<article class="report">{% if page.text.title %}<h3>{{ page.text.title }}</h3>{% endif %}{{ paragraphs(page.text.body) }}</article>{% endif %}
+  {% if items %}<div class="list">{% for a in items %}<a class="card" href="{{ story_url(a) }}">{{ p.image(a) }}<div><h3>{{ a.headline }}</h3>{% if a.standfirst %}<p>{{ a.standfirst }}</p>{% endif %}{{ p.tag(a) }}</div></a>{% endfor %}</div>{% endif %}
+</section>{% endif %}
+{% if page.sides[0].pitch or page.sides[1].pitch %}<section class="mpart" id="lineups"><h2>Expected line-ups</h2>
+  <p style="color:var(--muted);margin-top:-6px">Each side's usual system and players over its recent matches, without the injured: a likely eleven, not the team news.</p>
+  <div class="pitches">{% for side in page.sides %}<div>
+    <div class="side-head">{% set t = g.home if loop.first else g.away %}{% set c = g.home_crest if loop.first else g.away_crest %}{% if c %}<img class="crest" src="{{ c }}" alt="">{% endif %}{{ t.name }}{% if side.shape %}<small>{{ side.shape }}</small>{% endif %}</div>
+    {% if side.pitch %}{{ p.pitch(side, away=not loop.first) }}{% else %}<p style="color:var(--muted)">Too few recent team sheets for a likely eleven.</p>{% endif %}
+    {% if side.out %}<ul class="out">{% for o in side.out %}<li>Out: {{ o }}</li>{% endfor %}</ul>{% endif %}
+  </div>{% endfor %}</div>
+</section>{% endif %}
+<section class="mpart" id="form"><h2>Form</h2>
+  <div class="pitches">{% for side in page.sides %}<div>
+    <div class="games-head">{{ (g.home if loop.first else g.away).name }} · last {{ side.form|length }}</div>
+    <ul class="games">{% for r in side.form %}{{ p.game(r, show_competition=True) }}{% endfor %}</ul>
+  </div>{% endfor %}</div>
+  {% if page.league %}<div class="row-title"><h2>{{ page.league.name }}</h2><a href="{{ url_for('public.table', uid=page.league.uid) }}">Full table ›</a></div>
+  {{ p.league_table(page.league, highlight=(g.home_uid, g.away_uid), wide=False) }}{% endif %}
+</section>
+{% if page.meetings %}<section class="mpart" id="meetings"><h2>Head to head</h2>
+  <div class="record"><span><b>{{ page.record.home }}</b>{{ g.home.name }} wins</span><span><b>{{ page.record.drawn }}</b>draws</span><span><b>{{ page.record.away }}</b>{{ g.away.name }} wins</span></div>
+  <ul class="games">{% for r in page.meetings %}{{ p.game(r, show_competition=True) }}{% endfor %}</ul>
+</section>{% endif %}
+{% endblock %}

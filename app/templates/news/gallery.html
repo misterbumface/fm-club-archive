@@ -1,0 +1,54 @@
+{% extends "world/base.html" %}
+{% block title %}Gallery{% endblock %}
+{% block body %}
+<div class="hero"><div><h1>Gallery</h1>
+  <p class="note">Every picture the archive made or keeps: the library (competition and club pools, uploads, action photos) and the
+    stories' drawn pictures. Tick the bad ones and delete them: a library picture goes for good, a story's picture goes and the story
+    falls back to a pool, a face or a crest. A hidden picture is greyed; "Hide" keeps it but takes it off the pages.</p></div></div>
+<style>
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 12px; }
+  .gallery figure { margin: 0; border: 1px solid var(--line, #ddd); border-radius: 6px; overflow: hidden; background: #fff; position: relative; }
+  .gallery img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; display: block; }
+  .gallery figure.hidden img { opacity: .35; }
+  .gallery figcaption { padding: 6px 8px; font-size: 12px; line-height: 1.3; }
+  .gallery .pick { position: absolute; top: 6px; left: 6px; transform: scale(1.4); }
+  .gallery .act { display: flex; gap: 6px; justify-content: space-between; align-items: center; margin-top: 4px; }
+  .bar { display: flex; gap: 12px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
+</style>
+<form method="post" action="{{ url_for('news.gallery_delete') }}">
+<section class="card" style="margin-top:18px">
+  <h3>Library <span class="muted">({{ images|length }})</span></h3>
+  <div class="bar">
+    <label>Kind <select onchange="document.querySelectorAll('.gallery.lib figure').forEach(f => f.style.display = (!this.value || f.dataset.kind === this.value) ? '' : 'none')">
+      <option value="">all</option>{% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}</select></label>
+    <label>Search <input type="search" placeholder="club, competition, caption" oninput="const q=this.value.toLowerCase(); document.querySelectorAll('.gallery.lib figure').forEach(f => f.style.display = f.dataset.text.includes(q) ? '' : 'none')"></label>
+    <button class="btn" type="button" onclick="document.querySelectorAll('.gallery.lib figure:not([style*=none]) .pick').forEach(c => c.checked = true)">Tick all shown</button>
+    <button class="btn danger" type="submit" onclick="return confirm('Delete the ticked pictures?')">Delete ticked</button>
+  </div>
+  <div class="gallery lib">
+  {% for item in images %}{% set i = item.image %}
+    <figure class="{{ '' if i.is_active else 'hidden' }}" data-kind="{{ i.kind }}" data-text="{{ (item.label ~ ' ' ~ (i.caption or '') ~ ' ' ~ i.kind ~ ' ' ~ i.source)|lower }}">
+      <input class="pick" type="checkbox" name="image" value="{{ i.id }}">
+      <a href="{{ i.url }}" target="_blank"><img src="{{ i.url }}" alt="" loading="lazy"></a>
+      <figcaption><b>{{ item.label }}</b> · {{ i.kind }} · {{ i.source }}{% if not i.is_active %} · hidden{% endif %}
+        {% if i.caption %}<br><span class="muted">{{ i.caption }}</span>{% endif %}
+        <div class="act"><span class="muted">#{{ i.id }}</span>
+          {% if i.is_active %}<button class="btn" type="submit" formaction="{{ url_for('world.hide_world_image', image_id=i.id) }}" formnovalidate name="back" value="{{ url_for('news.gallery') }}">Hide</button>{% endif %}</div>
+      </figcaption></figure>
+  {% else %}<p class="note">No pictures in the library yet. The Desk's "Draw competition pictures" fills it.</p>{% endfor %}
+  </div>
+</section>
+<section class="card" style="margin-top:18px">
+  <h3>Stories' pictures <span class="muted">({{ stories|length }})</span></h3>
+  <div class="bar"><button class="btn danger" type="submit" onclick="return confirm('Delete the ticked pictures?')">Delete ticked</button>
+    <span class="muted">a deleted story picture is replaced by a pool picture, a face or a crest; "New picture" on the Desk draws another</span></div>
+  <div class="gallery">
+  {% for a in stories %}
+    <figure><input class="pick" type="checkbox" name="article" value="{{ a.id }}">
+      <a href="{{ a.image_url }}" target="_blank"><img src="{{ a.image_url }}" alt="" loading="lazy"></a>
+      <figcaption><b>{{ a.headline }}</b><br><span class="muted">{{ a.issue.outlet.name if a.issue.outlet else a.issue.edition_name }} · {{ a.issue.publication_date.strftime('%-d %b %Y') }} · {{ a.issue.status }}</span></figcaption></figure>
+  {% else %}<p class="note">No drawn pictures yet.</p>{% endfor %}
+  </div>
+</section>
+</form>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}Scores, {{ day.strftime('%-d %B %Y') }} · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">Scores <small>{{ day.strftime('%A %-d %B %Y') }}</small></h1>
+<nav class="day-strip">
+  {% if before %}<a class="step" href="{{ url_for('public.scores_day', day=before.isoformat()) }}" aria-label="The day before">‹</a>{% else %}<span class="step off">‹</span>{% endif %}
+  {% for d in strip %}<a class="{{ 'on' if d == day }}" href="{{ url_for('public.scores_day', day=d.isoformat()) }}"><b>{{ d.strftime('%a') }}</b><span>{{ d.strftime('%-d %b') }}</span></a>{% endfor %}
+  {% if after %}<a class="step" href="{{ url_for('public.scores_day', day=after.isoformat()) }}" aria-label="The day after">›</a>{% else %}<span class="step off">›</span>{% endif %}
+</nav>
+<div class="grid2">{% for comp in results %}<section>
+  <div class="row-title"><h2>{{ comp.name }}</h2></div>
+  <ul class="games">{% for g in comp.games %}{{ p.game(g) }}{% endfor %}</ul>
+  {% if comp.more %}<p class="muted small">and {{ comp.more }} more</p>{% endif %}
+</section>{% endfor %}</div>
+<p class="small"><a href="{{ url_for('public.scores') }}">Fixtures and the latest in each competition ›</a></p>
+{% endblock %}

@@ -1,0 +1,118 @@
+{% extends "world/base.html" %}
+{% block title %}The desk{% endblock %}
+{% block body %}
+<div class="hero"><div><h1>The desk</h1>
+  <div class="sub">Every news cycle publishes its editions at once. To correct one, unpublish it: it comes back here, where you
+  edit, write again, reorder or drop articles, then publish it again. The first article of an edition is its front-page lead.</div></div></div>
+
+
+{% include "news/_job.html" %}
+
+<section class="card" style="margin-top:18px" id="import">
+  <h3>Import a save</h3>
+  <p class="note">Your saves from the game's folder, newest first. Importing reads the save into the archive, then the papers
+  write and publish the news since the last editions. Front-page pictures are drawn only when you ask, below.</p>
+  {% if saves %}
+  <table class="desk-saves">
+    {% for save in saves %}<tr>
+      <td><b>{{ save.name }}</b><div class="note">saved {{ save.modified.strftime('%-d %b %Y, %H:%M') }} · {{ save.size_mb }} MB</div></td>
+      <td class="note">{% if save.imported_at is none %}<span class="pill gold">new</span>{% elif save.changed_since_import %}<span class="pill gold">saved again since import</span>{% else %}in the archive{% if save.game_date %} · game date {{ save.game_date.strftime('%-d %b %Y') }}{% endif %}{% endif %}</td>
+      <td><form class="job-form" data-working="Importing…" method="post" action="{{ url_for('news.import_save') }}"><input type="hidden" name="save" value="{{ save.name }}">
+        <button class="btn {{ 'primary' if save.new and loop.first }}" type="submit" {{ 'disabled' if busy }}>{{ 'Import' if save.new else 'Import again' }}</button></form></td>
+      <td><form method="post" action="{{ url_for('news.hide_save') }}"><input type="hidden" name="save" value="{{ save.name }}">
+        <button class="btn" type="submit" title="Hide this save from the list">Hide</button></form></td>
+    </tr>{% endfor %}
+  </table>
+  {% else %}<p class="note">No saves found in the game's folder.</p>{% endif %}
+</section>
+
+<section class="card" style="margin-top:18px">
+  <h3>Make editions</h3>
+  {% if window %}
+    <p class="note">The next news cycle runs from {{ window[0].strftime('%-d %B %Y') }} to {{ window[1].strftime('%-d %B %Y') }}
+    (the game date of the newest save). Every active outlet gets one edition, published at once.
+    {% if due %}An import makes the next editions by itself once the game reaches {{ due.strftime('%-d %B %Y') }} (two weeks after the last ones);
+    this button makes them now.{% else %}Editions are also made after each import.{% endif %}</p>
+  {% else %}
+    <p class="note">Nothing is new since the last editions. Choose a window to make editions anyway.
+    {% if due %}An import makes the next editions by itself once the game reaches {{ due.strftime('%-d %B %Y') }}.{% endif %}</p>
+  {% endif %}
+  <form class="leads-window job-form" data-working="Writing…" method="post" action="{{ url_for('news.make_editions') }}">
+    <label>From <input type="date" name="since" value="{{ window[0].isoformat() if window else '' }}"></label>
+    <label>to <input type="date" name="until" value="{{ window[1].isoformat() if window else '' }}"></label>
+    <button class="btn primary" type="submit" {{ 'disabled' if busy }}>Make editions now</button>
+    <a href="{{ url_for('world_soccer.leads') }}">See the story leads</a>
+  </form>
+</section>
+
+{% if latest %}
+<section class="card" style="margin-top:18px">
+  <h3>On the newsstand</h3>
+  <p class="note">Imports do not draw pictures. Without one, a paper shows the archive's photos, faces, stadiums or crests.
+    {{ picture_maker }} draws them{% if picture_maker == 'Draw Things (on this Mac)' %} and must be running{% endif %}; the <a href="{{ url_for('settings.index') }}#pictures">Settings</a> choose the maker.</p>
+  <form class="job-form" data-working="Drawing…" method="post" action="{{ url_for('news.draw_front_pages') }}">
+    <button class="btn primary" type="submit" {{ 'disabled' if busy }}>Draw front-page pictures</button>
+    <span class="muted">for the lead stories that have none</span></form>
+  <form class="job-form" data-working="Drawing…" method="post" action="{{ url_for('news.draw_competition_pictures') }}">
+    <button class="btn" type="submit" {{ 'disabled' if busy }}>Draw competition pictures</button>
+    <label><input type="number" name="count" value="6" min="1" max="24" style="width:4em"> each</label>
+    <span class="muted">for the competitions in the news: a pool their other stories share, a different one per story</span></form>
+  <form class="job-form" data-working="Drawing…" method="post" action="{{ url_for('news.draw_club_pictures') }}">
+    <button class="btn" type="submit" {{ 'disabled' if busy }}>Draw club pictures</button>
+    <label><input type="number" name="count" value="8" min="1" max="24" style="width:4em"> each</label>
+    <span class="muted">for the followed clubs and the clubs in the news: generic scenes in the club's colours, shared by their stories</span></form>
+  <form method="post" action="{{ url_for('news.test_picture') }}" id="test-picture">
+    <button class="btn" type="submit" {{ 'disabled' if busy }}>Test picture</button>
+    <span class="muted">one picture with the chosen maker and its settings (about half a minute)</span></form>
+  <p class="note">The <a href="{{ url_for('news.gallery') }}">gallery</a> shows every picture made or kept, to delete the bad ones.</p>
+  {% if request.args.get('test_picture') %}<figure style="margin:12px 0"><img src="{{ request.args.get('test_picture') }}" alt="" style="max-width:100%;border-radius:4px">
+    <figcaption class="muted" style="font-size:13px">{{ request.args.get('test_prompt') }}</figcaption></figure>{% endif %}
+  <table>
+  {% for item in latest %}<tr>
+    <td><a href="{{ url_for('news.edition', slug=item.outlet.slug, issue_id=item.issue.id) }}"><b>{{ item.outlet.name }}</b></a></td>
+    <td class="muted">{{ item.issue.publication_date.strftime('%-d %B %Y') }} · {{ item.articles }} articles</td>
+    <td>{{ item.issue.headline or '' }}</td>
+    <td><form class="job-form" data-working="Drawing…" method="post" action="{{ url_for('news.draw_front_pages') }}"><input type="hidden" name="issue" value="{{ item.issue.id }}">
+      <button class="btn" type="submit" {{ 'disabled' if busy }} title="Draw a new picture for the lead story">New picture</button></form></td>
+    <td><form method="post" action="{{ url_for('news.unpublish_edition', issue_id=item.issue.id) }}"><button class="btn" type="submit">Unpublish to correct</button></form></td>
+  </tr>{% endfor %}
+  </table>
+</section>
+{% endif %}
+
+{% if drafts %}<h2 class="desk-heading">Back on the desk</h2>{% endif %}
+{% for draft in drafts %}{% set issue = draft.issue %}
+<section class="card desk-edition" id="issue-{{ issue.id }}" style="margin-top:18px">
+  <div class="desk-edition-head">
+    <div>
+      <h3>{{ draft.outlet.name if draft.outlet else issue.edition_name }}</h3>
+      <div class="note">{{ issue.publication_date.strftime('%-d %B %Y') }} · {{ draft.articles|length }} article{{ '' if draft.articles|length == 1 else 's' }}
+        {% if draft.outlet %} · <a href="{{ url_for('news.edition', slug=draft.outlet.slug, issue_id=issue.id) }}">see it as a newspaper</a>{% endif %}</div>
+    </div>
+    <div class="desk-actions">
+      <form method="post" action="{{ url_for('news.publish_edition', issue_id=issue.id) }}"><button class="btn primary" type="submit">Publish</button></form>
+      <form method="post" action="{{ url_for('news.drop_edition', issue_id=issue.id) }}" onsubmit="return confirm('Drop this whole draft edition?')"><button class="btn" type="submit">Drop edition</button></form>
+    </div>
+  </div>
+  {% for item in draft.articles %}{% set article = item.row %}
+  <details class="desk-article" id="article-{{ article.id }}" {{ 'open' if loop.first }}>
+    <summary><span class="pill">{{ article.prominence }}</span> <b>{{ article.headline }}</b> <span class="note">{{ article.section }}</span></summary>
+    <form method="post" action="{{ url_for('news.save_article', article_id=article.id) }}" class="desk-form">
+      <label>Headline <input name="headline" value="{{ article.headline }}" required></label>
+      <label>Standfirst <input name="standfirst" value="{{ article.standfirst or '' }}"></label>
+      <label>Body <textarea name="body" rows="{{ 14 if article.prominence in ('lead', 'major') else 7 }}" required>{{ article.body }}</textarea></label>
+      <div class="desk-actions">
+        <button class="btn primary" type="submit">Save</button>
+        <button class="btn" type="submit" formaction="{{ url_for('news.rewrite_article', article_id=article.id) }}" data-ai="Writing the article again" {{ 'disabled' if not article.lead }}>Write again</button>
+        <button class="btn" type="submit" formaction="{{ url_for('news.new_picture', article_id=article.id) }}" formnovalidate>New picture</button>
+        <button class="btn" type="submit" name="direction" value="up" formaction="{{ url_for('news.move_article', article_id=article.id) }}" {{ 'disabled' if loop.first }}>Up</button>
+        <button class="btn" type="submit" name="direction" value="down" formaction="{{ url_for('news.move_article', article_id=article.id) }}" {{ 'disabled' if loop.last }}>Down</button>
+        <button class="btn" type="submit" formaction="{{ url_for('news.drop_article', article_id=article.id) }}" formnovalidate onclick="return confirm('Drop this article?')">Drop</button>
+        <span class="note">By {{ article.byline }}{% if article.model %} · {{ article.model }}{% endif %}{% if article.lead %} · lead: {{ article.lead.headline }}{% endif %}</span>
+      </div>
+    </form>
+  </details>
+  {% endfor %}
+</section>
+{% endfor %}
+{% endblock %}

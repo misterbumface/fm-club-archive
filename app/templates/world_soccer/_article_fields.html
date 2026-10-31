@@ -1,0 +1,15 @@
+{% set a = editing if editing is defined else None %}
+<label>Section<input name="section" value="{{ a.section if a else 'World' }}" required></label>
+<label>Story type<select name="article_type">{% for value in ['report','analysis','profile','column','brief'] %}<option value="{{ value }}" {{ 'selected' if a and a.article_type == value }}>{{ value|title }}</option>{% endfor %}</select></label>
+<label>Prominence<select name="prominence">{% for value in ['lead','major','standard','brief'] %}<option value="{{ value }}" {{ 'selected' if (a and a.prominence == value) or (not a and value == 'standard') }}>{{ value|title }}</option>{% endfor %}</select></label>
+<label>Order<input type="number" name="sort_order" value="{{ a.sort_order if a else 0 }}"></label>
+<label class="wide">Headline<input name="headline" value="{{ a.headline if a else '' }}" required></label>
+<label class="wide">Standfirst<textarea name="standfirst" rows="2">{{ a.standfirst if a and a.standfirst else '' }}</textarea></label>
+<label class="wide">Story<textarea name="body" rows="10" required>{{ a.body if a else '' }}</textarea></label>
+<label>Byline<input name="byline" value="{{ a.byline if a else 'World Soccer' }}"></label>
+<label>Image URL<input name="image_url" value="{{ a.image_url if a and a.image_url else '' }}"></label>
+<label class="wide">Image caption<input name="image_caption" value="{{ a.image_caption if a and a.image_caption else '' }}"></label>
+<label>Existing story thread<select name="story_thread_id"><option value="">None</option>{% for thread in threads %}<option value="{{ thread.id }}" {{ 'selected' if a and a.story_thread_id == thread.id }}>{{ thread.title }}</option>{% endfor %}</select></label>
+<label>Or begin a thread<input name="story_thread_title" placeholder="The title race, A prodigy's rise…"></label>
+<label class="wide">Universe links <small>One per line: player:123:Name, club:45:Club, competition:8:Competition</small><textarea name="entity_links" rows="3">{% if a %}{% for link in a.entity_links %}{{ link.entity_type }}:{{ link.entity_id }}:{{ link.label or '' }}
+{% endfor %}{% endif %}</textarea></label>

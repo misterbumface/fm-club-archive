@@ -1,0 +1,16 @@
+{% extends "world/base.html" %}
+{% block title %}{{ story.title }} · The story so far{% endblock %}
+{% block body %}
+<div class="crumbs"><a href="{{ url_for('news.newsstand') }}">Newsstand</a> › The story so far</div>
+<div class="hero"><div><h1>{{ story.title }}</h1>
+  <div class="sub">The story so far, in every paper{% if subject and subject.path %} · <a href="{{ subject.path }}">{{ subject.label }} in the archive</a>{% endif %}</div></div></div>
+<ol class="thread-timeline">
+{% for article in articles %}{% set outlet = outlet_of(article.issue) %}
+  <li>
+    <div class="note">{{ article.issue.publication_date.strftime('%-d %B %Y') }} · {{ outlet.name if outlet else article.issue.edition_name }} · {{ article.byline }}</div>
+    <a href="{{ url_for('news.edition', slug=outlet.slug, issue_id=article.issue_id) }}#article-{{ article.id }}"><b>{{ article.headline }}</b></a>
+    {% if article.standfirst %}<p>{{ article.standfirst }}</p>{% endif %}
+  </li>
+{% else %}<li class="note">No published article yet.</li>{% endfor %}
+</ol>
+{% endblock %}

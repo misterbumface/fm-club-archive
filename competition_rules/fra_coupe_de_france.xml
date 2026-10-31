@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<competition id="fra_coupe_de_france" type="domestic_cup" teamType="club">
+    <name>Coupe de France</name>
+    <summary>France's open national cup. Professional clubs enter progressively, Ligue 1 joins in the round of 64, and drawn matches go directly to penalties without extra time.</summary>
+    <structure><knockout>true</knockout><replays>false</replays></structure>
+    <matchRules><drawResolution>Penalties immediately after a draw in 90 minutes</drawResolution><finalVenue>Stade de France</finalVenue></matchRules>
+    <phases>
+        <phase key="regional_qualifying" label="Regional qualifying" stage="Qualifying" entrants="Rounds One to Six · regional and amateur entrants" penalties="true"><alias>First Round</alias><alias>Second Round</alias><alias>Third Round</alias><alias>Fourth Round</alias><alias>Fifth Round</alias><alias>Sixth Round</alias></phase>
+        <phase key="seventh_round" label="Seventh round" stage="Seventh Round" entrants="Ligue 2 clubs join" penalties="true"><alias>7e tour</alias></phase>
+        <phase key="eighth_round" label="Eighth round" stage="Eighth Round" penalties="true"><alias>8e tour</alias></phase>
+        <phase key="round_of_64" label="Round of 64" stage="Ninth Round" entrants="Ligue 1 clubs join" penalties="true"><alias>9e tour</alias><alias>32es de finale</alias><alias>Round of 64</alias></phase>
+        <phase key="round_of_32" label="Round of 32" stage="Tenth Round" penalties="true"><alias>10e tour</alias><alias>16es de finale</alias><alias>Round of 32</alias></phase>
+        <phase key="round_of_16" label="Round of 16" stage="Eleventh Round" penalties="true"><alias>11e tour</alias><alias>8es de finale</alias><alias>Round of 16</alias></phase>
+        <phase key="quarter_final" label="Quarter-finals" stage="Quarter Final" penalties="true"><alias>Quarts de finale</alias></phase>
+        <phase key="semi_final" label="Semi-finals" stage="Semi Final" penalties="true"><alias>Demi-finales</alias></phase>
+        <phase key="final" label="Final" stage="Final" final="true" penalties="true" neutralVenue="true" entrants="Stade de France"><alias>Finale</alias></phase>
+    </phases>
+</competition>

@@ -1,0 +1,212 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% block title %}{{ p.name }}{% endblock %}
+{% block body %}
+{{ m.trail(crumbs('person', p.fm_uid), here=p.name) }}
+<div class="hero">
+  <div>
+    {% set picture = face_url(p.fm_uid) %}
+    {% if picture %}<img class="portrait cutout" src="{{ picture }}" alt="{{ p.name }}">
+    {% else %}<div class="portrait empty"><span>No picture yet</span></div>{% endif %}
+    <div class="source">
+      <form class="inline" method="post" action="{{ url_for('world.generate_picture', uid=p.fm_uid) }}">
+        <button class="btn" type="submit">{{ 'New picture' if picture else 'Generate picture' }}</button></form>
+      {% if picture %}<form class="inline" method="post" action="{{ url_for('world.age_up_picture', uid=p.fm_uid) }}">
+        <button class="btn" type="submit" {{ 'disabled' if age_job and not age_job.startswith('Done') }}
+                title="The same face at his age now, in the shirt of his club now, with the editing model">Age up / change shirt</button></form>{% endif %}
+    </div>
+    {% if age_job %}<p class="muted">{{ age_job }}</p>
+    {% if not age_job.startswith('Done') %}<script>setTimeout(() => location.reload(), 10000);  // show the picture when it is made</script>{% endif %}{% endif %}
+  </div>
+  <div>
+    <h1>{{ p.name }}</h1>
+    <div class="sub">
+      {% if positions and positions.label %}<b>{{ positions.label }}</b> · {% endif %}
+      {% if p.staff_job and p.staff_job != 'Player' %}<b>{{ p.staff_job }}</b> of <a href="{{ url_for('world.club', uid=p.staff_club_uid or p.staff_team_uid) }}">{{ p.staff_team }}</a>{% if p.staff_since %} since {{ p.staff_since|month_year }}{% endif %}{% if p.staff_wage %} · £{{ '{:,}'.format(p.staff_wage) }} a week{% endif %}{% if p.staff_contract_ends %} until {{ p.staff_contract_ends|month_year }}{% endif %} · {% endif %}
+      {% if p.nationality %}{{ p.nationality }} · {% endif %}
+      {% if p.birth_date %}born {{ p.birth_date }}{% if age %} ({{ age }}){% endif %} · {% endif %}
+      {% for row in career.rows|map(attribute='team_uid')|unique %}{{ teams.get(row, {}).get('name', '') }}{% if not loop.last %} · {% endif %}{% endfor %}
+    </div>
+    <div class="facts">
+      <div class="fact"><b>{{ career.totals.apps }}</b><span>league games</span></div>
+      <div class="fact"><b>{{ career.totals.goals }}</b><span>league goals</span></div>
+      <div class="fact"><b>{{ cabinet|sum(attribute='count') }}</b><span>trophies</span></div>
+      <div class="fact"><b>{{ awards|sum(attribute='wins') }}</b><span>awards won</span></div>
+      {% if career.totals.national_apps %}<div class="fact"><b>{{ career.totals.national_apps }}</b><span>national-team games · {{ career.totals.national_goals }} goals</span></div>{% endif %}
+    </div>
+    {% set feelings = club_feelings|selectattr('group', 'in', ('Legend', 'Icon'))|list
+                     + club_feelings|selectattr('group', 'equalto', 'Favoured')|selectattr('level', 'ge', 50)|list
+                     + club_feelings|selectattr('group', 'equalto', 'Disliked')|list %}
+    {% set now_injured = injuries|selectattr('current')|list %}
+    {% if now_injured %}<div class="club-feelings">{% for i in now_injured %}<a class="pill red" href="#injuries">Injured: {{ i.injury|injury_name }},
+      out {{ i.days|time_out }}{% if i.back_on %} (back about {{ i.back_on|day_month }}){% endif %}</a>{% endfor %}</div>{% endif %}
+    {% if mood and (mood.open or mood.backers) %}<div class="club-feelings"><a class="pill" href="#mood">Morale: {{ mood.morale_word }}</a>{{ m.concern_pills(mood.open) }}
+      {% if mood.backers %}<a class="pill red" href="#mood">{{ mood.backers|length }} team-mate{{ 's' if mood.backers|length > 1 }} take{{ 's' if mood.backers|length == 1 }} his side</a>{% endif %}</div>{% endif %}
+    {% if feelings %}<div class="club-feelings">{% for r in feelings %}
+      <a class="pill {{ {'Legend': 'gold', 'Icon': 'gold', 'Favoured': 'green', 'Disliked': 'red'}[r.group] }}" href="{{ url_for('world.club', uid=r.club_uid) }}#relations"
+         title="{{ r.reason_name ~ ', ' if r.reason_name }}level {{ r.level }}{{ ', kept for ever' if r.permanent }}">{{ r.group }} at {{ r.club_name }}</a>{% endfor %}</div>{% endif %}
+    {% if bio %}<p class="summary">{{ bio.summary }}</p>{% endif %}
+    <form class="inline" method="post" action="{{ url_for('world.write_bio', uid=p.fm_uid) }}" data-ai="Writing the biography">
+      {{ m.voice_select() }} <button class="btn" type="submit">{{ 'New bio' if bio else 'Write bio' }}</button></form>
+  </div>
+</div>
+
+{% set photos = world_pictures('person:' ~ p.fm_uid, ('photograph',)) %}
+{% set social = person_social(p.fm_uid) %}
+{{ m.tabs([('overview', 'Overview', None), ('story', 'Story', None if bio_sections else 'not written'),
+           ('stats', 'Stats', career.rows|length ~ ' seasons' if career.rows else None),
+           ('transfers', 'Transfers', transfers|length or None), ('photos', 'Photos', photos|length or None)]
+           + ([('injuries', 'Injuries', injuries|length)] if injuries else [])
+           + ([('social', 'Social', social.posts|length)] if social.posts else [])) }}
+
+<section class="tab-panel" id="overview">
+{% if cabinet %}
+<h2>Trophy cabinet <small>{{ cabinet|sum(attribute='count') }} trophies</small></h2>
+<div class="cabinet">{% for card in cabinet %}{{ m.trophy_card(card, competitions, teams) }}{% endfor %}</div>
+{% endif %}
+{% if runner_up %}
+<h2>Runner-up <small>{{ runner_up|sum(attribute='count') }} finals and second places</small></h2>
+<div class="cabinet runner">{% for card in runner_up %}{{ m.trophy_card(card, competitions, teams, silver=True) }}{% endfor %}</div>
+{% endif %}
+{% if not cabinet and not runner_up %}<h2>Trophy cabinet</h2><div class="card muted">No trophies yet.</div>{% endif %}
+{% if mood %}<h2 id="mood">Morale and happiness <small>in the save of {{ mood.as_of|day_month if mood.as_of }}</small></h2>
+<div class="card mood-card">
+  <div class="facts"><div class="fact"><b>{{ mood.morale_word }}</b><span>morale ({{ mood.morale }} of 20)</span></div>
+    {% if mood.happiness is not none %}<div class="fact"><b>{{ mood.happiness_word }}</b><span>overall happiness</span></div>{% endif %}</div>
+  {% if mood.open %}<h3>Concerns now</h3><ul>{% for c in mood.open %}<li>{{ c.text }} <span class="muted">since {{ c.started|day_month if c.started }}{{ ' · he has told his team-mates' if c.told_team_mates }}</span></li>{% endfor %}</ul>{% endif %}
+  {% if mood.backers %}<p>{{ mood.backers|length }} team-mate{{ 's think' if mood.backers|length > 1 else ' thinks' }} he has been treated unfairly:
+    {% for b in mood.backers %}{{ m.person(b.uid, b.name) }}{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+  {% if mood.recent %}<h3>Settled this year</h3><ul>{% for c in mood.recent %}<li>{{ c.text }} <span class="muted">{{ c.started|day_month if c.started }} to {{ c.ended|day_month if c.ended }}</span></li>{% endfor %}</ul>{% endif %}
+  {% if not mood.open and not mood.backers and not mood.recent %}<p class="muted">No concerns this year.</p>{% endif %}
+  {% if mood.favoured %}<p><b>Favoured personnel:</b> {% for f in mood.favoured %}{{ m.person(f.uid, f.name) }}{% if f.reason_name %} <span class="muted">({{ f.reason_name }})</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+  {% if mood.dislikes %}<p><b>Dislikes:</b> {% for f in mood.dislikes %}{{ m.person(f.uid, f.name) }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+</div>{% endif %}
+{% if contracts %}<h2 id="contract">Contract <small>as the saves had it; the wage to the pound, shown as the game rounds it</small></h2>
+<div class="card"><table class="stats"><tr><th>Club</th><th>Job</th><th>Wage</th><th>Signed</th><th>Joined</th><th>Expires</th><th>Mood</th><th>Seen</th></tr>
+{% for r in contracts %}<tr><td><a href="{{ url_for('world.club', uid=r.team_uid) }}">{{ r.team }}</a></td><td>{{ r.job }}</td><td>{{ r.wage_words }} <span class="muted">(£{{ '{:,}'.format(r.wage) }})</span></td>
+<td>{{ r.signed or '' }}</td><td>{{ r.joined or '' }}</td><td>{{ r.expires or '' }}</td><td>{{ r.happiness if r.happiness is not none else '' }}</td><td class="muted">{{ r.first_seen }}{% if r.as_of != r.first_seen %} to {{ r.as_of }}{% endif %}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if market and (market.active or market.rumoured or market.bids) %}<h2 id="market">Transfer market <small>as of the newest save</small></h2>
+<div class="card">
+  {% if market.active %}<p><b>Clubs after him:</b> {% for r in market.active %}<a href="{{ url_for('world.club', uid=r.team_uid) }}">{{ r.team }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+  {% if market.rumoured %}<p><b>Rumoured:</b> {% for r in market.rumoured %}<a href="{{ url_for('world.club', uid=r.team_uid) }}">{{ r.team }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+  {% if market.bids %}<h3>Bids</h3><ul>{% for b in market.bids %}<li>{{ b.offered_on|day_month if b.offered_on }}: <a href="{{ url_for('world.club', uid=b.team_uid) }}">{{ b.team }}</a> {% if b.loan %}asked for him on loan{% else %}bid £{{ '{:,}'.format(b.fee) }}{% if b.rising_to %} (rising to £{{ '{:,}'.format(b.rising_to) }} with add-ons){% endif %}{% endif %}{% if b.squad and b.squad != b.team %} for the {{ b.squad }} squad{% endif %} · <b>{{ b.status }}</b>{% if b.status == 'agreed' and b.completes_on %}, he joins on {{ b.completes_on|day_month }}{% elif b.status == 'made' and b.until %}, open until {{ b.until|day_month }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+</div>{% endif %}
+{% if manager_profile %}<h2>As a coach <small>his profile in the game</small></h2>
+<div class="card">{{ m.manager_card(manager_profile) }}</div>{% endif %}
+{% if manager_spells %}<h2>Managerial career <small>at the teams whose history the save keeps</small></h2>
+{{ m.manager_spells(manager_spells, by='team') }}{% endif %}
+{% if positions %}
+<h2>Positions <small>{{ positions.foot or '' }}{% if attributes and attributes.game_date %} · as of {{ attributes.game_date }}{% endif %}</small></h2>
+<div class="positions-card">
+  <div class="pitch pitch-small">
+    <svg class="pitch-lines" viewBox="0 0 68 105" preserveAspectRatio="none" aria-hidden="true">
+      <rect x="1" y="1" width="66" height="103"/><line x1="1" y1="52.5" x2="67" y2="52.5"/><circle cx="34" cy="52.5" r="9.15"/>
+      <rect x="13.85" y="1" width="40.3" height="16.5"/><rect x="24.85" y="1" width="18.3" height="5.5"/>
+      <rect x="13.85" y="87.5" width="40.3" height="16.5"/><rect x="24.85" y="98.5" width="18.3" height="5.5"/>
+    </svg>
+    {% for s in positions.spots %}<span class="position-spot level-{{ s.level }}" style="left:{{ s.x }}%;top:{{ s.y }}%"
+      title="{{ s.code }}: {{ s.rating }} ({{ s.level }})">{{ s.short }}</span>{% endfor %}
+  </div>
+  <div class="card"><table>
+    {% for s in positions.spots|sort(attribute='rating', reverse=True) if s.rating >= 5 %}
+    <tr><td>{{ s.code }}</td><td class="n">{{ s.rating }}</td><td class="muted">{{ s.level }}</td></tr>{% endfor %}
+    {% if positions.left_foot %}<tr><td>Left foot</td><td class="n">{{ positions.left_foot }}</td><td></td></tr>
+    <tr><td>Right foot</td><td class="n">{{ positions.right_foot }}</td><td></td></tr>{% endif %}
+  </table></div>
+</div>
+{% endif %}
+{% if character %}<p class="muted character">Character: {{ character|join(', ') }}.</p>
+{% endif %}
+{% set news_ref = 'person:' ~ p.fm_uid %}{% include "news/_in_the_news.html" %}
+</section>
+
+<section class="tab-panel" id="story">
+{% if bio_sections %}
+<h2>The story of {{ p.name }} <small>written from the save of {{ bio.game_date.strftime('%-d %B %Y') if bio.game_date else 'an unknown date' }}</small></h2>
+<div class="card story">{% for section in bio_sections %}{% if section.heading %}<h3>{{ section.heading }}</h3>{% endif %}
+  {% for paragraph in section.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}{% endfor %}</div>
+{% endif %}
+{% if not bio_sections %}<h2>The story of {{ p.name }}</h2>
+<div class="card muted">No biography yet. "Write bio" at the top of the page writes one from the save.</div>{% endif %}
+</section>
+
+<section class="tab-panel" id="stats">
+{% if games %}<h2 id="games">Recent games <small>the game's form rows, kept after the reports are gone</small></h2>
+{% for t in games %}<div class="card"><p><b><a href="{{ url_for('world.club', uid=t.team_uid) }}">{{ t.team }}</a></b></p>
+<table class="stats"><tr><th>Date</th><th>Opponent</th><th>Score</th><th>Pos</th><th>Min</th><th>Rating</th><th>Gls</th><th>Ast</th><th>xG</th><th>Passes</th><th>Shots</th><th>Tck</th><th>Hdr</th><th>Itc</th><th>Km</th></tr>
+{% for g in t.games %}<tr><td>{{ g.played_on }}</td><td>{{ g.opponent or '?' }}{% if g.at_home is not none %} <span class="muted">({{ 'H' if g.at_home else 'A' }})</span>{% endif %}</td>
+<td>{% if g.score %}{{ g.result }} {{ g.score }}{% endif %}</td>
+{% if g.status == 'played' %}<td>{{ g.position or '' }}</td><td>{{ g.minutes }}{% if g.minute_off %} <span class="muted">(off {{ g.minute_off }})</span>{% endif %}</td><td>{{ '%.1f' % g.rating if g.rating else '' }}</td><td>{{ g.goals or '' }}</td><td>{{ g.assists or '' }}</td><td>{{ '%.2f' % g.xg if g.xg else '' }}</td>
+<td>{{ g.passes_completed }}/{{ g.passes }}</td><td>{{ g.shots }}/{{ g.shots_on_target }}</td><td>{{ g.tackles_won }}/{{ g.tackles }}</td><td>{{ g.headers_won }}/{{ g.headers }}</td><td>{{ g.interceptions }}</td><td>{{ '%.1f' % g.distance if g.distance else '' }}</td>
+{% else %}<td colspan="12" class="muted">{{ g.status_word }}</td>{% endif %}</tr>{% endfor %}</table></div>{% endfor %}{% endif %}
+<h2>Career <small>the latest season first; league games, all club competitions and the national team on the right</small></h2>
+<div class="card"><table>
+  <tr><th>Season</th><th>Club</th><th class="n">Apps</th><th class="n">Goals</th><th class="n">Assists</th><th class="n">PoM</th><th class="n">Rating</th><th class="n">All apps</th><th class="n">All goals</th><th class="n">Nat. team</th><th>Won</th></tr>
+  {% for r in career.rows|reverse %}<tr{% if r.won %} class="hl"{% endif %}>
+    <td>{{ r.season|season }}</td><td>{{ m.team(r.team_uid, teams, r.season) }}</td>
+    <td class="n">{{ r.apps }}{% if r.subs %} <span class="muted">({{ r.subs }})</span>{% endif %}</td><td class="n">{{ r.goals }}</td><td class="n">{{ r.assists }}</td>
+    <td class="n">{{ r.pom }}</td><td class="n">{{ r.rating or '—' }}</td><td class="n">{{ r.all_apps }}</td><td class="n">{{ r.all_goals }}</td>
+    <td class="n">{{ r.national_apps or '' }}</td>
+    <td>{% for c in r.won %}<span class="pill gold">{{ competitions.get(c, {}).get('short_name', '') }}</span> {% endfor %}</td></tr>
+  {% else %}<tr><td colspan="11" class="muted">No season statistics.</td></tr>{% endfor %}
+</table></div>
+<div class="grid">
+<section><h2>Awards <small>{{ awards|sum(attribute='wins') }} won, {{ awards|sum(attribute='podiums') }} other podium places</small></h2>
+  <div class="card">{% for a in awards %}
+    <div class="winner"><div style="flex:1">{{ a.name }}<div class="what" title="{{ a.years|join(', ') }}">{% if a.wins %}{{ a.years[0] }}{% if a.wins > 1 %} – {{ a.years[-1] }}{% endif %}{% endif %}{% if a.podiums %} · {{ a.podiums }}× 2nd or 3rd{% endif %}</div></div>
+    {% if a.wins %}<span class="pill gold">×{{ a.wins }}</span>{% else %}<span class="pill">podium</span>{% endif %}</div>
+  {% else %}<div class="muted">No awards.</div>{% endfor %}</div>
+</section>
+<section><h2>Seasonal best elevens <small>{{ elevens|length }} seasons</small></h2>
+  <div class="card"><table><tr><th>Season</th><th>Club</th><th>National team</th></tr>
+  {% for row in elevens %}<tr><td>{{ row.season|season }}</td>
+    <td>{% if row.club %}{{ teams.get(row.club.team_uid, {}).get('name', '') }} <span class="pill {{ 'green' if row.club.slot < 11 }}">{{ row.club.position }}{{ '' if row.club.slot < 11 else ' · sub' }}</span>{% endif %}</td>
+    <td>{% if row.national %}<span class="pill {{ 'green' if row.national.slot < 11 }}">{{ row.national.position }}{{ '' if row.national.slot < 11 else ' · sub' }}</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted">None.</td></tr>{% endfor %}</table></div>
+</section>
+</div>
+<h2>Goals in finals</h2><div class="card">
+  {% for f in finals %}{% call m.result(f, teams) %}{{ competitions.get(f.competition_uid, {}).get('name', '') }} final · {{ f.date }} · scored {{ f.minutes|join(', ') }}{% if not f.won %} · lost{% endif %}{% endcall %}
+  {% else %}<div class="muted">No goals in finals are recorded.</div>{% endfor %}
+</div>
+</section>
+
+<section class="tab-panel" id="transfers">
+<h2>Transfers</h2><div class="card"><table>
+  {% for t in transfers %}<tr><td>{{ t.date }}</td><td>{{ kinds.get(t.kind, t.kind) }}</td>
+    <td>{{ teams.get(t.from_uid, {}).get('name', '—') if t.from_uid else '—' }} → {{ teams.get(t.to_uid, {}).get('name', '—') if t.to_uid else '—' }}</td>
+    <td class="n">{{ t.fee|money }}</td></tr>
+  {% else %}<tr><td class="muted">No transfers recorded.</td></tr>{% endfor %}
+</table></div>
+</section>
+
+<section class="tab-panel" id="photos">
+<h2>Photos</h2>
+{% if photos %}{{ m.gallery(photos, request.path ~ '#photos') }}{% else %}<div class="card muted">No photos yet.</div>{% endif %}
+<div class="actions"><form class="inline" method="post" action="{{ url_for('world.make_action_photo', uid=p.fm_uid) }}">
+  <button class="btn" type="submit" {{ 'disabled' if not face_url(p.fm_uid) }} title="From his current picture, with the editing model in Draw Things">Make an action photo</button></form>
+  {% if photo_job %}<span class="muted">{{ photo_job }}</span>
+  {% if not photo_job.startswith('Done') %}<script>setTimeout(() => location.reload(), 15000);  // show the photo when it is made</script>{% endif %}
+  {% elif not face_url(p.fm_uid) %}<span class="muted">He needs a picture first.</span>{% endif %}</div>
+{{ m.upload('person', p.fm_uid, (('photograph', 'Photo'), ('portrait', 'Portrait'))) }}
+</section>
+{% if injuries %}
+<section class="tab-panel" id="injuries">
+{% set past = injuries|rejectattr('current')|list %}
+<h2>Injuries <small>{{ past|length }} past injur{{ 'y' if past|length == 1 else 'ies' }}, {{ past|sum(attribute='days')|time_out }} out in all</small></h2>
+<div class="card"><table>
+  <tr><th>Date</th><th>Injury</th><th>Severity</th><th>Received</th><th>Team</th><th>Cause</th><th>Treatment</th><th>Time out</th></tr>
+  {% for i in injuries %}<tr class="{{ 'hl' if i.current }}"><td class="muted">{{ i.injured_on.strftime('%-d %b %Y') if i.injured_on else '' }}</td>
+    <td>{{ i.injury|injury_name }}</td>
+    <td><span class="severity {{ i.severity|lower }}">{{ i.severity }}</span></td><td>{{ i.place or '–' }}</td>
+    <td>{% if i.team_uid %}<a href="{{ url_for('world.club', uid=i.team_uid) }}">{{ i.team_name }}</a>{% endif %}</td>
+    <td>{{ i.cause or '–' }}</td><td>{{ i.treatment or '' }}</td>
+    <td>{% if i.current %}{{ i.days|time_out }} expected, back about {{ i.back_on|day_month }}{% else %}{{ i.days|time_out }}{% endif %}</td></tr>{% endfor %}
+</table></div>
+</section>{% endif %}
+{% if social.posts %}{% from "world/_post.html" import post_card %}
+<section class="tab-panel" id="social">
+<h2>Social{% if social.account %} <small><a href="{{ url_for('social.feed', account=social.account.id) }}">@{{ social.account.handle }} on the Feed ›</a></small>{% endif %}</h2>
+<div class="feed">{% for post in social.posts %}{{ post_card(post, social.match_ids, reply=post.reply_to_id is not none) }}{% endfor %}</div>
+</section>{% endif %}
+{% endblock %}

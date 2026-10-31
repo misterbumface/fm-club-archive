@@ -1,0 +1,6 @@
+-r requirements.txt
+
+pytest==9.1.1
+pytest-xdist==3.8.0
+ruff==0.17.0
+pyinstaller==6.22.3  # builds the Mac app (scripts/build_mac_app.sh)

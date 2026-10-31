@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<competition id="uefa_champions_league" type="continental_cup" teamType="club">
+    <name>UEFA Champions League</name>
+    <summary>A league phase followed by a two-legged knockout route and a single-match final.</summary>
+    <phases>
+        <phase key="league_phase" label="League phase" stage="League Phase" type="league" updatesTable="true" />
+        <phase key="knockout_playoff" label="Knockout play-off" stage="Knockout Play-off" legs="2"><alias>Knock Out Play Off Round</alias><alias>Play-off Round</alias></phase>
+        <phase key="round_of_16" label="Round of 16" stage="Round of 16" legs="2" />
+        <phase key="quarter_final" label="Quarter-finals" stage="Quarter Final" legs="2" />
+        <phase key="semi_final" label="Semi-finals" stage="Semi Final" legs="2" />
+        <phase key="final" label="Final" stage="Final" final="true" extraTime="true" penalties="true" neutralVenue="true" />
+    </phases>
+</competition>

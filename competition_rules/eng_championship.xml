@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<competition id="eng_championship" type="league" teamType="club">
+    <name>Sky Bet Championship</name>
+    <season>
+        <startDate>2062-08-05</startDate>
+        <endDate>2063-05-05</endDate>
+    </season>
+
+    <structure>
+        <teams>24</teams>
+        <matchesPerTeam>46</matchesPerTeam>
+        <roundRobin>true</roundRobin>
+        <meetingsPerOpponent>2</meetingsPerOpponent>
+    </structure>
+    <summary>A 24-club double round-robin league, with two automatic promotion places, four play-off places and three relegation places.</summary>
+    <phases>
+        <phase key="league" label="League season" stage="League" type="league" updatesTable="true" />
+        <phase key="promotion_playoff_semi_final" label="Play-off semi-finals" stage="Promotion Play-off Semi Final" type="knockout" legs="2" />
+        <phase key="promotion_playoff_final" label="Play-off final" stage="Promotion Play-off Final" type="knockout" final="true" extraTime="true" penalties="true" neutralVenue="true" />
+    </phases>
+
+    <points>
+        <win>3</win>
+        <draw>1</draw>
+        <loss>0</loss>
+    </points>
+
+    <matchRules>
+        <registeredPlayersOnly>true</registeredPlayersOnly>
+        <minimumClubTrainedEngland>7</minimumClubTrainedEngland>
+        <maximumLoanPlayers>5</maximumLoanPlayers>
+        <maximumLoansFromSameClub>4</maximumLoansFromSameClub>
+        <under21Exemption>true</under21Exemption>
+        <under21LoanExemption>true</under21LoanExemption>
+    </matchRules>
+
+    <substitutions>
+        <maximumSubstitutions>5</maximumSubstitutions>
+        <maximumNamedSubstitutes>9</maximumNamedSubstitutes>
+        <maximumSubstitutionWindows>3</maximumSubstitutionWindows>
+    </substitutions>
+
+    <leagueTable>
+        <sortingRules>
+            <rule>Goal Difference</rule>
+            <rule>Goals Scored</rule>
+            <rule>Results Between Teams</rule>
+            <rule>Games Won</rule>
+            <rule>Away Goals Scored</rule>
+            <rule>Discipline Record (Three red cards plus yellow cards)</rule>
+        </sortingRules>
+    </leagueTable>
+
+    <promotionRelegation>
+        <automaticPromotion>
+            <position>1</position>
+            <position>2</position>
+            <destination>Premier Division</destination>
+        </automaticPromotion>
+
+        <promotionPlayoffs>
+            <positions>3-6</positions>
+        </promotionPlayoffs>
+
+        <automaticRelegation>
+            <position>22</position>
+            <position>23</position>
+            <position>24</position>
+            <destination>Sky Bet League One</destination>
+        </automaticRelegation>
+    </promotionRelegation>
+</competition>

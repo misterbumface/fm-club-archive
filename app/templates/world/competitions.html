@@ -1,0 +1,24 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% block title %}Competitions{% endblock %}
+{% macro comp_link(r, tag=None) -%}
+<a class="comp-link" href="{{ url_for('world.competition', uid=r.fm_uid) }}">{% if trophy_url(r.fm_uid) %}<img src="{{ trophy_url(r.fm_uid) }}" alt="" loading="lazy">{% else %}<span class="comp-ph">🏆</span>{% endif %}
+  <span>{{ r.name }}</span>{% if tag %}<span class="pill">{{ tag }}</span>{% endif %}</a>
+{%- endmacro %}
+{% block body %}
+<div class="hero"><div><h1>Competitions</h1>
+  <div class="sub">By continent and country. Youth competitions are left out, but for the Under 20 World Cup.</div></div></div>
+<nav class="tabs" role="tablist">{% for g in groups %}{% set id = g.continent|lower|replace(' & ', '-')|replace(' ', '-') %}<a href="#{{ id }}" role="tab" data-tab="{{ id }}">{{ g.continent }}{% if g.countries %} <span class="tab-note">{{ g.countries|length }} countries</span>{% endif %}</a>{% endfor %}</nav>
+{% for g in groups %}{% set id = g.continent|lower|replace(' & ', '-')|replace(' ', '-') %}
+<section class="tab-panel" id="{{ id }}">
+  {% if g.international %}<h2>{{ 'The world' if g.continent == 'World' else 'International' }}</h2>
+  <div class="card comp-list">{% for r in g.international %}{{ comp_link(r) }}{% endfor %}</div>{% endif %}
+  {% if g.countries %}<h2>Countries</h2>
+  <div class="country-grid">{% for c in g.countries %}<div class="card country-card">
+    <h3>{% if c.nation_uid %}<a href="{{ url_for('world.nation', uid=c.nation_uid) }}">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}</h3>
+    {% for r in c.leagues %}{{ comp_link(r, ('level ' ~ r.level) if r.level and c.leagues|length > 1 else None) }}{% endfor %}
+    {% for r in c.cups %}{{ comp_link(r) }}{% endfor %}
+  </div>{% endfor %}</div>{% endif %}
+</section>
+{% endfor %}
+{% endblock %}

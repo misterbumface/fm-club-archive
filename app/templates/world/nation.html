@@ -1,0 +1,17 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% block title %}{{ nation.name }}{% endblock %}
+{% block body %}
+{{ m.trail(crumbs('nation', nation.fm_uid)) }}
+<div class="hero">{% if senior and crest_url(senior) %}<img class="crest" src="{{ crest_url(senior) }}" alt="">{% endif %}<div>
+  <h1>{{ nation.name }}</h1><div class="sub">{{ nation.adjective }} · {{ '{:,}'.format(players) }} players · FM uid {{ nation.fm_uid }}</div>
+  <div class="seasons">{% for s in sides %}<span>{{ s.name }}</span>{% endfor %}</div></div></div>
+{% if titles %}<h2>Titles</h2><div class="cabinet">{% for h in titles %}<div class="trophy"><span class="count">×{{ h.count }}</span>
+  {% if trophy_url(h.competition_uid) %}<img src="{{ trophy_url(h.competition_uid) }}" alt="">{% else %}<div class="ph">🏆</div>{% endif %}
+  <div class="name">{{ m.comp(h.competition_uid, competitions, short=True) }}</div><div class="when">last {{ h.seasons[-1] }}</div></div>{% endfor %}</div>{% endif %}
+<div class="grid">
+<section><h2>Last results</h2><div class="card">{% for f in results %}{% call m.result(f, teams) %}{{ f.date }} · {{ m.comp(f.competition_uid, competitions) }}{% endcall %}{% else %}<div class="muted">No results.</div>{% endfor %}</div></section>
+<section><h2>Top scorers <small>senior team, goals with a scorer since 2022</small></h2><div class="card"><table>
+  {% for s in scorers %}<tr><td>{{ m.person(s.scorer_uid, s.name or 'unknown') }}</td><td class="n"><b>{{ s.goals }}</b></td></tr>{% else %}<tr><td class="muted">None.</td></tr>{% endfor %}</table></div></section>
+</div>
+{% endblock %}

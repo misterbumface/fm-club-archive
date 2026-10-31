@@ -1,0 +1,161 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% block title %}{{ team.name }} {{ season|season }}{% endblock %}
+{% block body %}
+{{ m.trail(crumbs('team', team.fm_uid, league_uid), here=season|season) }}
+<div class="hero">
+  {% if crest_url(team) %}<img class="crest" src="{{ crest_url(team) }}" alt="">{% endif %}
+  <div>
+    <h1>{{ team.name }} · {{ season|season }}</h1>
+    <div class="sub">{{ record.played }} games · {{ record.won }} won, {{ record.drawn }} drawn, {{ record.lost }} lost · {{ record.scored }}–{{ record.conceded }} goals
+      {% if top_scorer and top_scorer.goals %} · top scorer {{ top_scorer.name }} ({{ top_scorer.goals }}){% endif %}</div>
+    <div class="seasons">{% for s in seasons[:12] %}<a class="{{ 'on' if s == season }}" href="{{ url_for('world.club_season', uid=team.fm_uid, season=s) }}">{{ s|season }}</a>{% endfor %}</div>
+  </div>
+</div>
+
+{{ m.tabs([('overview', 'Overview', None), ('story', 'Story', None if story else 'not written'),
+           ('league', 'League', (table|selectattr('team_uid', 'equalto', team.fm_uid)|map(attribute='position')|first|string ~ ' of ' ~ table|length) if table else None),
+           ('squad', 'Squad', players|length or None), ('results', 'Results', record.played or None),
+           ('transfers', 'Transfers', (signed|length + left|length) or None)]) }}
+
+<section class="tab-panel" id="overview">
+<div class="season-front">
+<div class="season-main">
+  <h2>{{ 'Results so far' if current else 'The last games' }} {% if form %}<span class="form season-form">{% for x in form %}<span class="{{ x }}">{{ x }}</span>{% endfor %}</span>{% endif %}</h2>
+  <div class="card">{% for f in recent %}{% call m.result(f, teams, season) %}{{ f.date|day_month }} · {{ m.comp(f.competition_uid, competitions, short=True) }} · <span class="form"><span class="{{ f.result }}">{{ f.result }}</span></span>{% endcall %}
+    {% else %}<div class="muted">No games played yet.</div>{% endfor %}
+    {% if record.played > recent|length %}<a href="#results" class="note" onclick="document.querySelector('[data-tab=results]').click(); return false">All {{ record.played }} results</a>{% endif %}</div>
+  {% if upcoming %}<h2>Coming up</h2>
+  <div class="card">{% for f in upcoming %}{% call m.result(f, teams, season) %}{{ f.date|day_month }} · {{ m.comp(f.competition_uid, competitions, short=True) }}{% endcall %}{% endfor %}</div>{% endif %}
+</div>
+<aside class="season-side">
+  {% if table_around %}{% set mine = table|selectattr('team_uid', 'equalto', team.fm_uid)|first %}
+  <h2>League <span class="pill {{ 'gold' if mine.position == 1 }}">{{ mine.position }} of {{ table|length }}</span></h2>
+  <div class="card">{{ m.mini_table(table_around, teams, limit=10, highlight=(team.fm_uid,), season=season) }}
+    <a href="#league" class="note" onclick="document.querySelector('[data-tab=league]').click(); return false">{{ competitions.get(league_uid, {}).get('name', 'The league') }}: the whole table</a></div>{% endif %}
+  {% if won or runner_up or finals %}<h2>Trophies and finals</h2>
+  <div class="card">
+    {% for e in won %}<div class="season-honour">🏆 <b>{{ competitions.get(e.competition_uid, {}).get('short_name', '') }}</b> <span class="muted">{{ e.decided_on|decided }}</span></div>{% endfor %}
+    {% for e in runner_up %}<div class="season-honour">🥈 {{ competitions.get(e.competition_uid, {}).get('short_name', '') }} <span class="muted">runner-up</span></div>{% endfor %}
+    {% for f in finals %}{% call m.result(f, teams, season) %}{{ competitions.get(f.competition_uid, {}).get('short_name', '') }} final · {{ f.date|day_month }}{% if f.home_penalties is not none %} · {{ f.home_penalties }}–{{ f.away_penalties }} on penalties{% endif %} · {{ 'won' if f.won else 'lost' }}{% endcall %}{% endfor %}
+  </div>{% endif %}
+</aside>
+</div>
+
+<h2>{{ 'The squad now' if current else 'The squad' }} <small>{{ 'season numbers in club competitions' if current else 'the players who played' }}</small></h2>
+<div class="squad-lines">{% for line, players in squad_lines if players %}{% set used = players|selectattr('apps')|list %}{% set rest = players|rejectattr('apps')|list %}
+  <div class="card squad-line"><h3>{{ line }} <span class="muted">{{ players|length }}</span></h3>
+    {% for p in used %}<a class="squad-player" href="{{ url_for('world.person', uid=p.uid) }}">{{ m.face(p.uid) }}
+      <span class="squad-name">{{ p.name }}{% if p.new %} <span class="pill green">new</span>{% endif %}{% if p.injury %} <span class="pill red" title="{{ p.injury.injury|injury_name }}">out to {{ p.injury.back_on|day_month }}</span>{% endif %}
+        <small>{{ p.position or '' }}{% if p.age %} · {{ p.age }}{% endif %}</small></span>
+      <span class="squad-numbers"><b>{{ p.apps }}</b> game{{ 's' if p.apps != 1 }}{% if p.goals %} · <b>{{ p.goals }}</b> goal{{ 's' if p.goals != 1 }}{% endif %}{% if p.assists %} · {{ p.assists }} assist{{ 's' if p.assists != 1 }}{% endif %}{% if p.rating %} · <span class="squad-rating">{{ '%.2f' % p.rating }}</span>{% endif %}</span></a>{% endfor %}
+    {% if rest %}<details class="squad-rest"><summary>{{ 'Also in the squad' if used else 'In the squad' }}: {{ rest|length }}</summary>
+      {% for p in rest %}<a href="{{ url_for('world.person', uid=p.uid) }}">{{ p.name }}</a>{% if p.injury %} <span class="pill red">injured</span>{% endif %}{% if p.new %} <span class="pill green">new</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}</details>{% endif %}
+  </div>{% endfor %}</div>
+
+{% if how %}<h2>How they play <small>from {{ how.games }} team sheets this season</small></h2>
+<div class="season-front how-they-play">
+<div class="season-main">
+  <div class="card">
+    {% if how.labels %}<div class="style-labels">{% for label in how.labels %}<span class="pill green">{{ label }}</span> {% endfor %}</div>{% endif %}
+    <table class="style-table"><tr><th>A game</th><th class="n">{{ team.name }}</th><th class="n">League average</th></tr>
+      {% for row in how['style'] %}<tr><td>{{ row.label }}</td><td class="n"><b>{{ row.format % row.team }}{{ row.unit }}</b></td>
+        <td class="n muted">{% if row.league is not none %}{{ row.format % row.league }}{{ row.unit }}{% endif %}</td></tr>{% endfor %}</table>
+    <p class="note">Systems: {% for shape, n in how.shapes %}{{ shape }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}.
+      {{ how.players_used }} players started{% if how.changes_a_game is not none %}, {{ how.changes_a_game }} changes to the eleven a game{% endif %}.</p>
+  </div>
+  {% for kind, title in (('used', 'Formations used'), ('faced', 'Formations faced')) if how.formations[kind] %}
+  <h3>{{ title }}</h3><div class="card"><table class="style-table">
+    <tr><th>Formation</th><th class="n">Games</th><th class="n">W-D-L</th><th class="n">Points a game</th><th class="n">Goals</th>
+      <th class="n" title="A clear-cut chance every ... minutes">Chance every</th><th class="n" title="A clear-cut chance against every ... minutes">Against every</th></tr>
+    {% for row in how.formations[kind] %}<tr><td>{{ row.shape }}</td><td class="n">{{ row.games }}</td><td class="n">{{ row.won }}-{{ row.drawn }}-{{ row.lost }}</td>
+      <td class="n"><b>{{ '%.2f' % row.points }}</b></td><td class="n">{{ row.scored }}-{{ row.conceded }}</td>
+      <td class="n">{{ (row.chance_every ~ "'") if row.chance_every else '—' }}</td><td class="n">{{ (row.chance_against_every ~ "'") if row.chance_against_every else '—' }}</td></tr>{% endfor %}
+  </table></div>{% endfor %}
+  {% if how.partnerships %}<h3>Partnerships</h3><div class="card">{% for p in how.partnerships %}
+    <div class="season-honour"><b>{{ p.names[0] }} and {{ p.names[1] }}</b> <span class="muted">{{ p.label }}</span>
+      <span class="pill {{ 'green' if p.verdict == 'a strong partnership' else 'red' }}">{{ 'strong' if p.verdict == 'a strong partnership' else 'struggling' }}</span>
+      <div class="note">Together {{ p.together }}; without one of them {{ p.apart }}.</div></div>{% endfor %}</div>{% endif %}
+</div>
+<aside class="season-side"><h3>The usual eleven <small class="muted">{{ how.usual_shape }}</small></h3>{{ m.team_pitch(how.pitch, small=True) }}</aside>
+</div>{% endif %}
+
+<div class="season-front">
+<div class="season-main">
+  <h2>In the papers <small>{{ season|season }}</small></h2>
+  <div class="card season-news">{% for n in news %}<a class="season-article" href="{{ n.url }}"><span class="note">{{ n.outlet }} · {{ n.section }} · {{ n.date.strftime('%-d %B %Y') }}{% if n.mention %} · mentions {{ team.name }}{% endif %}</span>
+      <b>{{ n.headline }}</b>{% if n.standfirst %}<span class="muted">{{ n.standfirst }}</span>{% endif %}</a>
+    {% else %}<div class="muted">No articles about {{ team.name }} this season.</div>{% endfor %}</div>
+</div>
+{% if pitch %}<aside class="season-side"><h2>Best eleven <small>the game's team of the season</small></h2>
+<div class="pitch">
+  <svg class="pitch-lines" viewBox="0 0 68 105" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="1" y="1" width="66" height="103"/><line x1="1" y1="52.5" x2="67" y2="52.5"/><circle cx="34" cy="52.5" r="9.15"/>
+    <rect x="13.85" y="1" width="40.3" height="16.5"/><rect x="24.85" y="1" width="18.3" height="5.5"/>
+    <rect x="13.85" y="87.5" width="40.3" height="16.5"/><rect x="24.85" y="98.5" width="18.3" height="5.5"/>
+  </svg>
+  {% for b in pitch %}<a class="pitch-player" style="left:{{ b.x }}%;top:{{ b.y }}%" href="{{ url_for('world.person', uid=b.person_uid) if b.person_uid else '#' }}">
+    {% set face = face_url(b.person_uid) if b.person_uid else None %}
+    {% if face %}<img src="{{ face }}" alt="">{% else %}<span class="pitch-dot">{{ (b.name or '?')[:1] }}</span>{% endif %}
+    <span class="pitch-name">{{ b.name or 'unknown' }}</span><span class="pitch-meta">{{ b.position }} · {{ b.appearances }} games{% if b.goals %} · {{ b.goals }} goals{% endif %}</span></a>{% endfor %}
+</div>
+{% set bench = eleven|selectattr('slot', 'ge', 11)|list %}
+{% if bench %}<div class="bench"><b>Bench</b> {% for b in bench %}{{ m.person(b.person_uid, b.name) if b.person_uid else 'unknown' }} <span class="muted">{{ b.position }}</span>{{ ' · ' if not loop.last }}{% endfor %}</div>{% endif %}
+</aside>{% endif %}
+</div>
+</section>
+
+<section class="tab-panel" id="story">
+{{ m.chronicle('The ' ~ team.name ~ ' Chronicle', season|season, story, story_sections, chapters,
+               url_for('world.write_season_story', uid=team.fm_uid, season=season), 'New season story' if story else 'Write season story',
+               'the season story', versions) }}
+</section>
+
+<section class="tab-panel" id="league">
+{% if table %}<h2>{{ competitions.get(league_uid, {}).get('name', 'League') }} <small>{{ season|season }}</small></h2>
+<div class="card">{{ m.standings(table, teams, season, highlight=team.fm_uid) }}</div>
+{% else %}<h2>League</h2><div class="card muted">No league table for this season.</div>{% endif %}
+</section>
+
+<section class="tab-panel" id="squad">
+<h2>The squad <small>club competitions; league numbers first{% if players|selectattr('from_reports')|list %}; this season's numbers from the match reports{% endif %}</small></h2>
+<div class="actions">
+  {% if picture_job %}<span class="pill green">{{ picture_job }}</span>{% endif %}
+  {% if bio_job %}<span class="pill green">{{ bio_job }}</span>{% endif %}
+  {% if missing_bios %}
+  <form class="inline" method="post" action="{{ url_for('world.write_team_bios', uid=team.fm_uid, season=season) }}">
+    <button class="btn" type="submit">Write missing bios ({{ missing_bios }})</button></form>
+  {% endif %}
+  {% if missing_pictures %}
+  <form class="inline" method="post" action="{{ url_for('world.generate_team_pictures', uid=team.fm_uid, season=season) }}">
+    <button class="btn" type="submit">Generate missing pictures ({{ missing_pictures }})</button></form>
+  {% endif %}
+</div>
+<div class="card" style="margin-top:10px"><table>
+  <tr><th>Player</th><th class="n">Lg apps</th><th class="n">Lg goals</th><th class="n">Apps</th><th class="n">Goals</th><th class="n">Assists</th><th class="n">PoM</th><th class="n">Rating</th><th>Awards</th></tr>
+  {% for r in players %}<tr><td>{{ m.person(r.uid, r.name) }}</td><td class="n">{{ r.league_apps }}</td><td class="n">{{ r.league_goals }}</td>
+    <td class="n">{{ r.apps }}</td><td class="n">{{ r.goals }}</td><td class="n">{{ r.assists }}</td><td class="n">{{ r.pom }}</td><td class="n">{{ r.rating or '—' }}</td>
+    <td>{% for a in r.awards %}<span class="pill gold">{{ a }}</span> {% endfor %}</td></tr>
+  {% else %}<tr><td colspan="9" class="muted">No squad statistics for this season.</td></tr>{% endfor %}
+</table></div>
+</section>
+
+<section class="tab-panel" id="results">
+<h2>Results <small>every competition</small></h2>
+<div class="grid">{% for comp, rows in by_competition %}<div class="card">
+  <h3>{{ competitions.get(comp, {}).get('name', 'Other matches') }} <span class="muted" style="font: 13px var(--sans)">{{ rows|length }} games</span></h3>
+  {% for f in rows %}{% call m.result(f, teams, season) %}{{ f.date }} · <span class="form"><span class="{{ f.result }}">{{ f.result }}</span></span>{% endcall %}{% endfor %}
+</div>{% endfor %}</div>
+</section>
+
+<section class="tab-panel" id="transfers">
+<div class="grid">
+<section><h2>Signed</h2><div class="card"><table>
+  {% for t in signed %}<tr><td>{{ t.date }}</td><td>{{ m.person(t.person_uid, t.name) }}</td><td>{{ kinds.get(t.kind) }} from {{ teams.get(t.from_uid, {}).get('name', 'youth') if t.from_uid else 'youth' }}</td><td class="n">{{ t.fee|money }}</td></tr>
+  {% else %}<tr><td class="muted">No signings.</td></tr>{% endfor %}</table></div></section>
+<section><h2>Left</h2><div class="card"><table>
+  {% for t in left %}<tr><td>{{ t.date }}</td><td>{{ m.person(t.person_uid, t.name) }}</td><td>{{ kinds.get(t.kind) }}{% if t.to_uid %} to {{ teams.get(t.to_uid, {}).get('name', '') }}{% endif %}</td><td class="n">{{ t.fee|money }}</td></tr>
+  {% else %}<tr><td class="muted">Nobody left.</td></tr>{% endfor %}</table></div></section>
+</div>
+</section>
+{% endblock %}

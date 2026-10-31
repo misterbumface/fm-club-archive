@@ -1,0 +1,14 @@
+{% extends "public/base.html" %}
+{% block title %}{{ page.award.name }} · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">{{ page.award.name }}</h1>
+<div class="split">
+  <section><table class="rank"><tr><th class="l">Year</th><th class="l">Winner</th><th class="l">Club</th><th class="l">Second</th><th class="l">Third</th></tr>
+  {% for year, places in page.years %}{% set w = places.get(1) %}<tr><td class="l season"><b>{{ year }}</b></td>
+    <td class="l">{% if w and w.person_uid %}<a href="{{ player_url(w.person_uid, w.name) }}">{{ w.name }}</a>{% endif %}</td>
+    <td class="l muted">{% if w and clubs.get(w.club_uid) %}{{ clubs[w.club_uid].name }}{% endif %}</td>
+    {% for place in (2, 3) %}{% set r = places.get(place) %}<td class="l muted">{% if r and r.person_uid %}<a href="{{ player_url(r.person_uid, r.name) }}" style="font-weight:400">{{ r.name }}</a>{% endif %}</td>{% endfor %}</tr>{% endfor %}</table></section>
+  <section>{% if page.most %}<div class="row-title" style="margin-top:0"><h2>Most wins</h2></div>
+    <table class="rank">{% for name, uid, count in page.most %}<tr><td class="l"><a href="{{ player_url(uid, name) }}">{{ name }}</a></td><td><b>{{ count }}</b></td></tr>{% endfor %}</table>{% endif %}</section>
+</div>
+{% endblock %}

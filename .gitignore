@@ -1,0 +1,43 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+.env
+instance/
+*.sqlite
+*.sqlite3
+*.db
+
+# Large source graphics packs
+Logos/
+trophies_graphics_pack/
+
+# Raw FM Genie Scout world export dumps -- source data for the reference-
+# layer import, not meant to be committed.
+lists/
+
+# Runtime-generated player portraits -- derived from each local database's
+# own imports, not source code; regenerated locally, not meant to be
+# reviewed or diffed.
+app/static/generated/
+
+# FM exports dropped in to develop a parser against. Real save data, useful
+# on the machine that produced it and meaningless in review.
+samples/
+
+# The HTML drop folder is an inbox, not source. What is in it is save data
+# on its way into the database, and what is in needs_review is waiting for
+# an answer on the machine that asked the question.
+drop/
+
+# The Mac app build (scripts/build_mac_app.sh)
+build/
+dist/
+macapp/_version.py
+
+# Third-party graphics: not ours to publish. The app reads the user's own packs (see the README);
+# a private build may keep copies here.
+app/static/img/individual-awards/
+app/static/img/trophies/

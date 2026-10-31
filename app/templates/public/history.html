@@ -1,0 +1,20 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}History · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">History</h1>
+<div class="hubs">
+  <a class="hub" href="{{ url_for('public.competitions') }}"><b>Competitions</b><span>Every league and cup, season by season: champions, tables, finals and top scorers.</span></a>
+  <a class="hub" href="{{ url_for('public.records') }}"><b>Records</b><span>The all-time scorers, the most games, caps, titles and the biggest wins.</span></a>
+  <a class="hub" href="{{ url_for('public.legends') }}"><b>Legends</b><span>The greatest careers of the world: goals, games, trophies and awards.</span></a>
+  <a class="hub" href="{{ url_for('public.awards') }}"><b>Awards</b><span>The Golden Ball and every award, year by year.</span></a>
+</div>
+<div class="split">
+  <section><div class="row-title"><h2>Legends</h2><a href="{{ url_for('public.legends') }}">All legends ›</a></div>
+    <table class="rank"><tr><th>#</th><th class="l">Player</th><th>Goals</th><th>Games</th><th>Trophies</th></tr>
+    {% for r in legends %}<tr><td>{{ loop.index }}</td><td class="l"><a href="{{ player_url(r.person_uid, r.name) }}">{{ r.name }}</a></td><td>{{ r.goals }}</td><td>{{ r.games }}</td><td><b>{{ r.trophies }}</b></td></tr>{% endfor %}</table></section>
+  <section><div class="row-title"><h2>Most league titles</h2><a href="{{ url_for('public.records') }}">Records ›</a></div>{{ p.club_rows(records.titles[:8], 'Titles') }}</section>
+</div>
+{% if items %}<div class="row-title"><h2>From the archive</h2><a href="{{ url_for('public.section', key='history') }}">More ›</a></div>
+<div class="grid4">{% for a in items[:8] %}<a class="card" href="{{ story_url(a) }}">{{ p.image(a) }}<h3>{{ a.headline }}</h3>{{ p.tag(a) }}</a>{% endfor %}</div>{% endif %}
+{% endblock %}

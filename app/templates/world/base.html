@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}FM World Archive{% endblock %} · FM World Archive</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/world.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏆</text></svg>">
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="{{ url_for('news.newsstand') }}">FM World <b>Archive</b></a>
+  <nav class="nav"><a href="{{ url_for('news.newsstand') }}">News</a><a href="{{ url_for('world.home') }}">Today</a>{% if social_enabled() %}<a href="{{ url_for('social.feed') }}">Feed</a>{% endif %}<a href="{{ url_for('world.clubs') }}">Clubs</a><a href="{{ url_for('world.competitions') }}">Competitions</a><a href="{{ url_for('world.nations') }}">Nations</a><a href="{{ url_for('world.awards') }}">Awards</a><a href="{{ url_for('news.desk') }}">Desk</a><a href="{{ url_for('news.gallery') }}">Gallery</a><a href="{{ url_for('settings.index') }}">Settings</a></nav>
+  <form class="search" action="{{ url_for('world.search') }}"><input name="q" value="{{ term or '' }}" placeholder="Search clubs, players, competitions…"></form>
+  {% if today %}<div class="date">{{ today.strftime('%-d %b %Y') }}</div>{% endif %}
+</div></header>
+<main class="wrap {% block main_class %}{% endblock %}">
+  {% for category, message in get_flashed_messages(with_categories=true) %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+  {% block body %}{% endblock %}
+  {% block content %}{% endblock %}
+  <footer>The world archive · built from saved games · every link uses the FM unique id</footer>
+</main>
+<div id="ai-progress" class="ai-progress" hidden role="status" aria-live="polite">
+  <span class="job-spinner"></span><div><b class="ai-label">Writing…</b> <span class="ai-clock">0:00</span>
+  <div class="ai-bar"><i></i></div><div class="note">The AI writer usually needs about a minute. The page opens by itself when the text is ready.</div></div>
+</div>
+<script>
+/* AI writing runs inside the request: show what is being written and for how long, and lock the button. */
+document.addEventListener("submit", (event) => {
+  const source = (event.submitter && event.submitter.closest("[data-ai]")) || event.target.closest("form[data-ai]");
+  if (!source || event.defaultPrevented) return;
+  const panel = document.getElementById("ai-progress");
+  panel.querySelector(".ai-label").textContent = source.dataset.ai + "…";
+  panel.hidden = false;
+  setTimeout(() => event.target.querySelectorAll("button").forEach((b) => { b.disabled = true; }));
+  const started = Date.now();
+  setInterval(() => {
+    const seconds = Math.floor((Date.now() - started) / 1000);
+    panel.querySelector(".ai-clock").textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  }, 1000);
+});
+/* A box with data-href (a knockout tie) opens its match; links inside it keep their own target. */
+document.addEventListener("click", (event) => {
+  const box = event.target.closest("[data-href]");
+  if (!box || event.target.closest("a, button, form")) return;
+  if (event.metaKey || event.ctrlKey) window.open(box.dataset.href, "_blank");
+  else location.href = box.dataset.href;
+});
+/* Tabs: one panel at a time; the open tab is kept in the address (#stats), so links and reloads open it. */
+document.querySelectorAll("nav.tabs").forEach((nav) => {
+  const links = [...nav.querySelectorAll("[data-tab]")].filter((a) => document.getElementById(a.dataset.tab));
+  if (!links.length) return;
+  const show = (id) => links.forEach((a) => {
+    const on = a.dataset.tab === id;
+    a.classList.toggle("active", on);
+    a.setAttribute("aria-selected", on);
+    document.getElementById(a.dataset.tab).hidden = !on;
+  });
+  const fromHash = () => (links.find((a) => "#" + a.dataset.tab === location.hash) || links[0]).dataset.tab;
+  show(fromHash());
+  links.forEach((a) => a.addEventListener("click", (event) => {
+    event.preventDefault();
+    show(a.dataset.tab);
+    history.replaceState(null, "", "#" + a.dataset.tab);
+  }));
+  window.addEventListener("hashchange", () => show(fromHash()));
+});
+</script>
+</body>
+</html>

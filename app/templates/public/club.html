@@ -1,0 +1,47 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}{{ page.team.name }} · {{ site_name }}{% endblock %}
+{% block body %}
+<div class="club-head">{% if page.crest %}<img class="crest big" src="{{ page.crest }}" alt="">{% endif %}
+  <div><h1>{{ page.team.name }}</h1>{% if page.place %}<p>{{ page.position }} in the <a href="{{ url_for('public.table', uid=page.league.uid) }}"><b>{{ page.league.name }}</b></a> · {{ page.place.points }} points from {{ page.place.played }} games</p>{% endif %}</div></div>
+{% if past and past.cabinet %}<div class="row-title"><h2>Trophy cabinet</h2><span style="color:var(--muted);font-size:13px">{{ past.trophies }} trophies</span></div>
+<div class="cabinet">{% for h in past.cabinet %}<a class="cup" href="{{ competition_url(h.competition_uid, h.name) }}">{% if h.trophy %}<img src="{{ h.trophy }}" alt="">{% endif %}
+  <span class="n">{{ h.count }}</span><span class="what">{{ h.name }}</span><span class="when">last {{ h.last_year }}</span></a>{% endfor %}</div>{% endif %}
+<div class="split">
+  <section>
+    <div class="row-title"><h2>Latest news</h2></div>
+    {% if not items %}<p>No stories about {{ page.team.name }} yet.</p>{% endif %}
+    <div class="list">{% for a in items %}<a class="card" href="{{ story_url(a) }}">{{ p.image(a) }}<div><h3>{{ a.headline }}</h3>{{ p.tag(a) }}</div></a>{% endfor %}</div>
+  </section>
+  <section>
+    {% if page.results %}<div class="row-title"><h2>Results</h2></div><ul class="games">{% for g in page.results %}{{ p.game(g, show_competition=True) }}{% endfor %}</ul>{% endif %}
+    {% if page.upcoming %}<div class="row-title"><h2>Fixtures</h2></div><ul class="games">{% for g in page.upcoming %}{{ p.game(g, show_competition=True) }}{% endfor %}</ul>{% endif %}
+    {% if page.league %}<div class="row-title"><h2>{{ page.league.name }}</h2><a href="{{ url_for('public.table', uid=page.league.uid) }}">Full table ›</a></div>
+    {{ p.league_table(page.league, highlight=(page.team.fm_uid,), wide=False) }}{% endif %}
+  </section>
+</div>
+{% if page.system or page.systems %}<div class="grid2">
+  {% if page.system %}<section><div class="row-title"><h2>How they play</h2><span style="color:var(--muted);font-size:13px">{{ page.system.name }}</span></div>
+    <p><b>{{ page.system.formation or 'Shape unknown' }}</b>{% if page.system.style %} · {{ page.system.style }}{% endif %}{% if page.system.mentality %} · {{ page.system.mentality }}{% endif %}{% if page.system.fluidity %} · {{ page.system.fluidity }}{% endif %}</p>
+    {{ p.formation(page.system) }}
+    <table class="rank"><tr><th class="l">Slot</th><th class="l">Role</th><th class="l">Duty</th><th class="l">Personalised</th></tr>
+    {% for s in page.system.slots %}<tr><td class="l"><b>{{ s.code }}</b></td><td class="l">{{ s.role or 'role ' + s.role_key }}</td><td class="l muted">{{ s.duty }}</td>
+      <td class="l muted">{% for pl in s.players %}<a href="{{ player_url(pl.person_uid, pl.name) }}">{{ pl.name }}</a>{% if pl.short != s.short %} ({{ pl.role or 'role ' + pl.role_key }}, {{ pl.duty }}){% endif %}{{ '; ' if not loop.last }}{% endfor %}</td></tr>{% endfor %}</table></section>{% endif %}
+  {% if page.systems %}<section><div class="row-title"><h2>Systems over the years</h2></div>
+    <table class="rank"><tr><th class="l">Seasons</th><th class="l">Tactic</th><th class="l">Shape</th><th class="l">Style</th><th>Games</th></tr>
+    {% for s in page.systems %}<tr><td class="l season">{{ s.first_label }}{% if s.last_label != s.first_label %} to {{ s.last_label }}{% endif %}</td><td class="l"><b>{{ s.name }}</b></td>
+      <td class="l muted">{{ s.formation or '' }}</td><td class="l muted">{{ [s.style, s.mentality] | select | join(', ') }}</td><td>{{ s.games }}</td></tr>{% endfor %}</table>
+    <p class="muted" style="font-size:13px">From the match files the game keeps: a sample of the club's matches, not all of them.</p></section>{% endif %}
+</div>{% endif %}
+{% if past %}<div class="grid2">
+  {% if past.scorers %}<section><div class="row-title"><h2>All-time top scorers</h2></div>{{ p.person_rows(past.scorers, 'goals', 'Goals') }}</section>{% endif %}
+  {% if past.games %}<section><div class="row-title"><h2>Most games</h2></div>{{ p.person_rows(past.games, 'games', 'Games') }}</section>{% endif %}
+</div>
+<div class="grid2">
+  {% if past.finishes %}<section><div class="row-title"><h2>League finishes</h2></div>
+    <table class="rank"><tr><th class="l">Season</th><th class="l">League</th><th>Place</th></tr>
+    {% for f in past.finishes %}<tr><td class="l season"><a href="{{ competition_url(f.competition_uid, f.name, f.year) }}">{{ f.season_label or f.year }}</a></td><td class="l muted">{{ f.name }}</td>
+      <td><span class="place {{ 'p%d' % f.place if f.place <= 3 }}">{{ f.place }}</span></td></tr>{% endfor %}</table></section>{% endif %}
+  {% if past.wins %}<section><div class="row-title"><h2>Biggest wins</h2></div><ul class="games">{% for g in past.wins %}{{ p.game(g, show_competition=True) }}{% endfor %}</ul></section>{% endif %}
+</div>{% endif %}
+{% endblock %}

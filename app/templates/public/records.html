@@ -1,0 +1,17 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}Records · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">Records</h1>
+<p style="color:var(--muted);margin-top:-8px">Club careers count league, cup and continental games; the archive's seasons start with the save.</p>
+<div class="grid2">
+  <section><div class="row-title"><h2>All-time top scorers</h2></div>{{ p.person_rows(page.scorers, 'goals', 'Goals') }}</section>
+  <section><div class="row-title"><h2>Most club games</h2></div>{{ p.person_rows(page.games, 'games', 'Games') }}</section>
+  <section><div class="row-title"><h2>Most caps</h2></div>{{ p.person_rows(page.caps, 'games', 'Caps') }}</section>
+  <section><div class="row-title"><h2>Most international goals</h2></div>{{ p.person_rows(page.international_goals, 'goals', 'Goals') }}</section>
+  <section><div class="row-title"><h2>Most league titles</h2></div>{{ p.club_rows(page.titles, 'Titles') }}</section>
+  <section><div class="row-title"><h2>Most continental titles</h2></div>{{ p.club_rows(page.continental, 'Titles') }}</section>
+</div>
+<div class="row-title"><h2>The biggest wins</h2></div>
+<ul class="games">{% for g in page.wins %}{{ p.game(g, show_competition=True) }}{% endfor %}</ul>
+{% endblock %}

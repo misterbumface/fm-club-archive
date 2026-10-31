@@ -1,0 +1,43 @@
+{# The import / news-cycle job: a panel that follows the job, and import buttons that lock at once.
+   Forms with class "job-form" start a job; their buttons are disabled while it runs. #}
+<div id="job-panel" class="card desk-job {{ 'is-' ~ job.state if job.state }}" style="margin-top:14px" {{ 'hidden' if not job.state or (hide_old_job and not job.busy) }}
+     data-url="{{ url_for('news.job_status') }}" data-busy="{{ 'yes' if job.busy else 'no' }}">
+  <span class="job-spinner" aria-hidden="true"></span>
+  <b class="job-label">{{ {'working': 'Working', 'done': 'Done', 'failed': 'Failed'}.get(job.state, '') }}</b>
+  <span class="job-text">{{ (job.status or '') | replace('Done: ', '') | replace('Failed: ', '') }}</span>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const panel = document.getElementById("job-panel");
+  const labels = {working: "Working", done: "Done", failed: "Failed"};
+  const show = (state, text) => {
+    panel.hidden = false;
+    panel.className = "card desk-job is-" + state;
+    panel.querySelector(".job-label").textContent = labels[state];
+    panel.querySelector(".job-text").textContent = (text || "").replace(/^(Done|Failed): /, "");
+  };
+  const lock = (locked) => document.querySelectorAll("form.job-form button").forEach((b) => { b.disabled = locked; });
+  document.querySelectorAll("form.job-form").forEach((form) => form.addEventListener("submit", (event) => {
+    if (form.dataset.sent) { event.preventDefault(); return; }
+    form.dataset.sent = "yes";
+    const button = event.submitter || form.querySelector("button");
+    setTimeout(() => {  // after the browser has read the form
+      lock(true);
+      if (button) button.textContent = form.dataset.working || "Starting…";
+      show("working", "Starting…");
+    });
+  }));
+  let busy = panel.dataset.busy === "yes";
+  lock(busy);
+  const poll = async () => {
+    try {
+      const job = await (await fetch(panel.dataset.url, {cache: "no-store"})).json();
+      if (job.busy) { show("working", job.status); lock(true); }
+      else if (busy) { location.reload(); return; }  // finished: show the new saves and papers
+      busy = job.busy;
+    } catch (error) { /* the server restarts: try again */ }
+    if (busy) setTimeout(poll, 2000);
+  };
+  if (busy) setTimeout(poll, 2000);
+});
+</script>

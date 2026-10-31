@@ -1,0 +1,40 @@
+{% extends "world/base.html" %}
+{% block title %}World Soccer Back Issues{% endblock %}
+{% block content %}
+<header class="ws-archive-head">
+    <div>
+        <p class="ws-kicker">Every edition preserved</p>
+        <h1>Back Issues</h1>
+    </div>
+    <a class="btn btn-dark" href="{{ url_for('world_soccer.newsroom') }}">Newsroom</a>
+</header>
+
+{% if drafts %}
+<section class="ws-drafts-strip">
+    <h2>On the news desk</h2>
+    {% for issue in drafts %}
+    <a href="{{ url_for('world_soccer.newsroom', issue=issue.id) }}">
+        <time>{{ issue.publication_date.strftime("%-d %B %Y") }}</time>
+        <strong>{{ issue.headline or "Untitled draft" }}</strong>
+        <span>{{ issue.articles|length }} stories</span>
+    </a>
+    {% endfor %}
+</section>
+{% endif %}
+
+<section class="ws-back-issues">
+{% for issue in published %}
+    <a class="ws-back-issue" href="{{ url_for('world_soccer.issue', issue_id=issue.id) }}">
+        {% if issue.cover_image_url %}<img src="{{ issue.cover_image_url }}" alt="">{% endif %}
+        <div>
+            <time>{{ issue.publication_date.strftime("%-d %B %Y") }}</time>
+            <h2>{{ issue.headline or issue.edition_name }}</h2>
+            <p>{{ issue.standfirst or (issue.articles[0].standfirst if issue.articles else "") }}</p>
+            <span>{{ issue.articles|length }} stories · Read edition</span>
+        </div>
+    </a>
+{% else %}
+    <p class="text-muted">No editions have been published yet.</p>
+{% endfor %}
+</section>
+{% endblock %}

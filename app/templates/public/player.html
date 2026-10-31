@@ -1,0 +1,51 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% set who = page.person %}
+{% block title %}{{ who.name }} · {{ site_name }}{% endblock %}
+{% block description %}{{ who.name }}{% if page.team %}, {{ page.team.name }}{% endif %}: stats, matches and news.{% endblock %}
+{% block body %}
+<div class="phead">
+  {% if face %}<img class="face" src="{{ face }}" alt="">{% endif %}
+  <div><h1>{{ who.name }}</h1>
+    <div class="meta">{{ [page.position or who.staff_job, page.age, who.nationality, (page.trophies ~ ' trophies') if page.trophies]|select|join(' · ') }}</div>
+    {% if page.team %}<a class="club" href="{{ club_url(page.team.fm_uid, page.team) }}">{% if page.crest %}<img class="crest" src="{{ page.crest }}" alt="">{% endif %}{{ page.team.name }}</a>{% endif %}
+  </div>
+</div>
+{% if bio %}<p style="font-size:18px;line-height:1.6;max-width:820px">{{ bio.summary }}</p>{% endif %}
+{% if page.season.apps %}<div class="row-title"><h2>{{ page.season_label }}</h2><span style="color:var(--muted);font-size:13px">competitive games</span></div>
+<div class="numbers"><span><b>{{ page.season.apps }}</b>games</span><span><b>{{ page.season.starts }}</b>starts</span><span><b>{{ page.season.goals }}</b>goals</span>
+  <span><b>{{ page.season.assists }}</b>assists</span><span><b>{{ page.season.xg }}</b>xG</span><span><b>{{ page.season.rating or '–' }}</b>average rating</span></div>{% endif %}
+{% if page.cabinet %}<div class="row-title"><h2>Trophies</h2><span style="color:var(--muted);font-size:13px">{{ page.trophies }} in all</span></div>
+<div class="cabinet">{% for card in page.cabinet %}<a class="cup" href="{{ competition_url(card.competition_uid, card.name) }}">{% if trophy_url(card.competition_uid) %}<img src="{{ trophy_url(card.competition_uid) }}" alt="">{% endif %}
+  <span class="n">{{ card.count }}</span><span class="what">{{ card.name }}</span><span class="when">{{ card.seasons|join(', ') }}</span></a>{% endfor %}</div>{% endif %}
+{% if page.awards %}<div class="row-title"><h2>Awards</h2></div>
+<table class="rank"><tr><th class="l">Award</th><th>Won</th><th class="l">Years</th><th>Podiums</th></tr>
+{% for a in page.awards %}<tr><td class="l"><a href="{{ url_for('public.award', uid=a.award_uid, name=slug(a.name)) }}">{{ a.name }}</a></td><td><b>{{ a.wins or '' }}</b></td><td class="l muted">{{ a.years|join(', ') }}</td><td>{{ a.podiums or '' }}</td></tr>{% endfor %}</table>{% endif %}
+<div class="split">
+  <section>
+    {% if page.recent %}<div class="row-title"><h2>Recent matches</h2></div>
+    <ul class="games">{% for g in page.recent %}{{ p.game(g, show_competition=True) }}
+      <li style="list-style:none;text-align:center;font-size:13px;color:var(--muted);margin:-4px 0 6px">{% if g.rating %}<span class="rating-chip {{ 'hi' if g.rating >= 7.5 }}">{{ '%.1f' % g.rating }}</span>{% endif %}{% if g.player_goals %} {{ '⚽' * g.player_goals }}{% endif %}{% if g.assists %} · {{ g.assists }} assist{{ 's' if g.assists > 1 }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+    {% if page.contract %}<p style="font-size:15px;color:var(--muted)"><b style="color:var(--ink)">Contract</b> {{ page.contract.wage_words }}{% if page.contract.expires_words %} to {{ page.contract.expires_words }}{% endif %}{% if page.contract.signed %}, signed {{ page.contract.signed }}{% endif %}</p>{% endif %}
+    {% for t in page.games %}<div class="row-title"><h2>Recent games for {{ t.team }}</h2></div>
+    <table class="career"><tr><th>Date</th><th>Opponent</th><th>Score</th><th>Min</th><th>Rating</th><th>Goals</th><th>xG</th></tr>
+      {% for g in t.games %}<tr><td>{{ g.when }}</td><td>{{ g.opponent or '?' }}</td><td>{{ (g.result ~ ' ' ~ g.score) if g.score else '' }}</td>
+        {% if g.status == 'played' %}<td>{{ g.minutes }}</td><td>{% if g.rating %}<span class="rating-chip {{ 'hi' if g.rating >= 7.5 }}">{{ '%.1f' % g.rating }}</span>{% endif %}</td><td>{{ g.goals or '' }}{% if g.assists %} <span style="color:var(--muted)">+{{ g.assists }}a</span>{% endif %}</td><td>{{ '%.2f' % g.xg if g.xg else '' }}</td>
+        {% else %}<td colspan="4" style="color:var(--muted)">{{ g.status_word }}</td>{% endif %}</tr>{% endfor %}</table>{% endfor %}
+    {% if page.market %}<div class="row-title"><h2>Transfer talk</h2></div>
+    <p>{% if page.market.active %}Wanted by {% for r in page.market.active %}<a href="{{ club_url(r.team_uid, {'name': r.team}) }}"><b>{{ r.team }}</b></a>{{ ', ' if not loop.last }}{% endfor %}.{% endif %}
+    {% if page.market.rumoured %} Rumoured: {% for r in page.market.rumoured %}<a href="{{ club_url(r.team_uid, {'name': r.team}) }}">{{ r.team }}</a>{{ ', ' if not loop.last }}{% endfor %}.{% endif %}</p>
+    {% if page.market.bids %}<ul class="latest">{% for b in page.market.bids[:5] %}<li>{{ b.when }} · <a href="{{ club_url(b.team_uid, {'name': b.team}) }}">{{ b.team }}</a> {% if b.loan %}asked for him on loan{% else %}bid £{{ '{:,}'.format(b.fee) }}{% if b.rising_to %}, rising to £{{ '{:,}'.format(b.rising_to) }}{% endif %}{% endif %} · {{ b.status }}{% if b.joins %}, joins {{ b.joins }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+    {% endif %}
+    {% if items %}<div class="row-title"><h2>In the news</h2></div>
+    <div class="list">{% for a in items %}<a class="card" href="{{ story_url(a) }}">{{ p.image(a) }}<div><h3>{{ a.headline }}</h3>{{ p.tag(a) }}</div></a>{% endfor %}</div>{% endif %}
+  </section>
+  <section>
+    {% if page.career %}<div class="row-title"><h2>Career</h2><span style="color:var(--muted);font-size:13px">league · all competitions</span></div>
+    <table class="career"><tr><th>Season</th><th>Club</th><th>Games</th><th>Goals</th><th>Rating</th><th>All</th><th>Country</th></tr>
+      {% for r in page.career %}<tr><td>{{ r.label }}</td><td><a href="{{ club_url(r.team_uid, r.team) }}">{{ r.team.name or '' }}</a></td>
+        <td>{{ r.apps }}</td><td>{{ r.goals }}</td><td>{{ '%.2f' % r.rating if r.rating else '' }}</td><td>{{ r.all_apps }} / {{ r.all_goals }}</td><td>{{ (r.national_apps ~ ' / ' ~ r.national_goals) if r.national_apps else '' }}</td></tr>{% endfor %}
+      <tr><td colspan="2"><b>Total</b></td><td><b>{{ page.totals.apps }}</b></td><td><b>{{ page.totals.goals }}</b></td><td></td><td><b>{{ page.totals.all_apps }} / {{ page.totals.all_goals }}</b></td><td><b>{{ (page.totals.national_apps ~ ' / ' ~ page.totals.national_goals) if page.totals.national_apps else '' }}</b></td></tr></table>{% endif %}
+  </section>
+</div>
+{% endblock %}

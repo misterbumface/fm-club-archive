@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<competition id="fifa_world_cup" type="international" teamType="nation">
+    <name>FIFA World Cup</name>
+    <summary>The archive universe's 48-team format: sixteen groups of three, with the top two nations in each group advancing to the round of 32.</summary>
+    <calendar intervalYears="4" anchorYear="2022" editionKind="final_tournament" />
+    <structure>
+        <teams>48</teams>
+        <groupSize>3</groupSize>
+        <teamsAdvancePerGroup>2</teamsAdvancePerGroup>
+    </structure>
+    <points><win>3</win><draw>1</draw><loss>0</loss></points>
+    <phases>
+        <phase key="group_stage" label="Group stage" stage="Group Stage" type="group" updatesTable="true" />
+        <phase key="second_round" label="Second round" stage="Second Round" extraTime="true" penalties="true" />
+        <phase key="third_round" label="Third round" stage="Third Round" extraTime="true" penalties="true" />
+        <phase key="round_of_32" label="Round of 32" stage="Round of 32" extraTime="true" penalties="true" />
+        <phase key="round_of_16" label="Round of 16" stage="Round of 16" extraTime="true" penalties="true" />
+        <phase key="quarter_final" label="Quarter-finals" stage="Quarter Final" extraTime="true" penalties="true" />
+        <phase key="semi_final" label="Semi-finals" stage="Semi Final" extraTime="true" penalties="true" />
+        <phase key="third_place" label="Third-place play-off" stage="Third Place Play-off" extraTime="true" penalties="true" />
+        <phase key="final" label="Final" stage="Final" final="true" extraTime="true" penalties="true" />
+    </phases>
+</competition>

@@ -1,0 +1,65 @@
+{% extends "world/base.html" %}
+{% block title %}{{ issue.headline or issue.edition_name }} · World Soccer{% endblock %}
+{% block content %}
+<div class="ws-paper">
+    <header class="ws-masthead">
+        <div class="ws-masthead-top">
+            <a href="{{ url_for('world_soccer.issues') }}">Back issues</a>
+            <span>{{ issue.edition_name }}</span>
+            {% if issue.status == "draft" %}
+            <a href="{{ url_for('world_soccer.newsroom', issue=issue.id) }}">Edit draft</a>
+            {% else %}
+            <span>Archive edition № {{ issue.id }}</span>
+            {% endif %}
+        </div>
+        <h1>WORLD <i>SOCCER</i></h1>
+        <div class="ws-date-rule">
+            <time datetime="{{ issue.publication_date.isoformat() }}">{{ issue.publication_date.strftime("%A, %-d %B %Y") }}</time>
+            <span>Knowledge through {{ issue.knowledge_cutoff.strftime("%-d %B %Y") }}</span>
+        </div>
+    </header>
+
+    {% if issue.status == "draft" %}<div class="ws-draft-banner">Draft edition · freely editable until publication</div>{% endif %}
+
+    <section class="ws-front-grid">
+    {% for item in articles %}
+        {% set article = item.row %}
+        <article id="article-{{ article.id }}" class="ws-story ws-story-{{ article.prominence }}">
+            <p class="ws-section">{{ article.section }}</p>
+            {% if article.image_url %}
+            <figure>
+                <img src="{{ article.image_url }}" alt="">
+                {% if article.image_caption %}<figcaption>{{ article.image_caption }}</figcaption>{% endif %}
+            </figure>
+            {% endif %}
+            <h2>{{ article.headline }}</h2>
+            {% if article.standfirst %}<p class="ws-standfirst">{{ article.standfirst }}</p>{% endif %}
+            <p class="ws-byline">By {{ article.byline }}</p>
+            <div class="ws-copy">{{ item.linked_body }}</div>
+            {% if item.links %}
+            <nav class="ws-story-links" aria-label="In this story">
+                <span>In this story</span>
+                {% for link in item.links %}
+                    {% if link.path %}<a href="{{ link.path }}">{{ link.label }}</a>{% else %}<em>{{ link.label }}</em>{% endif %}
+                {% endfor %}
+            </nav>
+            {% endif %}
+            {% if article.story_thread %}
+            <p class="ws-thread-label">Following: {{ article.story_thread.title }}</p>
+            {% endif %}
+        </article>
+    {% else %}
+        <div class="ws-no-stories">This edition is waiting for its first story.</div>
+    {% endfor %}
+    </section>
+
+    {% if threads %}
+    <aside class="ws-threads">
+        <p class="ws-kicker">Stories we are following</p>
+        {% for thread in threads %}
+        <div><strong>{{ thread.title }}</strong><span>{{ thread.summary or "An unfolding story across the football world." }}</span></div>
+        {% endfor %}
+    </aside>
+    {% endif %}
+</div>
+{% endblock %}

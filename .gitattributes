@@ -1,0 +1,4 @@
+# Football Manager's exported HTML fixtures preserve CRLF and trailing spaces
+# exactly as emitted by the game; they are parser test inputs, not source files
+# to normalize automatically.
+tests/fixtures/** -text whitespace=-blank-at-eol,-blank-at-eof,cr-at-eol

@@ -1,0 +1,101 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% set f = fixture %}
+{% block title %}{{ teams.get(f.home_uid, {}).get('name', '') }} v {{ teams.get(f.away_uid, {}).get('name', '') }}{% endblock %}
+{% block body %}
+<div class="crumbs">{{ m.comp(f.competition_uid, competitions, edition.year if edition else None) }}{% if edition %} › {{ edition.season_label }}{% endif %}{% if is_final %} › Final{% endif %}</div>
+<div class="scoreboard">
+  <div>{% set h = teams.get(f.home_uid) %}{% if crest_url(h) %}<img src="{{ crest_url(h) }}" alt="">{% endif %}<div class="tn">{% if h %}<a href="{{ m.team_href(f.home_uid, h) }}">{{ h.name }}</a>{% else %}—{% endif %}</div></div>
+  <div>{% if f.home_goals is none %}<div class="big">v</div>{% else %}<div class="big">{{ m.score(f) }}</div>{% endif %}
+    {% if f.home_goals_after_extra_time is not none %}<div class="pill" style="margin-top:8px">after extra time · {{ f.home_goals }}–{{ f.away_goals }} after 90 minutes</div>{% endif %}
+    {% if f.home_penalties is not none %}<div class="pill gold" style="margin-top:8px">{{ f.home_penalties }}–{{ f.away_penalties }} on penalties</div>{% endif %}
+    <div class="muted" style="margin-top:8px">{{ f.date }}{% if f.attendance %} · {{ '{:,}'.format(f.attendance) }} spectators{% endif %}{% if f.away_fans %} ({{ '{:,}'.format(f.away_fans) }} away){% endif %}</div></div>
+  <div>{% set a = teams.get(f.away_uid) %}{% if crest_url(a) %}<img src="{{ crest_url(a) }}" alt="">{% endif %}<div class="tn">{% if a %}<a href="{{ m.team_href(f.away_uid, a) }}">{{ a.name }}</a>{% else %}—{% endif %}</div></div>
+</div>
+{% if f.home_goals is not none %}{% set report = texts.get('report') %}{% set own = report and report.source in ('curator', 'game') %}
+<div class="actions" style="margin-top:14px"><form class="inline" method="post" action="{{ url_for('world.write_match_report', fixture_id=f.id) }}" data-ai="Writing the match report"
+  {% if own %}onsubmit="return confirm('This report was written by you or by the game. Replace it with an AI report?')"{% endif %}>
+  {% if own %}<input type="hidden" name="replace" value="1">{% endif %}{{ m.voice_select() }}
+  <button class="btn" type="submit">{{ 'New report' if report else 'Write report' }}</button></form></div>{% endif %}
+{% for kind, title in (('report', 'Match report'), ('preview', 'Preview')) if texts.get(kind) %}
+<h2>{{ title }}{% if texts[kind].source == 'generated' %} <small>written by the AI from the save</small>{% elif texts[kind].source == 'game' %} <small>the game's own text</small>{% endif %}</h2><div class="card story">{% for section in text_sections[kind] %}{% if section.heading %}<h3>{{ section.heading }}</h3>{% endif %}
+  {% for paragraph in section.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}{% endfor %}</div>
+{% endfor %}
+{% if game_report and game_report.sides[0] and game_report.sides[1] %}{% set hs, as_ = game_report.sides[0], game_report.sides[1] %}
+<h2>Match statistics <small>from the game's match report</small></h2>
+<div class="card match-stats">
+  {% macro stat(label, h, a, shown_h=None, shown_a=None) %}{% set total = (h or 0) + (a or 0) %}
+  <div class="ms-row"><span class="ms-h">{{ shown_h if shown_h is not none else h }}</span><span class="ms-label">{{ label }}</span><span class="ms-a">{{ shown_a if shown_a is not none else a }}</span>
+    <div class="ms-bar"><i style="width:{{ (100 * (h or 0) / total) if total else 50 }}%"></i></div></div>{% endmacro %}
+  {% if hs.possession is not none %}{{ stat('Possession', hs.possession, as_.possession, hs.possession ~ '%', as_.possession ~ '%') }}{% endif %}
+  {{ stat('Shots', hs.shots, as_.shots) }}
+  {{ stat('On target', hs.shots_on_target, as_.shots_on_target) }}
+  {{ stat('xG', hs.xg, as_.xg, '%.2f' % hs.xg, '%.2f' % as_.xg) }}
+  {{ stat('Clear-cut chances', hs.clear_cut_chances, as_.clear_cut_chances) }}
+  {% if hs.corners is not none %}{{ stat('Corners', hs.corners, as_.corners) }}{% endif %}
+  {% if hs.woodwork %}{{ stat('Woodwork', hs.woodwork, as_.woodwork) }}{% elif as_.woodwork %}{{ stat('Woodwork', hs.woodwork, as_.woodwork) }}{% endif %}
+  {{ stat('Passes completed', hs.passes_completed, as_.passes_completed, '%d of %d' % (hs.passes_completed, hs.passes), '%d of %d' % (as_.passes_completed, as_.passes)) }}
+  {{ stat('Tackles won', hs.tackles_won, as_.tackles_won, '%d of %d' % (hs.tackles_won, hs.tackles), '%d of %d' % (as_.tackles_won, as_.tackles)) }}
+  {{ stat('Headers won', hs.headers_won, as_.headers_won, '%d of %d' % (hs.headers_won, hs.headers), '%d of %d' % (as_.headers_won, as_.headers)) }}
+  {{ stat('Fouls', hs.fouls, as_.fouls) }}
+  {{ stat('Yellow cards', hs.yellow_cards, as_.yellow_cards) }}
+  {% if hs.red_cards or as_.red_cards %}{{ stat('Red cards', hs.red_cards, as_.red_cards) }}{% endif %}
+</div>
+{% if known %}<h2>The players we know of <small>the full report is gone; the rows the game kept for the players it follows</small></h2>
+<div class="match-sides">{% for side in known %}<section class="card">
+  <h3>{{ teams.get(fixture.home_uid if loop.first else fixture.away_uid, {}).get('name', '') }}</h3>
+  <table class="stats"><tr><th>Player</th><th>Min</th><th>Rating</th><th>Gls</th><th>Ast</th><th>xG</th><th>Passes</th><th>Shots</th><th>Tck</th><th>Hdr</th><th>Itc</th></tr>
+  {% for r in side %}<tr><td>{{ m.person(r.person_uid, r.name) }}</td>
+    {% if r.status == 'played' %}<td>{{ r.minutes }}{% if r.minute_off %} <span class="muted">(off {{ r.minute_off }})</span>{% endif %}</td><td>{{ '%.1f' % r.rating if r.rating else '' }}</td><td>{{ r.goals or '' }}</td><td>{{ r.assists or '' }}</td><td>{{ '%.2f' % r.xg if r.xg else '' }}</td><td>{{ r.passes_completed }}/{{ r.passes }}</td><td>{{ r.shots }}/{{ r.shots_on_target }}</td><td>{{ r.tackles_won }}/{{ r.tackles }}</td><td>{{ r.headers_won }}/{{ r.headers }}</td><td>{{ r.interceptions }}</td>
+    {% else %}<td colspan="10" class="muted">{{ r.status_word }}</td>{% endif %}</tr>{% endfor %}</table>
+</section>{% endfor %}</div>{% endif %}
+{% if team_sheets %}<h2>Team sheets <small>each player's slot from the game's report</small></h2>
+<div class="match-sides team-sheets">{% for side in team_sheets %}<section class="card">
+  <h3>{{ teams.get(side.team_uid, {}).get('name', '') }} <span class="muted" style="font: 13px var(--sans)">{{ side.shape or 'shape unknown' }}</span></h3>
+  {% if side.shape_at_end %}<p class="note">Finished in {{ side.shape_at_end }}.</p>{% endif %}
+  {{ m.team_pitch(side.pitch, small=True) }}
+  {% if side.substitutions %}<h4>Changes</h4><ul class="sheet-list">{% for s in side.substitutions %}<li>{{ s }}</li>{% endfor %}</ul>{% endif %}
+  {% if side.notes %}<h4>Talking points</h4><ul class="sheet-list">{% for n in side.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+</section>{% endfor %}</div>{% endif %}
+<div class="match-sides">{% for side in game_report.sides %}{% set t = teams.get(side.team_uid, {}) %}
+<section><h2>{{ t.get('name', '') }}</h2><div class="card table-scroll"><table class="match-players">
+  <thead><tr><th>Player</th><th title="Rating">Rat</th><th title="Goals">G</th><th title="Assists">A</th><th title="Shots (on target)">Sh</th><th title="Expected goals">xG</th><th title="Key passes">KP</th><th title="Passes completed">Pas</th><th title="Tackles won">Tk</th><th title="Distance run">Run</th></tr></thead>
+  <tbody>{% for pl in side.players if pl.played %}
+  <tr{% if pl.person_uid == game_report.player_of_the_match_uid %} class="pom"{% endif %}>
+    <td>{% if pl.person_uid and pl.name %}{{ m.person(pl.person_uid, pl.name) }}{% else %}<span class="muted" title="a player the game makes up to fill a squad; the save keeps no name for him">squad filler</span>{% endif %}
+      {% if pl.person_uid == game_report.player_of_the_match_uid %}<span class="pill gold" title="Player of the Match">PoM</span>{% endif %}
+      {% if pl.minute_on %}<span class="muted" title="came on">↑{{ pl.minute_on }}'</span>{% endif %}
+      {% if pl.red_cards %}
+      {% elif pl.injury_minute %}<span class="injury" title="injured">✚ {{ pl.injury_minute }}'</span>
+      {% elif pl.minute_off %}<span class="muted" title="went off">↓{{ pl.minute_off }}{% if pl.added_time_off %}+{{ pl.added_time_off }}{% endif %}'</span>{% endif %}
+      {% if pl.yellow_cards %}<span class="card-yellow" title="booked {{ pl.booked_minute }}'"></span>{% endif %}
+      {% if pl.red_cards %}<span class="card-red" title="sent off"></span> <span class="injury">{{ pl.sent_off_minute }}{% if pl.added_time_off %}+{{ pl.added_time_off }}{% endif %}'</span>{% endif %}</td>
+    <td class="num">{{ '%.1f' % pl.rating_shown if pl.rating_shown else '—' }}</td>
+    <td class="num">{{ pl.goals or '' }}</td><td class="num">{{ pl.assists or '' }}</td>
+    <td class="num">{% if pl.shots %}{{ pl.shots }} ({{ pl.shots_on_target }}){% endif %}</td>
+    <td class="num">{{ '%.2f' % pl.xg if pl.xg else '' }}</td><td class="num">{{ pl.key_passes or '' }}</td>
+    <td class="num">{% if pl.passes %}{{ pl.passes_completed }}/{{ pl.passes }}{% endif %}</td>
+    <td class="num">{% if pl.tackles %}{{ pl.tackles_won }}/{{ pl.tackles }}{% endif %}</td>
+    <td class="num">{{ '%.1f km' % (pl.distance / 1000) if pl.distance else '' }}</td></tr>
+  {% endfor %}</tbody></table>
+  {% set unused = side.players | rejectattr('played') | list %}{% if unused %}<div class="muted" style="margin-top:8px">Unused: {% for pl in unused %}{% if pl.person_uid and pl.name %}{{ m.person(pl.person_uid, pl.name) }}{% else %}squad filler{% endif %}{{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}
+</div></section>{% endfor %}
+</div>{% endif %}
+<div class="grid">
+<section><h2>Goals</h2><div class="card">{% if goals %}<div class="goals">{% for g in goals if g.kind not in (3, 4, 5) %}
+  <div class="home">{% if g.side == 0 %}{% if g.scorer_uid %}{{ m.person(g.scorer_uid, g.name or 'unknown') }}{% else %}unknown{% endif %}{% if g.kind == 2 %} <span class="muted">(pen)</span>{% elif g.kind == 1 %} <span class="muted">(og)</span>{% endif %}{% endif %}</div>
+  <div class="min">{{ g.minute }}{% if g.added_time %}+{{ g.added_time }}{% endif %}'</div>
+  <div>{% if g.side == 1 %}{% if g.scorer_uid %}{{ m.person(g.scorer_uid, g.name or 'unknown') }}{% else %}unknown{% endif %}{% if g.kind == 2 %} <span class="muted">(pen)</span>{% elif g.kind == 1 %} <span class="muted">(og)</span>{% endif %}{% endif %}</div>
+  {% endfor %}</div>{% else %}<div class="muted">The save keeps no goal list for this match.</div>{% endif %}</div></section>
+<section><h2>Facts</h2><div class="card"><table>
+  <tr><td class="muted">Competition</td><td>{{ m.comp(f.competition_uid, competitions, edition.year if edition else None) }}{% if is_final %}, final{% endif %}</td></tr>
+  <tr><td class="muted">Date</td><td>{{ f.date }}</td></tr>
+  {% if game_report %}{% if game_report.stadium %}<tr><td class="muted">Stadium</td><td>{{ game_report.stadium }}</td></tr>{% endif %}
+  {% if game_report.referee_name %}<tr><td class="muted">Referee</td><td>{{ game_report.referee_name }}</td></tr>{% endif %}
+  {% if game_report.player_of_the_match %}<tr><td class="muted">Player of the Match</td><td>{{ m.person(game_report.player_of_the_match_uid, game_report.player_of_the_match) }}</td></tr>{% endif %}{% endif %}
+  <tr><td class="muted">Attendance</td><td>{{ '{:,}'.format(f.attendance) if f.attendance else '—' }}{% if f.away_fans %} ({{ '{:,}'.format(f.away_fans) }} away fans){% endif %}</td></tr>
+  <tr><td class="muted">Head to head</td><td>{{ record.home }} wins {{ teams.get(f.home_uid, {}).get('name', '') }}, {{ record.drawn }} draws, {{ record.away }} wins {{ teams.get(f.away_uid, {}).get('name', '') }} (other meetings since 2022)</td></tr>
+</table></div></section>
+</div>
+<h2>Other meetings</h2><div class="card">{% for x in meetings %}{% call m.result(x, teams) %}{{ x.date }} · {{ m.comp(x.competition_uid, competitions) }}{% endcall %}{% else %}<div class="muted">None.</div>{% endfor %}</div>
+{% endblock %}

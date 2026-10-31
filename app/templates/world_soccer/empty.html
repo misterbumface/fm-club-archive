@@ -1,0 +1,10 @@
+{% extends "world/base.html" %}
+{% block title %}World Soccer · FM Archive{% endblock %}
+{% block content %}
+<section class="ws-empty">
+    <p class="ws-kicker">The archive newspaper</p>
+    <h1>WORLD SOCCER</h1>
+    <p>The presses are ready. Create the first dated edition and let the archive become a living football world.</p>
+    <a class="btn btn-warning btn-lg" href="{{ url_for('world_soccer.newsroom') }}">Open the newsroom</a>
+</section>
+{% endblock %}

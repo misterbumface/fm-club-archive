@@ -1,0 +1,20 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}{{ title }} · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">{{ title }}</h1>
+{% if not boards %}<p>No competitions in play just now.</p>{% endif %}
+<div class="boards">{% for t in boards %}<section class="board">
+  <div class="board-head">{% if trophy_url(t.uid) %}<img src="{{ trophy_url(t.uid) }}" alt="">{% endif %}<h2>{{ t.name }} <small style="color:var(--muted);font-size:15px">{{ t.label }}</small></h2>
+    <a class="more" href="{{ tournament_url(t.uid, t.name) }}">Tables, results &amp; scorers ›</a></div>
+  <div class="split">
+    <div>{% if t.recent %}<div class="games-head">Latest results</div><ul class="games">{% for g in t.recent[:6] %}{{ p.game(g) }}{% endfor %}</ul>{% endif %}
+      {% if t.upcoming %}<div class="games-head">Coming up</div><ul class="games">{% for g in t.upcoming[:4] %}{{ p.game(g) }}{% endfor %}</ul>{% endif %}</div>
+    <div>{% if t.groups %}{% set first = t.groups[0] %}<div class="games-head">{{ first.name }}{% if t.groups|length > 1 %} <small>· {{ t.groups|length }} groups</small>{% endif %}</div>
+      {{ p.league_table(first, highlight=followed_teams, limit=8 if first.table|length > 8 else None, wide=False) }}{% elif t.knockout %}
+      <div class="games-head">{{ t.knockout[0].name }}</div><ul class="games">{% for g in t.knockout[0].games[:6] %}{{ p.game(g) }}{% endfor %}</ul>{% endif %}</div>
+  </div>
+</section>{% endfor %}</div>
+{% if items %}<div class="row-title"><h2>News</h2></div>
+<div class="grid4">{% for a in items %}<a class="card" href="{{ story_url(a) }}">{{ p.image(a) }}<h3>{{ a.headline }}</h3>{{ p.tag(a) }}</a>{% endfor %}</div>{% endif %}
+{% endblock %}

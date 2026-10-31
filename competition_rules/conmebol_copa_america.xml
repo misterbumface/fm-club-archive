@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<competition id="conmebol_copa_america" type="international" teamType="nation">
+    <name>Copa América</name>
+    <summary>A 16-team final tournament: four groups of four, with the top two nations in each group advancing to the quarter-finals.</summary>
+    <calendar intervalYears="4" anchorYear="2024" editionKind="final_tournament" />
+    <structure><teams>16</teams><groupSize>4</groupSize><teamsAdvancePerGroup>2</teamsAdvancePerGroup></structure>
+    <points><win>3</win><draw>1</draw><loss>0</loss></points>
+    <matchRules><beforeFinal>Quarter-finals, semi-finals and third-place match go directly to penalties after a draw in 90 minutes</beforeFinal><final>Extra time followed by penalties</final></matchRules>
+    <phases>
+        <phase key="group_stage" label="Group stage" stage="Group Stage" type="group" updatesTable="true" entrants="Four groups of four · top two advance" />
+        <phase key="quarter_final" label="Quarter-finals" stage="Quarter Final" penalties="true" />
+        <phase key="semi_final" label="Semi-finals" stage="Semi Final" penalties="true" />
+        <phase key="third_place" label="Third-place play-off" stage="Third Place Play-off" penalties="true"><alias>Third Place Match</alias></phase>
+        <phase key="final" label="Final" stage="Final" final="true" extraTime="true" penalties="true" neutralVenue="true" />
+    </phases>
+</competition>

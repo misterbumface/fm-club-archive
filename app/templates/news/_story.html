@@ -1,0 +1,13 @@
+{% set article = item.row %}
+<article id="article-{{ article.id }}" class="ws-story ws-story-{{ article.prominence }}">
+    <p class="ws-section">{{ article.section }}</p>
+    {% if item.picture %}<figure class="news-picture {{ 'is-badge' if item.badge }}"><img src="{{ item.picture }}" alt="" loading="lazy">{% if article.image_caption %}<figcaption>{{ article.image_caption }}</figcaption>{% endif %}</figure>{% endif %}
+    <h2>{{ article.headline }}</h2>
+    {% if article.standfirst %}<p class="ws-standfirst">{{ article.standfirst }}</p>{% endif %}
+    <p class="ws-byline">By {% if article.writer %}<a href="{{ url_for('news.writer', writer_id=article.writer_id) }}">{{ article.byline }}</a>{% else %}{{ article.byline }}{% endif %}</p>
+    {% if not short %}<div class="ws-copy">{% for part in item.linked_body.split('\n\n') %}{% set text = part.strip() %}{% if text %}<p>{{ text|safe }}</p>{% endif %}{% endfor %}</div>
+    {% if item.links %}<nav class="ws-story-links" aria-label="In this story"><span>In this story</span>
+        {% for link in item.links %}{% if link.path %}<a href="{{ link.path }}">{{ link.label }}</a>{% else %}<em>{{ link.label }}</em>{% endif %}{% endfor %}
+    </nav>{% endif %}
+    {% if item.thread %}<p class="ws-thread-label"><a href="{{ url_for('news.thread', thread_id=item.thread.id) }}">Following: {{ item.thread.title }} — the story so far</a></p>{% endif %}{% endif %}
+</article>

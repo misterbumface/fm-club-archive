@@ -1,0 +1,234 @@
+{% extends "world/base.html" %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="settings-shell settings-compact">
+    <header class="settings-hero">
+        <div>
+            <p class="settings-kicker">Archive control room</p>
+            <h1>Settings</h1>
+            <p>{{ archive.name }} · <a href="{{ url_for('settings.outlets') }}">Outlets and writers</a> · version {{ app_version }}</p>
+        </div>
+        <div class="settings-status-stack">
+            <div class="settings-status {{ 'is-ready' if api_key_configured else 'is-missing' }}"><span class="settings-status-dot"></span><div><small>DeepSeek</small><strong>{{ 'key set' if api_key_configured else 'no key' }}</strong></div></div>
+            <div class="settings-status {{ 'is-ready' if openai_api_key_configured else 'is-missing' }}"><span class="settings-status-dot"></span><div><small>OpenAI</small><strong>{{ 'key set' if openai_api_key_configured else 'no key' }}</strong></div></div>
+            <div class="settings-status {{ 'is-ready' if last_publish and not last_publish.error else 'is-missing' }}"><span class="settings-status-dot"></span><div><small>Public site</small><strong>{{ ('published ' ~ last_publish.when[:10]) if last_publish and not last_publish.error else 'not published' }}</strong></div></div>
+        </div>
+    </header>
+
+    <div class="settings-grid">
+
+    <section class="settings-panel" id="followed">
+        <div class="settings-panel-heading"><div><p class="settings-section-label">Your club</p><h2>Followed clubs</h2>
+            <p>Every game of theirs is previewed and reported, their stories lead the home paper, their players abroad are “our players”.</p></div></div>
+        <ul class="outlet-followed">
+            {% for club in followed %}<li><a href="/clubs/{{ club.uid }}">{{ club.name }}</a>
+              <form method="post" action="{{ url_for('settings.followed_clubs') }}" style="display:inline"><input type="hidden" name="remove" value="{{ club.uid }}">
+                <input type="hidden" name="from" value="settings"><button class="btn btn-small" type="submit">Remove</button></form></li>
+            {% else %}<li class="muted">None yet. Add the club you manage.</li>{% endfor %}
+        </ul>
+        <form class="leads-window" method="post" action="{{ url_for('settings.followed_clubs') }}">
+            <input type="hidden" name="from" value="settings">
+            <label>Add <input name="club" placeholder="Club name or FM id" size="24"></label>
+            <button class="btn" type="submit">Add</button>
+        </form>
+    </section>
+
+    <section class="settings-panel" id="automatic">
+        <div class="settings-panel-heading"><div><p class="settings-section-label">Automatic</p><h2>Let the archive run itself</h2>
+            <p>While the app runs it looks at the game's folder every {{ automatic_minutes }} minutes. A new save of this archive is read, the papers are written,
+               and the site is published when a Cloudflare token is set.</p></div>
+            <form method="post" action="{{ url_for('settings.automatic') }}" class="switch-form">
+                <input type="hidden" name="automatic" value="off">
+                <label class="switch" title="{{ 'On' if automatic else 'Off' }}"><input type="checkbox" name="automatic" value="on" {{ 'checked' if automatic }} onchange="this.form.submit()"><span class="switch-track"><span class="switch-knob"></span></span><span class="switch-word">{{ 'On' if automatic else 'Off' }}</span></label>
+            </form></div>
+        <dl class="settings-facts">
+            <dt>Watching</dt><dd>{% if not automatic %}off{% elif automatic_watch.last_look %}last look {{ automatic_watch.last_look.strftime('%H:%M') }}{% else %}the first look comes within {{ automatic_minutes }} minutes of the app's start{% endif %} · {{ automatic_watch.newest }}</dd>
+            {% if automatic_last %}<dt>Last run</dt><dd>{{ automatic_last.when }} · {{ automatic_last.save }}</dd>{% endif %}
+        </dl>
+    </section>
+
+    <section class="settings-panel" id="public">
+        <div class="settings-panel-heading"><div><p class="settings-section-label">Public site</p>
+            <h2>{% if last_publish and last_publish.address %}<a href="{{ last_publish.address }}" target="_blank" rel="noopener">{{ last_publish.address.replace('https://', '') }}</a>{% else %}The paper in the cloud{% endif %}</h2>
+            <p>The paper as static pages on Cloudflare, up while the Mac sleeps. Press Publish after a news cycle; only changed files travel.</p></div>
+            <span class="settings-scope {{ 'is-off' if not cloudflare_token_configured or (last_publish and last_publish.error) }}">{{ 'No token' if not cloudflare_token_configured else 'Failed' if last_publish and last_publish.error else 'Published' if last_publish else 'Not yet' }}</span></div>
+        <form method="post" action="{{ url_for('settings.publish_site') }}" class="job-form" data-working="Publishing…">
+        <div class="archive-fields">
+            <label>Domain <small>optional; one on your Cloudflare account, else the free workers.dev address</small><input name="hostname" value="{{ publish_hostname }}" placeholder="worldsport.uk"></label>
+            <label>Account id <small>only if the token cannot list your account</small><input name="account_id" value="{{ publish_account }}" placeholder="32 hex characters"></label>
+        </div>
+        <dl class="settings-facts">
+            <dt>Token</dt><dd>{{ 'set' if cloudflare_token_configured else 'none: add it in the keys card (Workers Scripts: Edit, Workers Routes: Edit, Zone DNS: Edit, Account Settings: Read)' }}</dd>
+            {% if last_publish %}<dt>Last publish</dt><dd>{% if last_publish.error %}<span class="muted">{{ last_publish.when }}: {{ last_publish.error }}</span>{% else %}{{ last_publish.when }} · {{ last_publish.pages }} pages, {{ last_publish.files }} files, {{ last_publish.seconds }} s{% endif %}</dd>{% endif %}
+        </dl>
+        <footer class="settings-actions">
+            <button type="submit" class="btn">Save</button>
+            <button type="submit" name="action" value="resume" class="btn" {{ 'disabled' if not cloudflare_token_configured }} title="Upload the export on disk as it is, without rendering again">Resume the upload</button>
+            <button type="submit" name="action" value="publish" class="btn btn-primary" {{ 'disabled' if not cloudflare_token_configured }}>Publish</button>
+        </footer>
+        </form>
+        {% set hide_old_job = true %}{% include "news/_job.html" %}
+        {% if tunnel.installed %}
+        <dl class="settings-facts" style="margin-top:.9rem">
+            <dt>Live tunnel</dt><dd>{{ 'offline by you' if site_offline else tunnel.word }}{% if tunnel.hostnames %} · {{ tunnel.hostnames|join(', ') }}{% endif %}
+                <span class="muted">(the Cloudflare tunnel service on this Mac, while the app runs; remove it with <code>sudo cloudflared service uninstall</code>)</span></dd>
+        </dl>
+        <footer class="settings-actions">
+            <form method="post" action="{{ url_for('settings.public_site_settings') }}"><button type="submit" class="btn">Check now</button></form>
+            <form method="post" action="{{ url_for('settings.public_site_settings') }}">
+                {% if site_offline %}<input type="hidden" name="offline" value="off"><button type="submit" class="btn">Put the live site back</button>
+                {% else %}<input type="hidden" name="offline" value="on"><button type="submit" class="btn">Take the live site offline</button>{% endif %}</form>
+        </footer>
+        {% endif %}
+    </section>
+
+    <form method="post" class="settings-panel" id="model">
+        <div class="settings-panel-heading"><div><p class="settings-section-label">Writers</p><h2>Archive texts</h2>
+            <p>Bios, season and competition stories, match reports.{% if not model_options|selectattr('provider', 'equalto', 'ollama')|list %} No local model: Ollama is not answering at {{ ollama_url }}.{% endif %}</p></div>
+            <span class="settings-scope">{{ selected_label }}</span></div>
+        <div class="choice-list">
+            {% for option in model_options %}
+            <label class="choice {{ 'is-selected' if selected_model == option.value }}"><input type="radio" name="deepseek_model" value="{{ option.value }}" {% if selected_model == option.value %}checked{% endif %}>
+                <strong>{{ option.label }}</strong>{% if option.recommended %} <em>recommended</em>{% endif %} <code>{{ option.value }}</code><small>{{ option.strapline }}</small></label>
+            {% endfor %}
+        </div>
+        <footer class="settings-actions"><div></div><button type="submit" class="btn btn-primary">Save</button></footer>
+    </form>
+
+    <form method="post" action="{{ url_for('settings.papers_model_settings') }}" class="settings-panel" id="papers">
+        <div class="settings-panel-heading"><div><p class="settings-section-label">Writers</p><h2>The papers</h2>
+            <p>A cycle writes dozens of stories at once, so the papers use a hosted model.</p></div>
+            <span class="settings-scope">{{ model_options|selectattr('value', 'equalto', papers_model)|map(attribute='label')|first }}</span></div>
+        <div class="choice-list">
+            {% for option in model_options if option.provider != 'ollama' %}
+            <label class="choice {{ 'is-selected' if papers_model == option.value }}"><input type="radio" name="papers_model" value="{{ option.value }}" {% if papers_model == option.value %}checked{% endif %}>
+                <strong>{{ option.label }}</strong> <code>{{ option.value }}</code><small>{{ option.strapline }}</small></label>
+            {% endfor %}
+        </div>
+        <footer class="settings-actions"><div></div><button type="submit" class="btn btn-primary">Save</button></footer>
+    </form>
+
+    <form method="post" action="{{ url_for('settings.voice_settings') }}" class="settings-panel" id="voice">
+        <div class="settings-panel-heading"><div><p class="settings-section-label">Writers</p><h2>Voice</h2>
+            <p>The voice every “Write” button proposes. It changes how a text reads, never its facts.</p></div>
+            <span class="settings-scope">{{ voices[selected_voice][0] }}</span></div>
+        <div class="choice-list">
+            {% for key, (label, instruction) in voices.items() %}
+            <label class="choice {{ 'is-selected' if selected_voice == key }}"><input type="radio" name="voice" value="{{ key }}" {% if selected_voice == key %}checked{% endif %}>
+                <strong>{{ label }}</strong><small>{{ (instruction.split('. A sample')[0] ~ '.') if instruction else 'The neutral voice of a well-made newspaper feature.' }}</small></label>
+            {% endfor %}
+        </div>
+        <footer class="settings-actions"><div></div><button type="submit" class="btn btn-primary">Save</button></footer>
+    </form>
+
+    <form method="post" action="{{ url_for('settings.ai_keys') }}" class="settings-panel" id="keys">
+        <div class="settings-panel-heading"><div><p class="settings-section-label">Writers</p><h2>API keys</h2>
+            <p>Kept in the app's own folder, outside the archives and their backups. An empty field leaves a key as it is.</p></div></div>
+        <div class="archive-fields">
+            <label>DeepSeek <small>{{ 'set' if api_key_configured else 'none' }}</small><input type="password" name="DEEPSEEK_API_KEY" autocomplete="off" placeholder="sk-…"></label>
+            {% if api_key_configured %}<label class="inline-check"><input type="checkbox" name="remove_DEEPSEEK_API_KEY"> remove</label>{% endif %}
+            <label>OpenAI <small>{{ 'set' if openai_api_key_configured else 'none' }}</small><input type="password" name="OPENAI_API_KEY" autocomplete="off" placeholder="sk-…"></label>
+            {% if openai_api_key_configured %}<label class="inline-check"><input type="checkbox" name="remove_OPENAI_API_KEY"> remove</label>{% endif %}
+            <label>WaveSpeed <small>{{ 'set' if wavespeed_key_configured else 'none' }}</small><input type="password" name="WAVESPEED_API_KEY" autocomplete="off" placeholder="for the pictures"></label>
+            {% if wavespeed_key_configured %}<label class="inline-check"><input type="checkbox" name="remove_WAVESPEED_API_KEY"> remove</label>{% endif %}
+            <label>Cloudflare <small>{{ 'set' if cloudflare_token_configured else 'none' }}</small><input type="password" name="CLOUDFLARE_API_TOKEN" autocomplete="off" placeholder="an API token, for publishing the paper"></label>
+            {% if cloudflare_token_configured %}<label class="inline-check"><input type="checkbox" name="remove_CLOUDFLARE_API_TOKEN"> remove</label>{% endif %}
+        </div>
+        <footer class="settings-actions"><div></div><button type="submit" class="btn btn-primary">Save</button></footer>
+    </form>
+
+    <form method="post" action="{{ url_for('settings.picture_settings') }}" class="settings-panel" id="pictures">
+        <div class="settings-panel-heading"><div><p class="settings-section-label">Pictures</p><h2>Who draws them</h2>
+            <p>Illustrations, the pools, the test picture and the action photos. Portraits are drawn by InvokeAI when it is chosen, else by Draw Things.</p></div>
+            <span class="settings-scope">{{ picture_makers[picture_maker] }}</span></div>
+        <div class="choice-list choice-row">
+            {% for key, label in picture_makers.items() %}
+            <label class="choice {{ 'is-selected' if picture_maker == key }}"><input type="radio" name="picture_maker" value="{{ key }}" {% if picture_maker == key %}checked{% endif %}><strong>{{ label }}</strong></label>
+            {% endfor %}
+        </div>
+        <div class="archive-fields">
+            <label>Draw Things illustration model <small>empty: the one selected in Draw Things</small><input type="text" name="dt_illustration" value="{{ dt_illustration }}" list="draw-things-models" autocomplete="off" placeholder="{{ dt_selected or 'as selected in Draw Things' }}"></label>
+            <label>Draw Things portrait model <small>player portraits</small><input type="text" name="dt_portrait" value="{{ dt_portrait }}" list="draw-things-models" autocomplete="off"></label>
+            <label>Draw Things edit model <small>action photos</small><input type="text" name="dt_edit" value="{{ dt_edit }}" list="draw-things-models" autocomplete="off"></label>
+            <datalist id="draw-things-models">{% for m in dt_known %}<option value="{{ m }}">{% endfor %}</datalist>
+            <p class="field-note">{% if dt_selected %}Selected in Draw Things now: <code>{{ dt_selected }}</code>. Draw Things gives no list of its models: the list here grows with each model this page sees selected there.{% else %}Draw Things is not answering: start it with its API server on to see its selected model.{% endif %}</p>
+            <label>InvokeAI address <small>the server on your network</small><input type="text" name="invoke_url" value="{{ invoke_url }}" autocomplete="off" placeholder="http://localhost:9090"></label>
+            {% if invoke_models.create or invoke_models.edit %}
+            <label>InvokeAI model <small>illustrations, pools, the test picture and portraits</small><select name="invoke_create_model">{% for m in invoke_models.create %}<option value="{{ m }}" {{ 'selected' if m == invoke_create_model }}>{{ m }}</option>{% endfor %}</select></label>
+            <label>InvokeAI edit model <small>action photos</small><select name="invoke_edit_model">{% for m in invoke_models.edit %}<option value="{{ m }}" {{ 'selected' if m == invoke_edit_model }}>{{ m }}</option>{% endfor %}</select></label>
+            {% else %}<p class="field-note">InvokeAI does not answer at {{ invoke_url }}: its models show here when it does. Now: {{ invoke_create_model }}, and {{ invoke_edit_model }} for action photos.</p>{% endif %}
+            <label>WaveSpeed model<input type="text" name="wavespeed_model" value="{{ wavespeed_model }}" list="wavespeed-models" autocomplete="off"></label>
+            <datalist id="wavespeed-models">{% for m in wavespeed_models %}<option value="{{ m }}">{% endfor %}</datalist>
+            <label>WaveSpeed edit model <small>action photos</small><input type="text" name="wavespeed_edit_model" value="{{ wavespeed_edit_model }}" list="wavespeed-edit-models" autocomplete="off"></label>
+            <datalist id="wavespeed-edit-models">{% for m in wavespeed_edit_models %}<option value="{{ m }}">{% endfor %}</datalist>
+            <label>OpenAI image model<input type="text" name="openai_image_model" value="{{ openai_image_model }}" list="openai-image-models" autocomplete="off"></label>
+            <datalist id="openai-image-models">{% for m in openai_image_models %}<option value="{{ m }}">{% endfor %}</datalist>
+            <label>OpenAI quality<select name="openai_image_quality">{% for q in openai_qualities %}<option value="{{ q }}" {{ 'selected' if q == openai_image_quality }}>{{ q }}</option>{% endfor %}</select></label>
+        </div>
+        <footer class="settings-actions"><div></div><button type="submit" class="btn btn-primary">Save</button></footer>
+    </form>
+
+    <form method="post" action="{{ url_for('settings.social_settings') }}" class="settings-panel" id="social">
+        <div class="settings-panel-heading"><div><p class="settings-section-label">Feed</p><h2>The clubs’ posts</h2>
+            <p>After each import the clubs post their results, signings and titles. With Ollama running, the fans answer by themselves.</p></div>
+            <span class="settings-scope">{{ 'On' if social_on else 'Off' }}{% if social_on and slow_on %}, fans writing{% endif %}</span></div>
+        <footer class="settings-actions"><div></div><div>
+            {% if social_on %}
+              {% if slow_on %}<button type="submit" name="slow" value="off" class="btn">Stop the fans</button>
+              {% else %}<button type="submit" name="slow" value="on" class="btn">Let the fans write</button>{% endif %}
+              <button type="submit" name="social" value="off" class="btn">Turn off</button>
+            {% else %}<button type="submit" name="social" value="on" class="btn btn-primary">Turn on</button>{% endif %}</div>
+        </footer>
+    </form>
+
+    <form method="post" action="{{ url_for('settings.archive_settings') }}" class="settings-panel settings-wide" id="archive">
+        <div class="settings-panel-heading"><div><p class="settings-section-label">This archive</p><h2>{{ archive.name }}</h2>
+            <p><code>{{ archive_dir }}</code></p></div></div>
+        <div class="archive-fields archive-fields-two">
+            <label>Name<input name="name" value="{{ archive.name }}" required></label>
+            <label>The save <small>its own; longer-named copies belong to it too</small>
+                <select name="save_file"><option value="">(none chosen)</option>
+                {% for name in saves %}<option {{ 'selected' if name == archive.save_file }}>{{ name }}</option>{% endfor %}</select></label>
+            <label>Game folder <small>FM's user folder ({{ 'found' if archive.games_dir.is_dir() else 'no games/ folder there' }})</small>
+                <span class="folder-field"><input name="fm_user_dir" value="{{ archive.fm_user_dir }}" required>
+                <button type="button" class="btn choose-folder" hidden>Choose…</button></span></label>
+            <label>Installed game <small>for the names ({{ 'found' if archive.game_database_dir.is_dir() else 'not found there' }})</small>
+                <span class="folder-field"><input name="game_dir" value="{{ archive.game_dir }}">
+                <button type="button" class="btn choose-folder" hidden>Choose…</button></span></label>
+            <label>Face-pack folder<input name="face_folder" value="{{ archive.face_folder }}" required></label>
+        </div>
+        <footer class="settings-actions">
+            <button type="submit" form="backup-form" class="btn">Back up the library now</button>
+            <button type="submit" class="btn btn-primary">Save</button></footer>
+    </form>
+    <form id="backup-form" method="post" action="{{ url_for('settings.backup') }}" hidden></form>
+
+    </div>
+</div>
+
+<script>
+// In the app, "Choose…" opens the native folder dialog, and saved archive settings restart the archive.
+window.addEventListener('pywebviewready', () => {
+    document.querySelectorAll('.choose-folder').forEach((button) => {
+        button.hidden = false;
+        button.addEventListener('click', async () => {
+            const input = button.parentElement.querySelector('input');
+            const folder = await window.pywebview.api.choose_folder(input.value);
+            if (folder) input.value = folder;
+        });
+    });
+    {% if restart %}window.pywebview.api.restart_archive();{% endif %}
+});
+document.querySelectorAll('.settings-panel').forEach((panel) => {
+    panel.querySelectorAll('.choice input').forEach((input) => {
+        input.addEventListener('change', () => {
+            panel.querySelectorAll('.choice').forEach((choice) => {
+                choice.classList.toggle('is-selected', choice.querySelector('input').checked);
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

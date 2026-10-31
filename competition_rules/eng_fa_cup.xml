@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<competition id="eng_fa_cup" type="domestic_cup" teamType="club">
+    <name>English FA Cup</name>
+    <summary>English football's open knockout cup. League One and League Two clubs enter in the first round proper; Premier League and Championship clubs enter in the third round proper.</summary>
+    <phases>
+        <phase key="extra_preliminary_round" label="Extra preliminary round" stage="Extra Preliminary Round" entrants="Eligible non-league clubs" extraTime="true" penalties="true" />
+        <phase key="preliminary_round" label="Preliminary round" stage="Preliminary Round" entrants="Additional non-league clubs" extraTime="true" penalties="true" />
+        <phase key="first_qualifying_round" label="First qualifying round" stage="First Qualifying Round" extraTime="true" penalties="true" />
+        <phase key="second_qualifying_round" label="Second qualifying round" stage="Second Qualifying Round" extraTime="true" penalties="true" />
+        <phase key="third_qualifying_round" label="Third qualifying round" stage="Third Qualifying Round" extraTime="true" penalties="true" />
+        <phase key="fourth_qualifying_round" label="Fourth qualifying round" stage="Fourth Qualifying Round" extraTime="true" penalties="true" />
+        <phase key="first_round" label="First round proper" stage="First Round" entrants="League One and League Two clubs join" extraTime="true" penalties="true"><alias>First Round Proper</alias></phase>
+        <phase key="second_round" label="Second round proper" stage="Second Round" extraTime="true" penalties="true"><alias>Second Round Proper</alias></phase>
+        <phase key="third_round" label="Third round proper" stage="Third Round" entrants="Premier League and Championship clubs join" extraTime="true" penalties="true"><alias>Third Round Proper</alias></phase>
+        <phase key="fourth_round" label="Fourth round proper" stage="Fourth Round" extraTime="true" penalties="true"><alias>Fourth Round Proper</alias></phase>
+        <phase key="fifth_round" label="Fifth round proper" stage="Fifth Round" extraTime="true" penalties="true"><alias>Fifth Round Proper</alias></phase>
+        <phase key="quarter_final" label="Quarter-finals" stage="Quarter Final" extraTime="true" penalties="true"><alias>Sixth Round</alias></phase>
+        <phase key="semi_final" label="Semi-finals" stage="Semi Final" extraTime="true" penalties="true" neutralVenue="true" />
+        <phase key="final" label="Final" stage="Final" final="true" extraTime="true" penalties="true" neutralVenue="true" />
+    </phases>
+</competition>

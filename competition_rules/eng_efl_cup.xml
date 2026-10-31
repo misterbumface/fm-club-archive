@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<competition id="eng_efl_cup" type="domestic_cup" teamType="club">
+    <name>Carabao Cup</name>
+    <summary>England's 92-club League Cup. Early rounds are regionalised, most Premier League clubs enter in Round Two, European qualifiers enter in Round Three, and the semi-finals are played over two legs.</summary>
+    <structure><teams>92</teams><knockout>true</knockout><replays>false</replays></structure>
+    <matchRules>
+        <roundsOneToFive>Penalties immediately after a draw in 90 minutes</roundsOneToFive>
+        <semiFinal>Extra time and penalties only after the second leg if aggregate scores are level</semiFinal>
+    </matchRules>
+    <phases>
+        <phase key="preliminary_round" label="Preliminary round" stage="Preliminary Round" entrants="Used only when required to balance the Round One field" penalties="true" conditional="true" regionalised="true" />
+        <phase key="round_one" label="Round One" stage="Round One" entrants="EFL clubs and any preliminary-round winners" penalties="true" regionalised="true"><alias>First Round</alias></phase>
+        <phase key="round_two" label="Round Two" stage="Round Two" entrants="Premier League clubs not competing in Europe join" penalties="true" regionalised="true"><alias>Second Round</alias></phase>
+        <phase key="round_three" label="Round Three" stage="Round Three" entrants="Premier League clubs competing in Europe join" penalties="true"><alias>Third Round</alias></phase>
+        <phase key="round_four" label="Round Four" stage="Round Four" penalties="true"><alias>Fourth Round</alias><alias>Round of 16</alias></phase>
+        <phase key="round_five" label="Round Five" stage="Round Five" penalties="true"><alias>Fifth Round</alias><alias>Quarter Final</alias><alias>Quarter-finals</alias></phase>
+        <phase key="semi_final" label="Semi-finals" stage="Semi Final" legs="2" extraTime="true" penalties="true" extraTimeAt="after_second_leg"><alias>Semi Final First Leg</alias><alias>Semi Final Second Leg</alias></phase>
+        <phase key="final" label="Final" stage="Final" final="true" extraTime="true" penalties="true" neutralVenue="true" entrants="Wembley Stadium" />
+    </phases>
+</competition>

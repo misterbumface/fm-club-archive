@@ -1,0 +1,50 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% block title %}Today{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block body %}
+<div class="crumbs">The world today</div>
+<div class="hero"><div><h1>{{ today.strftime('%-d %B %Y') if today else 'No save imported' }}</h1>
+  <div class="sub">{{ '{:,}'.format(counts.matches) }} matches · {{ '{:,}'.format(counts.people) }} people · {{ '{:,}'.format(counts.clubs) }} clubs</div></div></div>
+
+<div class="today-grid">
+  <aside class="today-side">
+    <section class="card"><h3>Headlines</h3>
+      {% for h in headlines %}<a class="today-headline" href="{{ h.href }}"><small>{{ h.outlet }}</small>{{ h.headline }}</a>
+      {% else %}<div class="muted">No papers published yet.</div>{% endfor %}</section>
+  </aside>
+
+  <div class="today-leagues">
+    {% for l in leagues %}{% set now = l.now %}<section class="card">
+      <h3><a href="{{ url_for('world.competition', uid=l.uid) }}">{{ competitions.get(l.uid, {}).get('name', '') }}</a>
+        <small>{{ now.season }}{{ ' · final' if now.finished }}{% if now.next_season_starts %} · the new season starts {{ now.next_season_starts|day_month }}{% endif %}</small></h3>
+      {{ m.mini_table(now.table, teams, 10, followed) }}
+      {% if l.big_games %}<h4>Latest round</h4>{% for f in l.big_games %}{{ m.mini_result(f, teams) }}{% endfor %}{% endif %}
+      <a class="today-more" href="{{ url_for('world.competition', uid=l.uid) }}">The whole table ›</a></section>
+    {% else %}<div class="card muted">No league games in the archive yet.</div>{% endfor %}
+  </div>
+</div>
+
+<div class="today-lists">
+  <section class="card"><h3>Newest champions</h3><div class="today-list">
+    {% for w in winners[:9] %}<div class="today-champion">{% if trophy_url(w.competition_uid) %}<img src="{{ trophy_url(w.competition_uid) }}" alt="">{% endif %}
+      <div>{{ m.team(w.team_uid, teams) }}<small>{{ m.comp(w.competition_uid, competitions, w.year) }} {{ w.season_label }}</small></div></div>
+    {% else %}<div class="muted">No finished competitions in the last weeks.</div>{% endfor %}</div></section>
+  <section class="card"><h3>Biggest transfers <small>the last 90 days</small></h3><div class="today-list">
+    {% for t in transfers %}<div class="today-transfer"><div>{{ m.person(t.person_uid, t.name) }}<small>{{ teams.get(t.from_uid, {}).get('name', '—') }} → {{ teams.get(t.to_uid, {}).get('name', '—') }}</small></div>
+      <b>{{ t.fee|money }}</b></div>
+    {% else %}<div class="muted">No paid transfers in the last 90 days.</div>{% endfor %}</div></section>
+</div>
+
+{% if international %}<h2>Around the world</h2>
+<div class="today-international">{% for i in international %}{% set now = i.now %}<section class="card">
+  <h3><a href="{{ url_for('world.competition', uid=i.uid) }}">{{ competitions.get(i.uid, {}).get('name', '') }}</a> <small>{{ now.edition.label if now.edition else now.season }}</small></h3>
+  {% if now.groups|length == 1 %}{{ m.mini_table(now.groups[0].table, teams, 8, followed) }}
+  {% elif now.groups %}<div class="mini-groups">{% for g in now.groups[:8] %}<div><h4>{{ g.name }}</h4>
+    {% for r in g.table[:4] %}<div class="mini-group-row {{ ('zone-' ~ r.went) if r.went is defined }}">{{ m.team(r.team_uid, teams) }}<b>{{ r.points }}</b></div>{% endfor %}</div>{% endfor %}</div>
+  {% endif %}
+  {% if now.recent and not now.groups %}<h4>{{ 'Last results' if now.finished else 'Latest round' }}</h4>{% for f in now.recent[:6] %}{{ m.mini_result(f, teams) }}{% endfor %}{% endif %}
+  {% if now.upcoming %}<h4>Next</h4>{% for day, games in now.upcoming[:4]|groupby('date') %}<div class="mini-day">{{ day|day_month(true) }}</div>
+    {% for f in games %}{{ m.mini_result(f, teams) }}{% endfor %}{% endfor %}{% endif %}
+</section>{% endfor %}</div>{% endif %}
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block when %}{% if top %}{{ top[0].issue.publication_date.strftime('%A %-d %B %Y') }}{% endif %}{% endblock %}
+{% block body %}
+{% if hub %}{{ p.tournament_hub(hub) }}{% endif %}
+{% if not top %}<h1 class="page">No stories yet</h1><p>The first editions are being written.</p>{% else %}
+<div class="front"><div>
+<section class="top">
+  {% for a in top %}
+  <a class="card {{ 'lead' if loop.first }}" href="{{ story_url(a) }}">
+    {{ p.image(a) }}
+    {% if loop.first %}<h2>{{ a.headline }}</h2>{% else %}<h3>{{ a.headline }}</h3>{% endif %}
+    {% if a.standfirst and loop.index <= 3 %}<p>{{ a.standfirst }}</p>{% endif %}
+    {{ p.tag(a) }}
+  </a>
+  {% endfor %}
+</section>
+
+{% for key, name, items in rows %}
+<div class="row-title"><h2>{{ name }}</h2><a href="{{ url_for('public.section', key=key) }}">More {{ name|lower }} ›</a></div>
+<div class="grid4">{% for a in items %}<a class="card" href="{{ story_url(a) }}">{{ p.image(a) }}<h3>{{ a.headline }}</h3>{{ p.tag(a) }}</a>{% endfor %}</div>
+{% endfor %}
+</div>
+<aside class="aside">
+  {% if results %}<div class="block"><h2>Latest scores <a href="{{ url_for('public.scores_day', day=results.day.isoformat()) }}">All ›</a></h2>
+    <div class="day-step">{% if results.before %}<a href="{{ url_for('public.scores_day', day=results.before.isoformat()) }}">‹ {{ results.before.strftime('%a %-d %b') }}</a>{% else %}<span></span>{% endif %}
+      <b>{{ results.day.strftime('%A %-d %B') }}</b><span></span></div>
+    {% for comp in results.competitions %}<span class="comp">{{ comp.name }}</span><ul class="games">{% for g in comp.games %}{{ p.game(g) }}{% endfor %}</ul>{% endfor %}</div>{% endif %}
+  {% if box %}<div class="block"><h2>{{ box.name }} <a href="{{ url_for('public.table', uid=box.uid) }}">Table ›</a></h2>{{ p.league_table(box, highlight=followed_teams, limit=10, wide=False) }}</div>{% endif %}
+</aside></div>
+{% if latest %}
+<div class="row-title"><h2>Also in the news</h2></div>
+<ul class="latest">{% for a in latest %}<li><a href="{{ story_url(a) }}">{{ a.headline }}</a> {{ p.tag(a) }}</li>{% endfor %}</ul>
+{% endif %}
+{% endif %}
+{% endblock %}

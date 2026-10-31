@@ -1,0 +1,227 @@
+{% macro team_href(uid, t, season=None) -%}
+{%- if t.nation_uid and not t.club_uid -%}{{ url_for('world.nation', uid=t.nation_uid) }}
+{%- elif season -%}{{ url_for('world.club_season', uid=uid, season=season) }}
+{%- else -%}{{ url_for('world.club', uid=uid) }}{%- endif -%}
+{%- endmacro %}
+
+{% macro team(uid, teams, season=None, right=False) -%}
+{%- set t = teams.get(uid) -%}
+{%- if t -%}
+<a class="team" href="{{ team_href(uid, t, season) }}">
+  {%- if not right and crest_url(t) %}<img src="{{ crest_url(t) }}" alt="">{% endif %}<span>{{ t.name }}</span>
+  {%- if right and crest_url(t) %}<img src="{{ crest_url(t) }}" alt="">{% endif %}</a>
+{%- else -%}<span class="muted">—</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro comp(uid, competitions, year=None, short=False) -%}
+{%- set c = competitions.get(uid) -%}
+{%- if c -%}<a href="{{ url_for('world.edition', uid=uid, year=year) if year else url_for('world.competition', uid=uid) }}">{{ c.short_name if short else c.name }}</a>
+{%- else -%}<span class="muted">Other matches</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro face(uid) -%}
+{%- set src = face_url(uid) -%}{% if src %}<img class="face" src="{{ src }}" alt="">{% else %}<span class="face empty"></span>{% endif %}
+{%- endmacro %}
+
+{% macro person(uid, name) -%}
+<a class="who" href="{{ url_for('world.person', uid=uid) }}">{{ face(uid) }}{{ name }}</a>
+{%- endmacro %}
+
+{% macro score(f) -%}
+{%- if f.home_goals is none -%}v
+{%- elif f.home_goals_after_extra_time is not none -%}{{ f.home_goals_after_extra_time }}–{{ f.away_goals_after_extra_time }}
+{%- else -%}{{ f.home_goals }}–{{ f.away_goals }}{%- endif -%}
+{%- endmacro %}
+
+{% macro result(f, teams, season=None) -%}
+<div class="result"><span class="h">{{ team(f.home_uid, teams, season, True) }}</span><a class="score" href="{{ url_for('world.match', fixture_id=f.id) }}">{{ score(f) }}</a><span>{{ team(f.away_uid, teams, season) }}</span>
+{%- if caller is defined %}<div class="meta">{{ caller() }}</div>{% endif %}</div>
+{%- endmacro %}
+
+{% macro trophy_card(card, competitions, teams, silver=False) -%}
+<div class="trophy">{% if card.count > 1 %}<span class="count"{% if silver %} style="background:var(--silver)"{% endif %}>×{{ card.count }}</span>{% endif %}
+  {% if trophy_url(card.competition_uid) %}<img src="{{ trophy_url(card.competition_uid) }}" alt="">{% else %}<div class="ph">{{ '🥈' if silver else '🏆' }}</div>{% endif %}
+  <div class="name">{{ competitions.get(card.competition_uid, {}).get('short_name', 'Unknown') }}</div>
+  <div class="when" title="{{ card.seasons|join(', ') }}">{{ card.seasons[0] }}{% if card.count > 1 %} – {{ card.seasons[-1] }}{% endif %}</div>
+  <div class="when">{% for t in card.teams %}{{ teams.get(t, {}).get('name', '') }}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+</div>
+{%- endmacro %}
+
+{% macro standings(table, teams, season=None, highlight=None) -%}
+<table><tr><th class="n">#</th><th>Team</th><th class="n">P</th><th class="n">W</th><th class="n">D</th><th class="n">L</th><th class="n">GD</th><th class="n">Pts</th><th>Form</th></tr>
+  {% for r in table %}<tr class="{{ 'hl' if highlight and r.team_uid == highlight }} {{ ('zone-' ~ r.went) if r.went is defined }}"><td class="n">{{ r.position }}</td><td>{{ team(r.team_uid, teams, season) }}</td><td class="n">{{ r.played }}</td><td class="n">{{ r.won }}</td><td class="n">{{ r.drawn }}</td><td class="n">{{ r.lost }}</td>
+    <td class="n">{{ '%+d' % r.difference }}</td><td class="n"><b>{{ r.points }}</b></td><td class="form">{% for x in r.form %}<span class="{{ x }}">{{ x }}</span>{% endfor %}</td></tr>{% endfor %}</table>
+{%- endmacro %}
+
+{% macro mini_table(table, teams, limit=10, highlight=(), season=None) -%}
+<table class="mini-table"><tr><th class="n">#</th><th>Team</th><th class="n">P</th><th class="n">W</th><th class="n">D</th><th class="n">L</th><th class="n">GD</th><th class="n">Pts</th><th class="form-col">Form</th></tr>
+  {% for r in table[:limit] %}<tr class="{{ 'hl' if r.team_uid in highlight }} {{ ('zone-' ~ r.went) if r.went is defined }}"><td class="n">{{ r.position }}</td><td>{{ team(r.team_uid, teams, season) }}</td>
+    <td class="n">{{ r.played }}</td><td class="n">{{ r.won }}</td><td class="n">{{ r.drawn }}</td><td class="n">{{ r.lost }}</td><td class="n">{{ '%+d' % r.difference }}</td>
+    <td class="n"><b>{{ r.points }}</b></td><td class="form form-col">{% for x in r.form %}<span class="{{ x }}"></span>{% endfor %}</td></tr>{% endfor %}</table>
+{%- endmacro %}
+
+{% macro mini_result(f, teams) -%}
+<a class="mini-result" href="{{ url_for('world.match', fixture_id=f.id) }}"><span class="h">{{ teams.get(f.home_uid, {}).get('name', '—') }}</span>
+  <b>{{ score(f) }}</b><span>{{ teams.get(f.away_uid, {}).get('name', '—') }}</span></a>
+{%- endmacro %}
+
+{% macro story_block(title, story, sections, action, button) -%}
+<h2>{{ title }}{% if story %} <small>{% if story.source == 'old_archive' %}from the old archive{% else %}written from the save of {{ story.game_date.strftime('%-d %B %Y') if story.game_date else 'an unknown date' }}{% endif %}</small>{% endif %}</h2>
+<div class="actions"><form class="inline" method="post" action="{{ action }}" data-ai="Writing {{ title|lower }}">{{ voice_select() }} <button class="btn" type="submit">{{ button }}</button></form></div>
+{% if sections %}<div class="card story" style="margin-top:10px">{% for section in sections %}{% if section.heading %}<h3>{{ section.heading }}</h3>{% endif %}
+  {% for paragraph in section.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}{% endfor %}</div>{% endif %}
+{%- endmacro %}
+
+{% macro chapters_block(chapters) -%}
+{% if chapters %}<h2>Diary <small>{{ chapters|length }} chapters from the old archive</small></h2>
+{% for c in chapters %}<details class="card story" style="margin-bottom:10px"><summary><b>{{ c.heading or 'Chapter ' ~ c.sequence }}</b>
+  <span class="muted">{% if c.covers_from %}{{ c.covers_from }}{% endif %}{% if c.covers_to %} – {{ c.covers_to }}{% endif %}</span></summary>
+  {% for paragraph in c.body.split('\n\n') if paragraph.strip() %}<p>{{ paragraph }}</p>{% endfor %}</details>{% endfor %}{% endif %}
+{%- endmacro %}
+
+{% macro gallery(pictures, back) -%}
+{% if pictures %}<div class="gallery">{% for p in pictures %}<figure><img src="{{ p.url }}" alt="{{ p.alt_text or p.caption or '' }}" loading="lazy">
+  <figcaption>{{ p.caption or '' }}<form class="inline" method="post" action="{{ url_for('world.hide_world_image', image_id=p.id) }}">
+  <input type="hidden" name="back" value="{{ back }}"><button class="link" type="submit" title="Remove from the pages">remove</button></form></figcaption></figure>{% endfor %}</div>{% endif %}
+{%- endmacro %}
+
+{% macro upload(entity, uid, kinds) -%}
+<details class="upload"><summary class="muted">Add a picture</summary>
+<form method="post" enctype="multipart/form-data" action="{{ url_for('world.add_world_image', entity=entity, uid=uid) }}">
+  <select name="kind">{% for value, label in kinds %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+  <input type="file" name="image" accept=".png,.jpg,.jpeg,.webp" required> <input type="text" name="caption" placeholder="Caption (optional)">
+  <button class="btn" type="submit">Upload</button></form></details>
+{%- endmacro %}
+
+{# A row of tabs; each item is (id, label, note). The panels are elements with class "tab-panel" and the item's id. #}
+{% macro tabs(items) -%}
+<nav class="tabs" role="tablist">{% for id, label, note in items %}<a href="#{{ id }}" role="tab" data-tab="{{ id }}">{{ label }}{% if note %} <span class="tab-note">{{ note }}</span>{% endif %}</a>{% endfor %}</nav>
+{%- endmacro %}
+
+{# The crumbs: a list of (label, path); the last item is the page itself, plus any extra label. #}
+{% macro trail(items, here=None) -%}
+<div class="crumbs">{% for label, path in items %}{% if path and (here or not loop.last) %}<a href="{{ path }}">{{ label }}</a>{% else %}{{ label }}{% endif %}{% if here or not loop.last %} › {% endif %}{% endfor %}{% if here %}{{ here }}{% endif %}</div>
+{%- endmacro %}
+
+{# One knockout tie: both teams with the aggregate, the winner in bold, then each leg (a link to the match) and penalties. #}
+{% macro tie_box(tie, teams) -%}
+<div class="tie" data-href="{{ url_for('world.match', fixture_id=tie.legs[-1].id) }}" title="Open the {{ 'deciding leg' if tie.legs|length > 1 else 'match' }}">{% for side in (0, 1) %}{% set uid = tie.teams[side] %}
+  <div class="tie-team {{ 'won' if tie.winner == uid }} {{ 'lost' if tie.winner and tie.winner != uid }}">{{ team(uid, teams) }}<b>{{ tie.aggregate[side] if tie.played else '' }}</b></div>{% endfor %}
+  <div class="tie-legs">{% for f in tie.legs %}<a class="leg" href="{{ url_for('world.match', fixture_id=f.id) }}">{{ ('1st leg' if loop.first else '2nd leg' if loop.index == 2 else 'replay') if tie.legs|length > 1 else 'Match' }}
+    <b>{% if f.home_goals is not none %}{{ score(f) }}{% else %}{{ f.date }}{% endif %}</b> ›</a>{% endfor %}
+    {% if tie.penalties %}<span class="pens">{{ tie.penalties[0] }}–{{ tie.penalties[1] }} on penalties</span>{% endif %}</div>
+</div>
+{%- endmacro %}
+
+{# A season's stories as a newspaper: the season story is the front-page lead, the diary chapters are the dated reports. #}
+{% macro chronicle(masthead, season_label, story, sections, chapters, action, button, ai_title, versions=()) -%}
+<div class="actions chronicle-actions"><form class="inline" method="post" action="{{ action }}" data-ai="Writing {{ ai_title }}">{{ voice_select() }} <button class="btn" type="submit">{{ button }}</button></form>
+  {% if story %}<span class="muted">{% if story.source == 'old_archive' %}The lead story is from the old archive{% else %}The lead story was written from the save of {{ story.game_date.strftime('%-d %B %Y') if story.game_date else 'an unknown date' }}{% endif %}</span>{% endif %}</div>
+{% if sections or chapters %}
+{% set dated = chapters|selectattr('covers_from')|list %}
+<div class="ws-paper chronicle">
+  <header class="ws-masthead">
+    <div class="ws-masthead-top"><span>The season in print</span><span>{{ chapters|length }} {{ 'report' if chapters|length == 1 else 'reports' }}{{ ' and the season story' if sections }}</span><span>{{ season_label }}</span></div>
+    <h1>{{ masthead|upper }}</h1>
+    <div class="ws-date-rule"><span>{{ season_label }}</span>{% if dated %}<span>{{ dated[0].covers_from.strftime('%-d %B %Y') }} – {{ (dated|map(attribute='covers_to')|select|list|max or dated[-1].covers_from).strftime('%-d %B %Y') }}</span>{% endif %}</div>
+  </header>
+  <section class="ws-front-grid">
+  {% if sections %}{% set headline = sections[0].heading %}
+    <article class="ws-story ws-story-lead">
+      <p class="ws-section">The season story</p>
+      <h2>{{ headline or season_label ~ ': the season in full' }}</h2>
+      <p class="ws-byline">The archive's correspondent</p>
+      <div class="ws-copy">{% for section in sections %}{% if section.heading and not loop.first %}<h3>{{ section.heading }}</h3>{% endif %}{% for paragraph in section.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}{% endfor %}</div>
+    </article>{% endif %}
+  {% for c in chapters %}{% set paragraphs = c.body.split('\n\n')|map('trim')|select|list %}
+    <article class="ws-story {{ 'ws-story-major' if loop.index <= 2 }}">
+      <p class="ws-section">{{ c.covers_from.strftime('%-d %B %Y') if c.covers_from else 'Chapter ' ~ c.sequence }}{% if c.covers_to and c.covers_to != c.covers_from %} – {{ c.covers_to.strftime('%-d %B') }}{% endif %}</p>
+      <h2>{{ c.heading or 'Chapter ' ~ c.sequence }}</h2>
+      <div class="ws-copy"><p>{{ paragraphs[0] if paragraphs else '' }}</p>
+        {% if paragraphs|length > 1 %}<details class="chronicle-more"><summary>Read on</summary>{% for paragraph in paragraphs[1:] %}<p>{{ paragraph }}</p>{% endfor %}</details>{% endif %}</div>
+    </article>{% endfor %}
+  </section>
+</div>
+{% else %}<div class="card muted">Nothing written about this season yet.</div>{% endif %}
+{{ story_versions(versions) }}
+{%- endmacro %}
+
+{# The earlier texts of a story, each with a button to make it the story again. #}
+{% macro story_versions(versions, what='story') -%}
+{% if versions %}<h2>Earlier versions <small>kept whenever a new {{ what }} replaced one</small></h2>
+<div class="card story-versions">{% for v in versions %}{% set first = v.text.strip().split('\n')[0] %}
+  <details><summary><b>{{ first[:90] }}{{ '…' if first|length > 90 }}</b>
+    <span class="muted">{{ 'from the old archive' if v.source == 'old_archive' else ('your own text, ' if v.source == 'curator' else 'written ') ~ v.written_at.strftime('%-d %B %Y, %H:%M') }} · {{ v.text.split()|length }} words · replaced {{ v.replaced_at.strftime('%-d %B, %H:%M') }}</span></summary>
+    <div class="story">{% for paragraph in v.text.split('\n\n')[:3] if paragraph.strip() %}<p>{{ paragraph }}</p>{% endfor %}<p class="muted">…</p></div>
+    <form class="inline" method="post" action="{{ url_for('world.restore_story_version', version_id=v.id) }}"
+          onsubmit="return confirm('Make this version the {{ what }} again? The current one is kept among the earlier versions.')">
+      <button class="btn" type="submit">Restore this version</button></form></details>{% endfor %}</div>{% endif %}
+{%- endmacro %}
+
+{# The voice a text is written in (writing_voices), chosen at its "Write" button; the default comes from Settings. #}
+{% macro voice_select() -%}
+<select name="voice" class="voice-select" aria-label="The voice it is written in" title="The voice it is written in">
+  {%- set default = default_writing_voice() %}{% for key, label in writing_voices() %}<option value="{{ key }}"{{ ' selected' if key == default }}>{{ label }}</option>{% endfor -%}
+</select>
+{%- endmacro %}
+
+{# Manager spells as the game's "Past managers": the team or the manager, the dates, the length, why it ended,
+   the record and the trophies. Caretakers are dimmed. #}
+{% macro manager_spells(spells, by='person') -%}
+<div class="card"><table class="spells"><tr><th>{{ 'Manager' if by == 'person' else 'Team' }}</th><th>Joined</th><th>Left</th><th class="n">Days</th><th>Why it ended</th>
+  <th class="n">W</th><th class="n">D</th><th class="n">L</th><th class="n">Won %</th><th class="n">Titles</th></tr>
+  {% for s in spells %}<tr class="{{ 'muted' if s.caretaker }}{{ ' hl' if s.current }}">
+    <td>{% if by == 'person' %}{% if s.person_uid %}{{ person(s.person_uid, s.name or '?') }}{% else %}?{% endif %}{% else %}<a href="{{ url_for('world.club', uid=s.team_uid) }}">{{ s.team_name }}</a>{% endif %}</td>
+    <td>{{ s.started or '' }}</td><td>{{ s.ended or ('now' if s.current else '') }}</td><td class="n">{{ s.days if s.days is not none else '' }}</td>
+    <td>{{ s.reason_name }}</td>{% if s.current %}<td class="n" colspan="3"></td>{% else %}<td class="n">{{ s.won }}</td><td class="n">{{ s.drawn }}</td><td class="n">{{ s.lost }}</td>{% endif %}
+    <td class="n">{{ s.win_share if s.win_share is not none else '' }}</td>
+    <td class="n">{% if s.league_wins or s.cup_wins %}{{ s.league_wins or 0 }} league, {{ s.cup_wins or 0 }} cup{% endif %}</td></tr>{% endfor %}</table></div>
+{%- endmacro %}
+
+
+{# A team on an upright pitch (attack at the top): each player at his x, y (world_queries.pitch_places) with his face or his
+   shirt number, his name and a line under it (b.meta). #}
+{% macro team_pitch(players, small=False) -%}
+<div class="pitch{{ ' pitch-sheet' if small }}">
+  <svg class="pitch-lines" viewBox="0 0 68 105" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="1" y="1" width="66" height="103"/><line x1="1" y1="52.5" x2="67" y2="52.5"/><circle cx="34" cy="52.5" r="9.15"/>
+    <rect x="13.85" y="1" width="40.3" height="16.5"/><rect x="24.85" y="1" width="18.3" height="5.5"/>
+    <rect x="13.85" y="87.5" width="40.3" height="16.5"/><rect x="24.85" y="98.5" width="18.3" height="5.5"/>
+  </svg>
+  {% for b in players %}<a class="pitch-player" style="left:{{ b.x }}%;top:{{ b.y }}%" href="{{ url_for('world.person', uid=b.person_uid) if b.person_uid else '#' }}">
+    {% set face = face_url(b.person_uid) if b.person_uid else None %}
+    {% if face %}<img src="{{ face }}" alt="">{% else %}<span class="pitch-dot">{{ b.shirt_number or (b.name or '?')[:1] }}</span>{% endif %}
+    {% set parts = (b.name or 'unknown').split(' ', 1) %}
+    <span class="pitch-name">{% if b.shirt_number and face %}<b class="pitch-shirt">{{ b.shirt_number }}</b> {% endif %}{{ (parts[0][:1] ~ '. ' ~ parts[1]) if small and parts|length > 1 else (b.name or 'unknown') }}</span>
+    {% if b.meta %}<span class="pitch-meta">{{ b.meta }}</span>{% endif %}</a>{% endfor %}
+</div>
+{%- endmacro %}
+
+
+{# A manager's coaching profile from the save (world_queries.manager_profile). #}
+{% macro manager_card(profile) -%}
+<div class="manager-card">
+  <div class="manager-style">{% if profile.tactical_style %}<span class="pill green">{{ profile.tactical_style }}</span> {% endif %}
+    <span class="pill">{{ profile.coaching_style }} coach</span>
+    {% if profile.preferred_formation %} <span class="pill">prefers {{ profile.preferred_formation }}</span>{% endif %}
+    {% for f in profile.other_formations %} <span class="pill">also {{ f }}</span>{% endfor %}</div>
+  <table class="style-table">{% for name, value in profile.coaching.items() %}<tr><td>{{ name.replace('_', ' ')|capitalize }}</td><td class="n"><b>{{ value }}</b></td></tr>{% endfor %}
+    <tr><td>Working with youngsters</td><td class="n"><b>{{ profile.working_with_youngsters }}</b></td></tr></table>
+</div>
+{%- endmacro %}
+
+{# The game's own record of the human club's pairs (tactics.game_partnerships). #}
+{% macro game_partnerships(pairs, limit=8) -%}
+<table class="style-table"><tr><th>Pair</th><th class="n">Games</th><th class="n">Average rating</th><th class="n">Goals</th></tr>
+  {% for p in pairs if not p.departed and p.games > 1 %}{% if loop.index <= limit %}<tr><td>{{ person(p.players[0], p.names[0]) }} and {{ person(p.players[1], p.names[1]) }}</td>
+    <td class="n">{{ p.games }}</td><td class="n"><b>{{ '%.2f' % p.average_rating }}</b></td><td class="n">{{ p.goals_for }}-{{ p.goals_against }}</td></tr>{% endif %}{% endfor %}</table>
+{% set broken = pairs|selectattr('departed')|selectattr('games', 'ge', 5)|list %}
+{% if broken %}<p class="note">Broken up by a move: {% for p in broken[:5] %}{{ p.names[0] }} and {{ p.names[1] }} ({{ p.games }} games, {{ '%.2f' % p.average_rating }}){{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+{%- endmacro %}
+{% macro morale_chip(mood) -%}
+{%- if mood and mood.morale %}<span class="rating-chip {{ {'good': 'hi', 'low': 'lo'}.get(mood.morale_tone, '') }}" title="Morale {{ mood.morale }} of 20">{{ mood.morale_word }}</span>{% endif -%}
+{%- endmacro %}
+{% macro concern_pills(concerns) -%}
+{%- for c in concerns %} {% if c.code_key == (19, 808) %}<span class="pill" title="Since {{ c.started|day_month if c.started }}">backs {{ c.about_name or 'a team-mate' }}</span>
+{%- else %}<span class="pill {{ 'red' if c.told_team_mates }}" title="Since {{ c.started|day_month if c.started }}{{ ', told his team-mates' if c.told_team_mates }}">{{ c.text }}</span>{% endif %}{% endfor -%}
+{%- endmacro %}

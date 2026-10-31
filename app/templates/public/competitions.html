@@ -1,0 +1,10 @@
+{% extends "public/base.html" %}
+{% block title %}Competitions · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">Competitions</h1>
+{% for group in groups %}<section class="continent"><h2>{{ group.continent }}</h2>
+  {% if group.international %}<div class="country" style="margin-bottom:18px">{% for r in group.international %}<a href="{{ competition_url(r.fm_uid, r.name) }}">{{ r.name }} {% if r.seasons %}<small>· {{ r.seasons }} seasons</small>{% endif %}</a>{% endfor %}</div>{% endif %}
+  <div class="countries">{% for country in group.countries %}<div class="country"><h3>{{ country.name }}</h3>
+    {% for r in country.leagues + country.cups %}<a href="{{ competition_url(r.fm_uid, r.name) }}">{{ r.name }} {% if r.seasons %}<small>· {{ r.seasons }}</small>{% endif %}</a>{% endfor %}</div>{% endfor %}</div>
+</section>{% endfor %}
+{% endblock %}

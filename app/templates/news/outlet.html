@@ -1,0 +1,8 @@
+{% extends "world/base.html" %}
+{% block title %}{{ outlet.name }}{% endblock %}
+{% block content %}
+<div class="ws-paper">
+    {% set issue = none %}{% include "news/_masthead.html" %}
+    <div class="ws-no-stories">{{ outlet.name }} has not published an edition yet. Its drafts wait on the <a href="{{ url_for('news.desk') }}">desk</a>.</div>
+</div>
+{% endblock %}

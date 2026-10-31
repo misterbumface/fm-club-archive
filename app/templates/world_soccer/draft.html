@@ -1,0 +1,26 @@
+{% extends "world/base.html" %}
+{% block title %}Draft · {{ outlet.name }}{% endblock %}
+{% block body %}
+<div class="crumbs"><a href="{{ url_for('world_soccer.leads') }}">Story leads</a> › Draft for {{ outlet.name }}</div>
+<article class="draft">
+  <div class="kicker">{{ outlet.name }} · {{ prominence }} · {{ published.strftime('%-d %B %Y') }}</div>
+  {% if error %}
+    <h1>No draft</h1>
+    <p class="flash error">{{ error }}</p>
+  {% else %}
+    <h1>{{ article.headline }}</h1>
+    {% if article.standfirst %}<p class="standfirst">{{ article.standfirst }}</p>{% endif %}
+    <p class="note">By {{ article.byline }} · written by {{ article.model }}</p>
+    <div class="body">{% for part in article.body.split('\n\n') %}{% set text = part.strip() %}{% if text %}{% if text|length < 70 and not text.endswith('.') and '\n' not in text %}<h4>{{ text }}</h4>{% else %}<p>{{ text }}</p>{% endif %}{% endif %}{% endfor %}</div>
+  {% endif %}
+  <form class="lead-write" method="post" action="{{ url_for('world_soccer.write_lead') }}" style="margin-top:20px">
+    <input type="hidden" name="lead" value="{{ lead_json }}">
+    <input type="hidden" name="published" value="{{ published.isoformat() }}">
+    <input type="hidden" name="outlet_id" value="{{ outlet.id }}">
+    <select name="prominence" aria-label="Length">{% for key in prominences %}<option value="{{ key }}" {{ 'selected' if key == prominence }}>{{ key }}</option>{% endfor %}</select>
+    <button class="btn primary" type="submit">Write again</button>
+  </form>
+  <p class="note" style="margin-top:18px">The lead: {{ lead.headline }}</p>
+  {% if notebook %}<details><summary class="note">The notebook the writer had</summary><pre>{{ notebook }}</pre></details>{% endif %}
+</article>
+{% endblock %}

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FM Club Archive</title>
+<style>
+  :root { --bg: #151515; --surface: #1f1f1f; --line: #333; --ink: #e8e4da; --muted: #9a958a; --accent: #d9a441; --green: #4caf70; --red: #d9655b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, "Helvetica Neue", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 28px 64px; }
+  h1 { font: 600 34px/1.15 Georgia, "Times New Roman", serif; margin: 0 0 6px; }
+  h1 span { color: var(--accent); }
+  h2 { font: 600 20px Georgia, serif; margin: 34px 0 12px; }
+  p.lead { color: var(--muted); margin: 0 0 28px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  .archive { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .archive:first-child { border-top: 0; padding-top: 0; }
+  .archive small { display: block; color: var(--muted); font-size: 12px; word-break: break-all; }
+  .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  button { font: inherit; border-radius: 8px; border: 1px solid var(--line); background: #2a2a2a; color: var(--ink); padding: 8px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1a1a; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  label { display: grid; gap: 6px; margin: 16px 0 0; font-weight: 600; }
+  label small { font-weight: 400; color: var(--muted); }
+  input, select { width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; }
+  .row { display: flex; gap: 8px; } .row input { flex: 1; min-width: 0; }
+  .found { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .found b.yes { color: var(--green); font-weight: 600; } .found b.no { color: var(--red); font-weight: 600; }
+  .error { color: var(--red); margin-top: 14px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <section id="welcome">
+    <h1>FM Club <span>Archive</span></h1>
+    <p class="lead">One archive for each game: its world, its papers and stories, built from its saves.</p>
+    <div id="list-card" class="card" hidden><div id="list"></div></div>
+    <div class="actions">
+      <button class="primary" onclick="show('create')">New archive</button>
+      <button onclick="openFolder()">Open an archive folder…</button>
+    </div>
+    <p class="found" id="version"></p>
+  </section>
+
+  <section id="create" hidden>
+    <h1>A new <span>archive</span></h1>
+    <p class="lead">For one game. The archive reads its saves from the game folder; nothing in the game is changed.</p>
+    <div class="card">
+      <label>Name <small>the game, as you call it: "Barcelona 2024"</small>
+        <input id="name" placeholder="Barcelona 2024"></label>
+      <label>Game folder <small>FM's own folder, with games/ and graphics/ (the game's preferences show where)</small>
+        <span class="row"><input id="fm_user_dir"><button onclick="choose('fm_user_dir')">Choose…</button></span>
+        <span class="found" id="fm_found"></span></label>
+      <label>Installed game <small>for the names of competitions, nations and awards</small>
+        <span class="row"><input id="game_dir"><button onclick="choose('game_dir')">Choose…</button></span>
+        <span class="found" id="game_found"></span></label>
+      <label>The save <small>this game's save; copies saved under a longer name belong to the archive too</small>
+        <select id="save_file"><option value="">Choose the game folder first</option></select></label>
+      <p class="error" id="error" hidden></p>
+      <div class="actions">
+        <button class="primary" id="go" onclick="createArchive()" disabled>Create and import</button>
+        <button onclick="show('welcome')">Back</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const api = () => window.pywebview.api;
+const $ = (id) => document.getElementById(id);
+
+function show(section) {
+  for (const id of ['welcome', 'create']) $(id).hidden = id !== section;
+}
+
+async function listArchives() {
+  const archives = await api().archives();
+  $('list-card').hidden = !archives.length;
+  $('list').innerHTML = '';
+  for (const archive of archives) {
+    const row = document.createElement('div');
+    row.className = 'archive';
+    row.innerHTML = `<div><b></b><small></small></div><button>Open</button>`;
+    row.querySelector('b').textContent = archive.name;
+    row.querySelector('small').textContent = archive.path;
+    row.querySelector('button').onclick = () => api().open_archive(archive.path);
+    $('list').appendChild(row);
+  }
+}
+
+async function openFolder() {
+  const folder = await api().choose_folder('');
+  if (folder) api().open_archive(folder);
+}
+
+async function choose(field) {
+  const folder = await api().choose_folder($(field).value);
+  if (folder) { $(field).value = folder; await check(); }
+}
+
+async function check() {
+  const fm = $('fm_user_dir').value.trim();
+  const found = fm ? await api().inspect_game_folder(fm) : null;
+  const mark = (ok) => `<b class="${ok ? 'yes' : 'no'}">${ok ? '✓' : '✗'}</b>`;
+  $('fm_found').innerHTML = found ? `${mark(found.ok)} ${found.saves.length} saves · ${mark(found.faces)} faces · ${mark(found.logos)} logos · ${mark(found.stadiums)} stadiums` : '';
+  const select = $('save_file');
+  const chosen = select.value;
+  select.innerHTML = found && found.saves.length ? '<option value="">Choose the save</option>' : '<option value="">No saves in that folder</option>';
+  for (const name of (found ? found.saves : [])) {
+    const option = document.createElement('option');
+    option.textContent = name; option.selected = name === chosen;
+    select.appendChild(option);
+  }
+  const game = $('game_dir').value.trim();
+  const gameOk = game ? await api().inspect_game(game) : false;
+  $('game_found').innerHTML = game ? `${mark(gameOk)} ${gameOk ? 'the game\'s database is there' : 'no game database there'}` : '';
+  ready();
+}
+
+function ready() {
+  $('go').disabled = !($('name').value.trim() && $('fm_user_dir').value.trim() && $('save_file').value);
+}
+
+async function createArchive() {
+  $('go').disabled = true; $('error').hidden = true;
+  $('go').textContent = 'Creating…';
+  const result = await api().create_archive($('name').value, $('fm_user_dir').value.trim(), $('game_dir').value.trim(), $('save_file').value);
+  if (result && result.error) {
+    $('error').textContent = result.error; $('error').hidden = false;
+    $('go').textContent = 'Create and import'; ready();
+  }
+}
+
+window.addEventListener('pywebviewready', async () => {
+  $('version').textContent = 'Version ' + await api().version();
+  await listArchives();
+  const suggested = await api().suggestions();
+  $('fm_user_dir').value = suggested.fm_user_dir;
+  $('game_dir').value = suggested.game_dir;
+  await check();
+  for (const id of ['name', 'save_file']) $(id).addEventListener('input', ready);
+  $('fm_user_dir').addEventListener('change', check);
+  $('game_dir').addEventListener('change', check);
+});
+</script>
+</body>
+</html>

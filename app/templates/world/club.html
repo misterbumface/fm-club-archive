@@ -1,0 +1,200 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% block title %}{{ team.name }}{% endblock %}
+{% block body %}
+{{ m.trail(crumbs('team', team.fm_uid)) }}
+<div class="hero">{% if crest_url(team) %}<img class="crest" src="{{ crest_url(team) }}" alt="">{% endif %}<div>
+  <h1>{{ team.name }}</h1>
+  <div class="sub">{% if seasons %}{{ competitions.get(seasons[0].league_uid, {}).get('name', '') }} · {% endif %}FM uid {{ team.fm_uid }}</div>
+  <div class="facts"><div class="fact"><b>{{ honours|sum(attribute='count') }}</b><span>trophies</span></div>
+    <div class="fact"><b>{{ players }}</b><span>players used since 2022</span></div>
+    {% if seasons %}<div class="fact"><b>{{ seasons|length }}</b><span>seasons</span></div>{% endif %}</div>
+  <div class="seasons">{% for s in seasons[:14] %}<a href="{{ url_for('world.club_season', uid=team.fm_uid, season=s.season) }}">{{ s.season|season }}</a>{% endfor %}</div>
+</div></div>
+{% macro last_season(p) -%}
+{%- if p.last_season %}{{ p.last_season.season_start|season }} · {{ teams.get(p.last_season.team_uid, {}).get('name', '') }} · {{ p.last_season.games }} games, {{ p.last_season.goals }} goals{% endif -%}
+{%- endmacro %}
+{% set club_pictures = world_pictures('club:' ~ team.fm_uid, ('photograph', 'matchday')) %}
+{% set social = club_social(team.club_uid or team.fm_uid) %}
+{% set ns = namespace(players=0) %}{% for group in squad.teams %}{% set ns.players = ns.players + group.players|length %}{% endfor %}
+{{ m.tabs([('overview', 'Overview', None), ('squad', 'Squad', ns.players or None), ('history', 'History', seasons|length ~ ' seasons' if seasons else None),
+           ('staff', 'Staff', staff|sum(attribute='people', start=[])|length or None),
+           ('relations', 'Relationships', None), ('finances', 'Finances', money.now.bank|cash if money else None),
+           ('pictures', 'Pictures', club_pictures|length or None)] + ([('social', 'Social', None)] if social.posts or social.fans else [])) }}
+
+<section class="tab-panel" id="overview">
+{% if now %}{% set ns_mine = (now.table|selectattr('team_uid', 'equalto', team.fm_uid)|list) %}
+<div class="season-front">
+<div class="season-main">
+  <h2>{{ now.season|season }} so far {% if now.form %}<span class="form season-form">{% for x in now.form %}<span class="{{ x }}">{{ x }}</span>{% endfor %}</span>{% endif %}
+    <small><a href="{{ url_for('world.club_season', uid=team.fm_uid, season=now.season) }}">the season page</a></small></h2>
+  <div class="card">{% for f in now.recent %}{% call m.result(f, teams, now.season) %}{{ f.date|day_month }} · {{ m.comp(f.competition_uid, competitions, short=True) }} · <span class="form"><span class="{{ f.result }}">{{ f.result }}</span></span>{% endcall %}
+    {% else %}<div class="muted">No games played yet.</div>{% endfor %}</div>
+  {% if now.upcoming %}<h2>Coming up</h2>
+  <div class="card">{% for f in now.upcoming %}{% call m.result(f, teams, now.season) %}{{ f.date|day_month }} · {{ m.comp(f.competition_uid, competitions, short=True) }}{% endcall %}{% endfor %}</div>{% endif %}
+</div>
+<aside class="season-side">
+  {% if now.table_around and ns_mine %}<h2>League <span class="pill {{ 'gold' if ns_mine[0].position == 1 }}">{{ ns_mine[0].position }} of {{ now.table|length }}</span></h2>
+  <div class="card">{{ m.mini_table(now.table_around, teams, limit=10, highlight=(team.fm_uid,), season=now.season) }}</div>{% endif %}
+  {% if injured %}<h2>Injured</h2><div class="card">{% for uid, i in injured.items() %}{% set who = (squad.teams|map(attribute='players')|sum(start=[])|selectattr('uid', 'equalto', uid)|first) %}
+    {% if who %}<div class="season-honour">{{ m.person(uid, who.name) }} <span class="muted">{{ i.injury }}, back about {{ i.back_on|day_month }}</span></div>{% endif %}{% endfor %}</div>{% endif %}
+</aside>
+</div>
+
+{% if now.likely or now.last_sheet %}<h2>How they line up {% if now.how %}<small>{% for shape, n in now.how.shapes %}{{ shape }} ({{ n }} of {{ now.how.games }}){{ ', ' if not loop.last }}{% endfor %} this season</small>{% endif %}</h2>
+<div class="match-sides team-sheets">
+  {% if now.likely %}<section class="card"><h3>Likely eleven <span class="muted" style="font: 13px var(--sans)">{{ now.likely.shape }} · without the injured</span></h3>
+    {{ m.team_pitch(now.likely_pitch, small=True) }}
+    {% if now.likely.regulars_out %}<h4>Regulars out</h4><ul class="sheet-list">{% for x in now.likely.regulars_out %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}</section>{% endif %}
+  {% if now.last_sheet %}<section class="card"><h3>Last team sheet <span class="muted" style="font: 13px var(--sans)">{{ now.last_sheet.shape }} ·
+      <a href="{{ url_for('world.match', fixture_id=now.last.id) }}">{{ teams.get(now.last.home_uid, {}).get('name', '') }} {{ m.score(now.last) }} {{ teams.get(now.last.away_uid, {}).get('name', '') }}</a>, {{ now.last.date|day_month }}</span></h3>
+    {{ m.team_pitch(now.last_sheet.pitch, small=True) }}
+    {% if now.last_sheet.notes %}<h4>Talking points</h4><ul class="sheet-list">{% for n in now.last_sheet.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}</section>{% endif %}
+</div>
+{% if now.manager or now.game_partnerships %}<div class="season-front" style="margin-top:14px">
+  {% if now.manager %}<div class="season-main"><h3>The manager: {{ m.person(now.manager.fm_uid, now.manager.name) }}
+      {% if now.manager.staff_since %}<small class="muted">since {{ now.manager.staff_since|month_year }}</small>{% endif %}</h3>
+    {% if now.manager.profile %}<div class="card">{{ m.manager_card(now.manager.profile) }}</div>{% endif %}</div>{% endif %}
+  {% if now.game_partnerships %}<aside class="season-side"><h3>Partnerships <small class="muted">the game's own record</small></h3>
+    <div class="card">{{ m.game_partnerships(now.game_partnerships) }}</div></aside>{% endif %}
+</div>{% endif %}
+{% if now.how and now.how.labels %}<div class="style-labels" style="margin-top:12px">{% for label in now.how.labels %}<span class="pill green">{{ label }}</span> {% endfor %}
+  <a class="note" href="{{ url_for('world.club_season', uid=team.fm_uid, season=now.season) }}">How they play ›</a></div>{% endif %}
+{% endif %}
+{% endif %}
+
+{% set news_ref = 'club:' ~ team.fm_uid %}{% include "news/_in_the_news.html" %}
+{% if honours %}<h2>Honours</h2>
+<div class="cabinet">{% for h in honours %}<div class="trophy"><span class="count">×{{ h.count }}</span>
+  {% if trophy_url(h.competition_uid) %}<img src="{{ trophy_url(h.competition_uid) }}" alt="">{% else %}<div class="ph">🏆</div>{% endif %}
+  <div class="name">{{ m.comp(h.competition_uid, competitions, short=True) }}</div><div class="when" title="{{ h.seasons|join(', ') }}">last {{ h.seasons[-1] }}</div></div>{% endfor %}</div>{% endif %}
+
+{% set stadium = world_pictures('club:' ~ team.fm_uid, ('stadium',)) %}
+{% if stadium %}<figure class="stadium"><img src="{{ stadium[0].url }}" alt="{{ stadium[0].caption or team.name ~ ' stadium' }}">{% if stadium[0].caption %}<figcaption>{{ stadium[0].caption }}</figcaption>{% endif %}</figure>
+{% elif stadium_url(team.fm_uid) %}<figure class="stadium"><img src="{{ stadium_url(team.fm_uid) }}" alt="{{ team.name }} stadium"></figure>{% endif %}
+<h2 id="about">About the club</h2>
+<div class="actions"><form class="inline" method="post" action="{{ url_for('world.write_club_text', uid=team.fm_uid) }}" data-ai="Writing the club's history">
+  <button class="btn" type="submit">{{ 'New club history' if about_summary or about_sections else 'Write club history' }}</button></form>
+  {% if club_text and (about_summary or about_sections) %}<span class="muted">{% if club_text.source == 'generated' %}Written by {{ model_label(club_text.model) }} on {{ club_text.written_at.strftime('%-d %B %Y') }}{% else %}Your own text{% endif %}</span>{% endif %}</div>
+{% if about_summary or about_sections %}
+<div class="card story about-club">
+  {% for paragraph in about_summary %}<p class="about-summary">{{ paragraph }}</p>{% endfor %}
+  {% for section in about_sections %}{% if section.heading %}<h3>{{ section.heading }}</h3>{% endif %}{% for paragraph in section.paragraphs %}<p>{{ paragraph }}</p>{% endfor %}{% endfor %}
+</div>
+{% else %}<div class="card muted">Nothing written about this club yet.</div>{% endif %}
+{{ m.story_versions(club_versions, 'club history') }}
+</section>
+
+<section class="tab-panel" id="squad">
+{% if squad.teams or squad.out_on_loan %}
+<h2>Squad <small>at the game date, {{ squad.today.strftime('%-d %B %Y') if squad.today else '' }}</small></h2>
+{% for group in squad.teams %}<div class="card" style="margin-bottom:14px"><h3>{{ group.team.name }} <span class="muted" style="font: 13px var(--sans)">{{ group.players|length }} players</span></h3>
+  {% set first = now and group.team.fm_uid == team.fm_uid %}
+  <table><tr><th>Player</th><th class="n">Age</th><th>Nationality</th><th>Position</th>{% if moods %}<th>Morale</th>{% endif %}{% if first %}<th title="The slot he has started in most this season">Plays</th>
+    <th class="n">Games</th><th class="n">Goals</th><th class="n">Rating</th><th>Last five</th>{% else %}<th>Last league season</th>{% endif %}</tr>
+  {% for p in group.players %}<tr><td>{{ m.person(p.uid, p.name) }}{% if injured.get(p.uid) %}{% set i = injured[p.uid] %} <a class="pill red" href="{{ url_for('world.person', uid=p.uid) }}#injuries"
+      title="{{ i.injury|injury_name }} since {{ i.injured_on.strftime('%-d %B') if i.injured_on else '' }}">injured, back about {{ i.back_on|day_month }}</a>{% endif %}{% if p.on_loan_from %} <span class="pill">on loan from {{ teams.get(p.on_loan_from, {}).get('name', '') }}</span>{% endif %}{{ m.concern_pills(moods.get(p.uid, {}).get('open', [])) }}</td>
+    <td class="n">{{ p.age or '' }}</td><td>{{ p.nationality or '' }}</td><td>{{ p.position or '' }}</td>{% if moods %}<td>{{ m.morale_chip(moods.get(p.uid)) }}</td>{% endif %}
+    {% if first %}{% set f = now.player_form.get(p.uid, {}) %}{% set n = now.numbers.get(p.uid, {}) %}
+    <td>{{ f.slot or '' }}</td><td class="n">{{ n.apps or '' }}</td><td class="n">{{ n.goals or '' }}</td><td class="n">{{ '%.2f' % n.rating if n.rating else '' }}</td>
+    <td>{% for r in f.ratings or [] %}<span class="rating-chip {{ 'hi' if r >= 7.5 else 'lo' if r < 6.5 else '' }}">{{ r }}</span>{% endfor %}</td>
+    {% else %}<td class="muted">{{ last_season(p) }}</td>{% endif %}</tr>{% endfor %}</table></div>
+{% if loop.first and dressing_room %}<div class="card" style="margin-bottom:14px"><h3>Dressing room <span class="muted" style="font: 13px var(--sans)">the game's social groups</span></h3>
+  {% for side in dressing_room.sides %}<p class="dressing-side"><b>{{ m.person(side.uid, side.name) }}</b>{% if side.own %}: {{ side.own_words }}{% if side.own|selectattr('told_team_mates')|list %}, and he has told his team-mates{% endif %}{% endif %}.
+    {{ side.backers|length }} team-mate{{ 's think' if side.backers|length > 1 else ' thinks' }} he has been treated unfairly:
+    {% for b in side.backers %}{{ m.person(b.uid, b.name) }}{% if b.same_group %} <span class="muted">(his group)</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}.</p>{% endfor %}
+  <div class="dressing-groups">{% for group in dressing_room.groups %}<div><h4>Group {{ loop.index }}</h4>
+    {% for p in group %}<div class="dressing-member">{{ m.person(p.uid, p.name) }} {{ m.morale_chip(p) }}</div>{% endfor %}</div>{% endfor %}</div></div>{% endif %}{% endfor %}
+{% if squad.out_on_loan %}<div class="card" style="margin-bottom:14px"><h3>Out on loan <span class="muted" style="font: 13px var(--sans)">{{ squad.out_on_loan|length }} players</span></h3>
+  <table><tr><th>Player</th><th class="n">Age</th><th>At</th><th>Since</th><th>Last league season</th></tr>
+  {% for p in squad.out_on_loan %}<tr><td>{{ m.person(p.uid, p.name) }}</td><td class="n">{{ p.age or '' }}</td><td>{{ m.team(p.to_uid, teams) }}</td>
+    <td class="muted">{{ p.date }}</td><td class="muted">{{ last_season(p) }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% endif %}
+{% if not (squad.teams or squad.out_on_loan) %}<h2>Squad</h2><div class="card muted">No squad at the game date.</div>{% endif %}
+</section>
+
+<section class="tab-panel" id="history">
+<h2>Seasons</h2>
+<div class="card"><table><tr><th>Season</th><th>League</th><th class="n">Position</th><th class="n">Points</th><th>Trophies</th><th>Top scorer</th></tr>
+  {% for s in seasons %}<tr{% if s.won %} class="hl"{% endif %}><td><a href="{{ url_for('world.club_season', uid=team.fm_uid, season=s.season) }}">{{ s.season|season }}</a></td>
+    <td>{{ competitions.get(s.league_uid, {}).get('short_name', '') }}</td><td class="n">{{ s.position or '—' }}{% if s.position %} <span class="muted">/ {{ s.teams_in_league }}</span>{% endif %}</td><td class="n">{{ s.points or '' }}</td>
+    <td>{% for c in s.won %}<span class="pill gold">{{ competitions.get(c, {}).get('short_name', '') }}</span> {% endfor %}</td>
+    <td>{% if s.top and s.top.goals %}{{ m.person(s.top.person_uid, s.top.name) }} <span class="muted">{{ s.top.goals }}</span>{% endif %}</td></tr>{% endfor %}</table></div>
+<div class="grid">
+<section><h2>Top scorers <small>league goals since 2022</small></h2><div class="card"><table><tr><th>Player</th><th class="n">Seasons</th><th class="n">Apps</th><th class="n">Goals</th></tr>
+  {% for r in top_scorers %}<tr><td>{{ m.person(r.person_uid, r.name) }}</td><td class="n">{{ r.seasons }}</td><td class="n">{{ r.apps }}</td><td class="n">{{ r.goals }}</td></tr>{% endfor %}</table></div></section>
+<section><h2>Most appearances</h2><div class="card"><table><tr><th>Player</th><th class="n">Seasons</th><th class="n">Apps</th><th class="n">Goals</th></tr>
+  {% for r in most_apps %}<tr><td>{{ m.person(r.person_uid, r.name) }}</td><td class="n">{{ r.seasons }}</td><td class="n">{{ r.apps }}</td><td class="n">{{ r.goals }}</td></tr>{% endfor %}</table></div></section>
+</div>
+</section>
+
+<section class="tab-panel" id="staff">
+{% if managers %}<h2>Managers <small>since the game began; the save keeps no older history</small></h2>
+{{ m.manager_spells(managers) }}{% endif %}
+{% if staff %}{% for group in staff %}<h2>{{ group.department }} <small>{{ group.people|length }}</small></h2>
+<div class="card"><table><tr><th>Name</th><th>Job</th><th class="n">Age</th><th>Since</th><th class="n">A week</th><th>Until</th><th></th></tr>
+  {% for p in group.people %}<tr{% if p.staff_job == 'Manager' %} class="hl"{% endif %}><td>{{ m.person(p.fm_uid, p.name) }}{% if p.nationality %} <span class="muted">{{ p.nationality }}</span>{% endif %}</td>
+    <td>{{ p.staff_job }}{% if p.age_limit %} <span class="muted">· {{ p.team_name }}</span>{% endif %}</td><td class="n">{{ p.age or '' }}</td>
+    <td>{{ p.staff_since|month_year }}</td><td class="n">{{ '£{:,}'.format(p.staff_wage) if p.staff_wage else '' }}</td>
+    <td>{{ p.staff_contract_ends|month_year }}</td>
+    <td class="muted">{% if p.played %}played here {{ p.played.first|season }}{% if p.played.last != p.played.first %}–{{ '%02d' % ((p.played.last + 1) % 100) }}{% endif %}, {{ p.played.games }} league games{% endif %}</td></tr>{% endfor %}</table></div>{% endfor %}
+{% else %}<div class="card muted">The newest save gives this club no staff.</div>{% endif %}
+</section>
+
+<section class="tab-panel" id="relations">
+{% set people_groups = (('Legend', 'Legends', 'Favourites at 100 whom the club keeps for ever'), ('Icon', 'Icons', 'Favourites the club keeps for ever'),
+                        ('Favoured', 'Favoured personnel', 'Favourites who can fade'), ('Disliked', 'Disliked people', '')) %}
+{% for key, title, note in people_groups if relations[key] %}<h2>{{ title }} <small>{{ note }}</small></h2>
+<div class="card"><table class="relations"><tr><th>Name</th><th>Reason</th><th class="n">Level</th></tr>
+  {% for r in relations[key] %}<tr><td>{{ m.person(r.subject_uid, r.name) }}{% if key in ('Favoured', 'Disliked') and r.permanent %} <span class="muted" title="Kept for ever">·&nbsp;permanent</span>{% endif %}</td>
+    <td>{{ r.reason_name }}</td><td class="n">{{ r.level }}</td></tr>{% endfor %}</table></div>{% endfor %}
+{% if relations.Rival %}<h2>Rival clubs</h2>
+<div class="card"><table class="relations"><tr><th>Club</th><th>Reason</th><th class="n">Level</th></tr>
+  {% for r in relations.Rival %}<tr><td><a href="{{ url_for('world.club', uid=r.subject_uid) }}">{{ r.name }}</a></td><td>{{ r.reason_name }}</td><td class="n">{{ r.level }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if not relations.values()|select|list %}<div class="card muted">The newest save gives this club no rivals and no favourite or disliked people.</div>{% endif %}
+</section>
+
+<section class="tab-panel" id="finances">
+{% if money %}{% set now = money.now %}
+<h2>Finances <small>as of {{ now.game_date }}, in pounds</small></h2>
+<div class="facts money-facts">
+  <div class="fact{{ ' bad' if now.bank is not none and now.bank < 0 }}"><b>{{ now.bank|cash }}</b><span>in the bank</span></div>
+  <div class="fact"><b>{{ now.transfer_budget|cash }}</b><span>transfer budget</span></div>
+  <div class="fact"><b>{{ now.wage_budget|cash }}</b><span>wage budget</span></div>
+  <div class="fact"><b>{{ money.yearly_income|cash }}</b><span>a year from sponsors and other income</span></div>
+  <div class="fact{{ ' bad' if money.debt_total }}"><b>{{ money.debt_total|cash }}</b><span>owed{% if money.debts %}, {{ money.monthly_repayments|cash }} a month{% endif %}</span></div>
+</div>
+<div class="grid">
+<section><h2>Income streams</h2>
+{% if money.incomes %}<div class="card"><table><tr><th>Type</th><th class="n">A year</th><th class="n">In all</th><th>Runs</th></tr>
+  {% for i in money.incomes %}<tr><td>{{ i.kind_name }}{% if i.renews %} <span class="muted" title="Renewed when it ends">↻</span>{% endif %}</td>
+    <td class="n">{{ i.yearly|cash }}</td><td class="n">{{ i.total|cash }}</td>
+    <td class="muted">{{ i.starts|month_year }} – {{ i.ends|month_year }}</td></tr>{% endfor %}</table></div>
+{% else %}<div class="card muted">No income streams.</div>{% endif %}</section>
+<section><h2>Debts and loans</h2>
+{% if money.debts %}<div class="card"><table><tr><th>From</th><th class="n">Borrowed</th><th class="n">A month</th><th>Runs</th></tr>
+  {% for d in money.debts %}<tr><td>{{ d.source_name or '—' }}</td><td class="n">{{ d.amount|cash }}</td>
+    <td class="n" title="{{ d.monthly_repayment|cash }} repayment and {{ d.monthly_interest|cash }} interest">{{ (d.monthly_repayment + d.monthly_interest)|cash }}</td>
+    <td class="muted">{{ d.starts|month_year }} – {{ d.ends|month_year }}</td></tr>{% endfor %}</table></div>
+{% else %}<div class="card muted">No debts.</div>{% endif %}</section>
+</div>
+{% if money.history|length > 1 %}<h2>Over the saves</h2>
+<div class="card"><table><tr><th>Game date</th><th class="n">Bank</th><th class="n">Transfer budget</th><th class="n">Wage budget</th><th class="n">Owed</th></tr>
+  {% for h in money.history|reverse %}<tr><td>{{ h.game_date }}</td><td class="n">{{ h.bank|cash }}</td><td class="n">{{ h.transfer_budget|cash }}</td>
+    <td class="n">{{ h.wage_budget|cash }}</td><td class="n">{{ h.debt|cash if h.debt else '' }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% else %}<div class="card muted">The saves give no finances for this club: the game keeps them only for the clubs it runs in detail.</div>{% endif %}
+</section>
+
+<section class="tab-panel" id="pictures">
+<h2>Pictures</h2>
+{% if club_pictures %}{{ m.gallery(club_pictures, request.path ~ '#pictures') }}{% else %}<div class="card muted">No pictures yet.</div>{% endif %}
+{{ m.upload('club', team.fm_uid, (('stadium', 'Stadium photo'), ('photograph', 'Photo'), ('matchday', 'Matchday photo'))) }}
+</section>
+{% if social.posts or social.fans %}{% from "world/_post.html" import post_card %}
+<section class="tab-panel" id="social">
+<h2>Social <small><a href="{{ url_for('social.feed', club=team.club_uid or team.fm_uid) }}">The club on the Feed ›</a></small></h2>
+<div class="feed-grid"><div class="feed">{% for post in social.posts %}{{ post_card(post, social.match_ids) }}{% endfor %}</div>
+  <aside class="feed-side">{% if social.fans %}<section class="card"><h3>The fans lately</h3>
+    {% for post in social.fans %}{{ post_card(post, reply=true) }}{% endfor %}</section>{% endif %}</aside></div>
+</section>{% endif %}
+{% endblock %}

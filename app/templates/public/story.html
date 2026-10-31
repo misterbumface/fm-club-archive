@@ -1,0 +1,25 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}{{ a.headline }} · {{ site_name }}{% endblock %}
+{% block description %}{{ a.standfirst or a.headline }}{% endblock %}
+{% block when %}{{ a.issue.publication_date.strftime('%A %-d %B %Y') }}{% endblock %}
+{% block body %}
+<div class="article">
+  <article>
+    {{ p.tag(a) }}
+    <h1>{{ a.headline }}</h1>
+    {% if a.standfirst %}<p class="stand">{{ a.standfirst }}</p>{% endif %}
+    <div class="by">By {{ a.byline }}{% if a.issue.outlet %} · {{ a.issue.outlet.name }}{% endif %} · {{ a.issue.publication_date.strftime('%-d %B %Y') }}</div>
+    {% if picture(a) %}<figure>{{ p.image(a) }}{% if a.image_caption %}<figcaption>{{ a.image_caption }}</figcaption>{% endif %}</figure>{% endif %}
+    <div class="body">{{ paragraphs(a.body) }}</div>
+    {% if related %}<ul class="related">{% for r in related %}<li><span class="muted">{{ r.label }}:</span> <a href="{{ story_url(r.article) }}">{{ r.article.headline }}</a></li>{% endfor %}</ul>{% endif %}
+  </article>
+  <aside class="side">
+    {% set linked = a.entity_links|selectattr('entity_type', 'in', ('club', 'person', 'player'))|list %}
+    {% if linked %}<h2>In this story</h2><ul class="latest" style="margin-bottom:24px">{% for link in linked %}
+      <li><a href="{{ club_url(link.entity_id, {'name': link.label}) if link.entity_type == 'club' else player_url(link.entity_id, link.label) }}">{{ link.label }}</a></li>{% endfor %}</ul>{% endif %}
+    {% if more %}<h2>More {{ section_name(active)|lower }}</h2>
+    {% for m in more %}<a class="card" href="{{ story_url(m) }}">{{ p.image(m) }}<h3>{{ m.headline }}</h3></a>{% endfor %}{% endif %}
+  </aside>
+</div>
+{% endblock %}

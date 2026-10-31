@@ -1,0 +1,95 @@
+{% macro image(a, classes='') -%}
+{%- set src = picture(a) -%}
+{%- if src %}<img class="pic {{ 'contain' if '/faces/' in src or '/logos/' in src }} {{ classes }}" src="{{ src }}" alt="" loading="lazy">
+{%- else %}<div class="pic empty {{ classes }}">{{ section_name(section_of(a.section)) }}</div>{% endif -%}
+{%- endmacro %}
+{% macro tag(a) -%}
+<span class="tag"><b>{{ a.section or 'News' }}</b>{{ a.issue.publication_date.strftime('%-d %b %Y') }}</span>
+{%- endmacro %}
+{% macro game(g, show_competition=False) -%}
+<li class="game">
+  <span class="side home">{% if g.home_crest %}<img class="crest" src="{{ g.home_crest }}" alt="">{% endif %}<span><a href="{{ club_url(g.home_uid, g.home) }}">{{ g.home.name }}</a></span></span>
+  {% if match_url(g) %}<a class="score {{ 'later' if not g.score }}" href="{{ match_url(g) }}" title="{{ 'Match report' if g.score else 'Preview' }}">{{ g.score or g.date.strftime('%-d %b') }}</a>
+  {% else %}<span class="score {{ 'later' if not g.score }}">{{ g.score or g.date.strftime('%-d %b') }}</span>{% endif %}
+  <span class="side">{% if g.away_crest %}<img class="crest" src="{{ g.away_crest }}" alt="">{% endif %}<span><a href="{{ club_url(g.away_uid, g.away) }}">{{ g.away.name }}</a></span></span>
+  {% if g.note or show_competition %}<span class="note">{{ g.competition if show_competition }}{{ ' · ' if g.note and show_competition }}{{ g.note or '' }}</span>{% endif %}
+</li>
+{%- endmacro %}
+{% macro league_table(box, highlight=(), limit=None, wide=True, zones=()) -%}
+<table class="league"><tr><th class="n">#</th><th class="team">Team</th>{% if wide %}<th class="wide">W</th><th class="wide">D</th><th class="wide">L</th>{% endif %}<th>P</th><th>GD</th><th>Pts</th>{% if wide %}<th class="wide">Form</th>{% endif %}</tr>
+{% for r in box.table %}{% if not limit or loop.index <= limit or r.team_uid in highlight %}
+{% set z = (zones|selectattr(0, 'ge', r.position)|first or (0, ''))[1] %}<tr class="{{ 'mine' if r.team_uid in highlight }} {{ z }}"><td>{{ r.position }}</td>
+  <td class="team"><a href="{{ club_url(r.team_uid, r.team) }}">{% if r.crest %}<img class="crest" src="{{ r.crest }}" alt="">{% endif %}{{ r.team.name }}</a></td>
+  {% if wide %}<td class="wide">{{ r.won }}</td><td class="wide">{{ r.drawn }}</td><td class="wide">{{ r.lost }}</td>{% endif %}
+  <td>{{ r.played }}</td><td>{{ '%+d' % r.difference if r.difference else 0 }}</td><td><b>{{ r.points }}</b></td>
+  {% if wide %}<td class="wide"><span class="form">{% for x in r.form %}<i class="{{ x }}">{{ x }}</i>{% endfor %}</span></td>{% endif %}</tr>
+{% endif %}{% endfor %}</table>
+{%- endmacro %}
+
+{% macro pitch(side, away=False) -%}
+<div class="pitch">
+  <svg viewBox="0 0 68 80" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="1" y="1" width="66" height="78"/><rect x="13.85" y="62.5" width="40.3" height="16.5"/><rect x="24.85" y="73.5" width="18.3" height="5.5"/>
+    <path d="M 24.85 62.5 A 9.15 9.15 0 0 1 43.15 62.5"/><path d="M 24.85 1 A 9.15 9.15 0 0 0 43.15 1"/><line x1="1" y1="1" x2="67" y2="1"/>
+  </svg>
+  {% for pl in side.pitch %}{% set face = picture_of(pl.person_uid) %}
+  <a class="pl {{ 'away' if away }}" href="{{ player_url(pl.person_uid, pl.name) or '#' }}" style="left:{{ pl.x }}%;top:{{ 11 + (pl.y - 13) * 0.96 }}%">
+    <span class="disc">{% if face %}<img src="{{ face }}" alt="" loading="lazy">{% else %}{{ pl.shirt_number or '' }}{% endif %}</span>
+    {% if pl.rating_shown %}<span class="rt {{ 'hi' if pl.rating_shown >= 7.5 }}">{{ '%.1f' % pl.rating_shown }}</span>{% endif %}
+    {% set parts = (pl.name or 'Unknown').split(' ', 1) %}
+    <span class="nm">{% if pl.shirt_number and face %}{{ pl.shirt_number }} {% endif %}{{ parts[1] if parts|length > 1 else parts[0] }}</span>
+    <span class="ev">{{ '⚽' * (pl.goals or 0) }}{{ '🟨' if pl.yellow_cards }}{{ '🟥' if pl.red_cards }}{% if pl.minute_off %} ↓{{ pl.minute_off }}'{% endif %}</span>
+  </a>{% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro formation(system) -%}
+<div class="pitch">
+  <svg viewBox="0 0 68 80" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="1" y="1" width="66" height="78"/><rect x="13.85" y="62.5" width="40.3" height="16.5"/><rect x="24.85" y="73.5" width="18.3" height="5.5"/>
+    <path d="M 24.85 62.5 A 9.15 9.15 0 0 1 43.15 62.5"/><path d="M 24.85 1 A 9.15 9.15 0 0 0 43.15 1"/><line x1="1" y1="1" x2="67" y2="1"/>
+  </svg>
+  {% for s in system.slots %}
+  <div class="pl" style="left:{{ s.x }}%;top:{{ 11 + (s.y - 13) * 0.96 }}%" title="{{ s.role or 'role ' + s.role_key }} ({{ s.duty }})">
+    <span class="disc">{{ s.code }}</span>
+    <span class="nm">{{ s.short }}</span>
+    {% for pl in s.players %}<span class="ev">{{ (pl.name or '').split(' ')[-1] }}{% if pl.short != s.short %} {{ pl.short }}{% endif %}</span>{% endfor %}
+  </div>{% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro person_rows(rows, value, label) -%}
+<table class="rank"><tr><th>#</th><th class="l">Player</th><th>{{ label }}</th><th class="l">Seasons</th></tr>
+{% for r in rows %}<tr><td>{{ loop.index }}</td><td class="l"><a href="{{ player_url(r.person_uid, r.name) }}">{{ r.name }}</a></td><td><b>{{ r[value] }}</b></td>
+<td class="l muted">{{ r.span or '' }}</td></tr>{% endfor %}</table>
+{%- endmacro %}
+{% macro club_rows(rows, label) -%}
+<table class="rank"><tr><th>#</th><th class="l">Club</th><th>{{ label }}</th></tr>
+{% for r in rows %}<tr><td>{{ loop.index }}</td><td class="l"><a href="{{ club_url(r.team_uid, r.team) }}">{% if r.team.crest %}<img class="crest" src="{{ r.team.crest }}" alt="">{% endif %}{{ r.team.name }}</a></td><td><b>{{ r.n }}</b></td></tr>{% endfor %}</table>
+{%- endmacro %}
+
+{# The followed clubs' players at a tournament: nation, squad days, games, minutes, goals, rating. #}
+{% macro ours_table(ours, limit=None) -%}
+<table class="ours"><tr><th>Player</th><th>For</th><th class="n">Games</th><th class="n">Min</th><th class="n">Gls</th><th class="n">Ast</th><th class="n">Rating</th></tr>
+{% for o in (ours[:limit] if limit else ours) %}<tr><td><a href="{{ player_url(o.person_uid, o.name) }}">{{ o.name }}</a></td>
+<td>{% if o.crest %}<img class="crest" src="{{ o.crest }}" alt="">{% endif %}{{ o.nation.name or '' }}</td>
+<td class="n">{{ o.apps }}{% if o.squad > o.apps %} <span style="color:var(--muted)">of {{ o.squad }}</span>{% endif %}</td><td class="n">{{ o.minutes }}</td><td class="n">{{ o.goals or '' }}</td><td class="n">{{ o.assists or '' }}</td>
+<td class="n">{% if o.rating %}<span class="rating-chip {{ 'hi' if o.rating >= 7.5 }}">{{ '%.2f' % o.rating }}</span>{% endif %}</td></tr>{% endfor %}</table>
+{%- endmacro %}
+
+{# The front page's box for a major tournament in play. #}
+{% macro tournament_hub(hub) -%}
+<section class="hub">
+  <div class="hub-head"><h2><a href="{{ tournament_url(hub.uid, hub.name) }}">{{ hub.name }} {{ hub.label }}</a>
+    <small>{% if hub.phase == 'about to start' %}starts in {{ hub.days_to_go }} day{{ 's' if hub.days_to_go != 1 }}{% elif hub.phase == 'over' %}the final was played{% else %}day {{ hub.day }}{% if hub.round %} · {{ hub.round }}{% endif %}{% endif %} · {{ hub.played }} of {{ hub.games }} games played</small></h2>
+    <a href="{{ tournament_url(hub.uid, hub.name) }}">Tables, rounds and scorers ›</a></div>
+  <div class="hub-cols">
+    <div>{% if hub.today_games %}<h3>Today</h3><ul class="games">{% for g in hub.today_games %}{{ game(g) }}{% endfor %}</ul>{% endif %}
+      {% if hub.yesterday %}<h3>Yesterday</h3><ul class="games">{% for g in hub.yesterday %}{{ game(g) }}{% endfor %}</ul>{% endif %}
+      {% if hub.tomorrow and not hub.today_games %}<h3>Tomorrow</h3><ul class="games">{% for g in hub.tomorrow %}{{ game(g) }}{% endfor %}</ul>{% endif %}</div>
+    <div>{% if hub.ours %}<h3>Our players there</h3>{{ ours_table(hub.ours, limit=8) }}{% endif %}</div>
+    <div>{% if hub.scorers %}<h3>Top scorers</h3><table class="ours">{% for s in hub.scorers %}<tr><td><a href="{{ player_url(s.scorer_uid, s.name) }}">{{ s.name or 'Unknown' }}</a> <span style="color:var(--muted)">{{ s.team.name or '' }}</span></td><td class="n"><b>{{ s.goals }}</b></td></tr>{% endfor %}</table>{% endif %}
+      {% if hub.board.groups %}<h3 style="margin-top:12px">Groups</h3><p style="margin:0;font-size:14px">{% for g in hub.board.groups %}<a href="{{ tournament_url(hub.uid, hub.name) }}#tables">{{ g.name }}</a>: {{ g.table[0].team.name }}{% if g.table|length > 1 %}, {{ g.table[1].team.name }}{% endif %}{{ '; ' if not loop.last }}{% endfor %}</p>{% endif %}</div>
+  </div>
+</section>
+{%- endmacro %}

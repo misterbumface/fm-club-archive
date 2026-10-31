@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<competition id="esp_copa_del_rey" type="domestic_cup" teamType="club">
+    <name>Copa del Rey</name>
+    <summary>Spain's national knockout cup. Ties are single matches at the lower-ranked club through the quarter-finals; only the semi-finals use two legs.</summary>
+    <structure><knockout>true</knockout><replays>false</replays></structure>
+    <matchRules><lowerDivisionHomeAdvantage>true</lowerDivisionHomeAdvantage><drawResolution>Extra time followed by penalties</drawResolution></matchRules>
+    <phases>
+        <phase key="preliminary_round" label="Preliminary round" stage="Preliminary Round" entrants="Territorial qualifiers" extraTime="true" penalties="true"><alias>Ronda Previa</alias></phase>
+        <phase key="first_round" label="First round" stage="First Round" entrants="Lower-ranked club hosts" extraTime="true" penalties="true"><alias>Primera Eliminatoria</alias></phase>
+        <phase key="second_round" label="Second round" stage="Second Round" entrants="Lower-ranked club hosts" extraTime="true" penalties="true"><alias>Segunda Eliminatoria</alias></phase>
+        <phase key="round_of_32" label="Round of 32" stage="Round of 32" entrants="Supercopa participants join · lower-ranked club hosts" extraTime="true" penalties="true"><alias>Third Round</alias><alias>Dieciseisavos de final</alias></phase>
+        <phase key="round_of_16" label="Round of 16" stage="Round of 16" entrants="Lower-ranked club hosts" extraTime="true" penalties="true"><alias>Fourth Round</alias><alias>Octavos de final</alias></phase>
+        <phase key="quarter_final" label="Quarter-finals" stage="Quarter Final" entrants="Lower-ranked club hosts" extraTime="true" penalties="true"><alias>Fifth Round</alias><alias>Cuartos de final</alias></phase>
+        <phase key="semi_final" label="Semi-finals" stage="Semi Final" legs="2" extraTime="true" penalties="true" extraTimeAt="after_second_leg"><alias>Semifinales</alias></phase>
+        <phase key="final" label="Final" stage="Final" final="true" extraTime="true" penalties="true" neutralVenue="true"><alias>Final de la Copa del Rey</alias></phase>
+    </phases>
+</competition>

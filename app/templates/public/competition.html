@@ -1,0 +1,22 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% set comp = page.comp %}
+{% block title %}{{ comp.name }} · {{ site_name }}{% endblock %}
+{% block body %}
+<div class="comp-head">{% if page.trophy %}<img src="{{ page.trophy }}" alt="">{% endif %}
+  <div><h1>{{ comp.name }}</h1><p>{{ page.editions|length }} seasons in the archive{% if page.most %} · most titles: <b>{{ page.most[0].team.name }}</b> ({{ page.most[0].count }}){% endif %}</p></div></div>
+<div class="split">
+  <section><div class="row-title"><h2>Champions</h2></div>
+    <table class="rank champions"><tr><th class="l">Season</th><th class="l">Champion</th><th class="l">Runner-up</th></tr>
+    {% for e in page.editions %}{% set w = e.teams.get(1) %}{% set r = e.teams.get(2) %}<tr>
+      <td class="l season"><a href="{{ competition_url(comp.fm_uid, comp.name, e.year) }}">{{ e.season_label or e.year }}</a></td>
+      <td class="l">{% if w %}<a href="{{ club_url(w.fm_uid, w) }}">{% if w.crest %}<img class="crest" src="{{ w.crest }}" alt="">{% endif %}{{ w.name }}</a>{% endif %}</td>
+      <td class="l muted">{% if r %}<a href="{{ club_url(r.fm_uid, r) }}" style="font-weight:400">{{ r.name }}</a>{% endif %}</td></tr>{% endfor %}</table></section>
+  <section>
+    {% if page.most %}<div class="row-title"><h2>Most titles</h2></div>
+    <table class="rank"><tr><th>#</th><th class="l">Club</th><th>Titles</th><th class="l">Last</th></tr>
+    {% for m in page.most %}<tr><td>{{ loop.index }}</td><td class="l"><a href="{{ club_url(m.team.fm_uid, m.team) }}">{% if m.team.crest %}<img class="crest" src="{{ m.team.crest }}" alt="">{% endif %}{{ m.team.name }}</a></td><td><b>{{ m.count }}</b></td><td class="l muted">{{ m.last }}</td></tr>{% endfor %}</table>{% endif %}
+    {% if box %}<div class="row-title"><h2>This season</h2><a href="{{ url_for('public.table', uid=box.uid) }}">Full table ›</a></div>{{ p.league_table(box, highlight=followed_teams, limit=10, wide=False) }}{% endif %}
+  </section>
+</div>
+{% endblock %}

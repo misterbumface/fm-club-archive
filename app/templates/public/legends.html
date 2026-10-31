@@ -1,0 +1,10 @@
+{% extends "public/base.html" %}
+{% block title %}Legends · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">Legends</h1>
+<p style="color:var(--muted);margin-top:-8px">The greatest careers in the archive, ranked by goals, trophies, awards and games.</p>
+<table class="rank"><tr><th>#</th><th class="l">Player</th><th class="l">Club</th><th class="l">Career</th><th>Games</th><th>Goals</th><th>Trophies</th><th>Awards</th></tr>
+{% for r in rows %}<tr><td>{{ loop.index }}</td><td class="l"><a href="{{ player_url(r.person_uid, r.name) }}">{{ r.name }}</a></td>
+  <td class="l">{% if r.club.name %}<a href="{{ club_url(r.club_uid, r.club) }}" style="font-weight:400">{% if r.club.crest %}<img class="crest" src="{{ r.club.crest }}" alt="">{% endif %}{{ r.club.name }}</a>{% endif %}</td>
+  <td class="l muted">{{ r.span }}</td><td>{{ r.games }}</td><td>{{ r.goals }}</td><td><b>{{ r.trophies }}</b></td><td>{{ r.awards or '' }}</td></tr>{% endfor %}</table>
+{% endblock %}

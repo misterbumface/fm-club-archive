@@ -1,0 +1,11 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}Scores &amp; Fixtures · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">Scores &amp; Fixtures</h1>
+<div class="grid2">{% for box in boxes %}<section>
+  <div class="row-title"><h2>{{ box.name }}</h2><a href="{{ tournament_url(box.uid, box.name) if box.is_tournament else url_for('public.table', uid=box.uid) }}">{{ 'Tables' if box.is_tournament else 'Table' }} ›</a></div>
+  {% if box.recent %}<div class="games-head">Latest results</div><ul class="games">{% for g in box.recent %}{{ p.game(g) }}{% endfor %}</ul>{% endif %}
+  {% if box.upcoming %}<div class="games-head">Fixtures</div><ul class="games">{% for g in box.upcoming %}{{ p.game(g) }}{% endfor %}</ul>{% endif %}
+</section>{% endfor %}</div>
+{% endblock %}

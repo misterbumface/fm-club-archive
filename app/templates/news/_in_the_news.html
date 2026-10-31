@@ -1,0 +1,7 @@
+{% set news = news_about(news_ref) %}
+{% if news %}
+<section class="card in-the-news" style="margin-top:22px">
+  <h3>In the news</h3>
+  <ul>{% for item in news %}<li><a href="{{ item.url }}">{{ item.headline }}</a> <span class="note">{{ item.outlet }}, {{ item.date.strftime('%-d %B %Y') }}</span></li>{% endfor %}</ul>
+</section>
+{% endif %}

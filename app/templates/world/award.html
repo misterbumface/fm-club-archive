@@ -1,0 +1,13 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% block title %}{{ award.name }}{% endblock %}
+{% block body %}
+<div class="crumbs"><a href="{{ url_for('world.awards') }}">Awards</a> › {{ award.name }}</div>
+<div class="hero">{% if award_image_url(award.name) %}<img class="crest" src="{{ award_image_url(award.name) }}" alt="">{% endif %}<div><h1>{{ award.name }}</h1><div class="sub">{{ years|length }} years · FM uid {{ award.fm_uid }}</div></div></div>
+<div class="lead">
+<section><h2>By year</h2><div class="card"><table><tr><th>Year</th><th>Winner</th><th>Second</th><th>Third</th></tr>
+  {% for year, places in years %}<tr><td>{{ year }}</td>{% for place in (1, 2, 3) %}<td>{% set r = places.get(place) %}{% if r and r.person_uid %}{{ m.person(r.person_uid, r.name or 'unknown') }}
+    <div class="note">{{ teams.get(r.club_uid, {}).get('name', '') }}{% if r.votes %} · {{ r.votes }} votes{% endif %}</div>{% endif %}</td>{% endfor %}</tr>{% endfor %}</table></div></section>
+<section><h2>Most wins</h2><div class="card"><table>{% for name, uid, n in most %}<tr><td>{{ m.person(uid, name) }}</td><td class="n"><b>{{ n }}</b></td></tr>{% else %}<tr><td class="muted">Nobody won it twice.</td></tr>{% endfor %}</table></div></section>
+</div>
+{% endblock %}

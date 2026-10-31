@@ -1,0 +1,77 @@
+{% extends "world/base.html" %}
+{% block title %}World Soccer Newsroom{% endblock %}
+{% block content %}
+<header class="ws-newsroom-head">
+    <div>
+        <p class="ws-kicker">World Soccer</p>
+        <h1>The Newsroom</h1>
+        <p>Draft directly. Publish once. The finished edition becomes part of the universe's memory.</p>
+    </div>
+    <div>
+        <a class="btn btn-outline-dark" href="{{ url_for('world_soccer.issues') }}">Back issues</a>
+        {% if draft %}<a class="btn btn-dark" href="{{ url_for('world_soccer.issue', issue_id=draft.id) }}">Preview front page</a>{% endif %}
+    </div>
+</header>
+
+{% if drafts|length > 1 %}
+<nav class="ws-draft-tabs">
+{% for row in drafts %}
+    <a class="{{ 'active' if draft and row.id == draft.id }}" href="{{ url_for('world_soccer.newsroom', issue=row.id) }}">{{ row.publication_date.strftime("%-d %b") }} · {{ row.edition_name }}</a>
+{% endfor %}
+</nav>
+{% endif %}
+
+{% if not draft %}
+<section class="ws-newsroom-card">
+    <h2>Start an edition</h2>
+    <form method="post" action="{{ url_for('world_soccer.create_issue') }}" class="ws-issue-form">
+        <label>Publication date<input type="date" name="publication_date" value="{{ suggested_date.isoformat() if suggested_date else '' }}" required></label>
+        <label>Knowledge cutoff<input type="date" name="knowledge_cutoff" value="{{ suggested_date.isoformat() if suggested_date else '' }}" required></label>
+        <label>Edition name<input name="edition_name" value="World Soccer" required></label>
+        <label class="wide">Front-page headline<input name="headline" placeholder="Can be filled after the lead story arrives"></label>
+        <label class="wide">Standfirst<textarea name="standfirst" rows="2"></textarea></label>
+        <label class="wide">Cover image URL<input name="cover_image_url" placeholder="/static/generated/portraits/..."></label>
+        <button class="btn btn-warning" type="submit">Create draft</button>
+    </form>
+</section>
+{% else %}
+<section class="ws-newsroom-card ws-draft-summary">
+    <div>
+        <span class="badge text-bg-warning">Draft</span>
+        <h2>{{ draft.headline or "Untitled front page" }}</h2>
+        <p>{{ draft.publication_date.strftime("%-d %B %Y") }} · evidence through {{ draft.knowledge_cutoff.strftime("%-d %B %Y") }} · {{ draft.articles|length }} stories</p>
+    </div>
+    <form method="post" action="{{ url_for('world_soccer.publish', issue_id=draft.id) }}">
+        <button class="btn btn-dark" type="submit">Publish this edition</button>
+    </form>
+</section>
+
+<details class="ws-newsroom-card" open>
+    <summary><strong>Add a story</strong></summary>
+    <form method="post" action="{{ url_for('world_soccer.add_article', issue_id=draft.id) }}" class="ws-article-form">
+        {% include "world_soccer/_article_fields.html" %}
+        <button class="btn btn-warning" type="submit">Put story on the page</button>
+    </form>
+</details>
+
+<section class="ws-news-desk">
+    <h2>Stories on the page</h2>
+    {% for article in draft.articles %}
+    <details class="ws-newsroom-card">
+        <summary><span>{{ article.section }}</span><strong>{{ article.headline }}</strong><em>{{ article.prominence }}</em></summary>
+        <form method="post" action="{{ url_for('world_soccer.edit_article', issue_id=draft.id, article_id=article.id) }}" class="ws-article-form">
+            {% with editing=article %}{% include "world_soccer/_article_fields.html" %}{% endwith %}
+            <div class="d-flex gap-2">
+                <button class="btn btn-dark" type="submit">Save story</button>
+            </div>
+        </form>
+        <form method="post" action="{{ url_for('world_soccer.delete_article', article_id=article.id) }}" class="mt-2">
+            <button class="btn btn-sm btn-outline-danger" type="submit">Remove story</button>
+        </form>
+    </details>
+    {% else %}
+    <p class="text-muted">No stories yet. The connected GPT can write directly into this draft too.</p>
+    {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

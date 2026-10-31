@@ -1,0 +1,9 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}{{ title }} · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">{{ title }}</h1>
+{% if not items %}<p>No stories here yet.</p>{% endif %}
+<div class="list">{% for a in items %}<a class="card" href="{{ story_url(a) }}">{{ p.image(a) }}
+  <div><h3>{{ a.headline }}</h3>{% if a.standfirst %}<p>{{ a.standfirst }}</p>{% endif %}{{ p.tag(a) }}</div></a>{% endfor %}</div>
+{% endblock %}

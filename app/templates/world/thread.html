@@ -1,0 +1,13 @@
+{% extends "world/base.html" %}
+{% from "world/_post.html" import post_card %}
+{% block title %}Thread{% endblock %}
+{% block body %}
+<div class="crumbs"><a href="{{ url_for('social.feed') }}">Feed</a> › {{ post.account.name }}</div>
+<div class="feed-grid">
+  <div class="feed thread">
+    {{ post_card(post, match_ids, replies|length) }}
+    {% for answer, depth in replies %}<div class="thread-reply" style="--depth: {{ [depth, 3]|min }}">{{ post_card(answer, reply=true) }}</div>
+    {% else %}<div class="card muted">No replies yet. "Write the fans' reactions" on the Feed writes them.</div>{% endfor %}
+  </div>
+</div>
+{% endblock %}

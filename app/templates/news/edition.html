@@ -1,0 +1,19 @@
+{% extends "world/base.html" %}
+{% block title %}{{ issue.headline or outlet.name }} · {{ outlet.name }}{% endblock %}
+{% block content %}
+<div class="ws-paper">
+    {% include "news/_masthead.html" %}
+    {% if issue.status == "draft" %}<div class="ws-draft-banner">Back on the desk for corrections · publish it again from the desk</div>
+    {% else %}<form class="edition-correct" method="post" action="{{ url_for('news.unpublish_edition', issue_id=issue.id) }}"><button class="btn" type="submit">Correct this edition</button></form>{% endif %}
+    <section class="ws-front-grid">
+    {% for item in articles %}{% set short = false %}{% include "news/_story.html" %}
+    {% else %}<div class="ws-no-stories">This edition has no stories.</div>{% endfor %}
+    </section>
+    {% if back_issues %}
+    <aside class="ws-threads">
+        <p class="ws-kicker">Back issues</p>
+        {% for back in back_issues %}<div><a href="{{ url_for('news.edition', slug=outlet.slug, issue_id=back.id) }}"><strong>{{ back.publication_date.strftime("%-d %B %Y") }}</strong></a><span>{{ back.headline or '' }}</span></div>{% endfor %}
+    </aside>
+    {% endif %}
+</div>
+{% endblock %}

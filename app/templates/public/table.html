@@ -1,0 +1,7 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}{{ box.name }} table · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">{{ box.name }} <small style="font-size:18px;color:var(--muted)">{{ box.season or '' }}</small></h1>
+{{ p.league_table(box, highlight=followed_teams) }}
+{% endblock %}

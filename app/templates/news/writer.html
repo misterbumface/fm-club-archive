@@ -1,0 +1,20 @@
+{% extends "world/base.html" %}
+{% block title %}{{ writer.name }}{% endblock %}
+{% block body %}
+<div class="crumbs"><a href="{{ url_for('news.newsstand') }}">Newsstand</a> › <a href="{{ url_for('news.outlet_page', slug=writer.outlet.slug) }}">{{ writer.outlet.name }}</a></div>
+<div class="hero"><div><h1>{{ writer.name }}</h1>
+  <div class="sub">{{ writer.outlet.name }}{% if not writer.active %} · no longer writing{% endif %}</div></div></div>
+<div class="writer-page" style="margin-top:18px">
+  <p class="persona">{{ writer.persona }}</p>
+  <p><b>How they write.</b> {{ writer.style }}</p>
+  {% if writer.quirks %}<p><b>Habits.</b> {{ writer.quirks }}</p>{% endif %}
+  <section class="card in-the-news" style="margin-top:18px">
+    <h3>Articles</h3>
+    {% if articles %}<ul>{% for article in articles %}{% set outlet = outlet_of(article.issue) %}
+      <li><a href="{{ url_for('news.edition', slug=outlet.slug, issue_id=article.issue_id) }}#article-{{ article.id }}">{{ article.headline }}</a>
+        <span class="note">{{ outlet.name }}, {{ article.issue.publication_date.strftime('%-d %B %Y') }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="note">No published articles yet.</p>{% endif %}
+  </section>
+  <p class="note"><a href="{{ url_for('settings.outlets') }}#writer-{{ writer.id }}">Edit {{ writer.name }}</a></p>
+</div>
+{% endblock %}

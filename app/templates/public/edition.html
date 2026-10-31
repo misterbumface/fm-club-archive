@@ -1,0 +1,26 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% set comp = page.comp %}
+{% block title %}{{ comp.name }} {{ page.label }} · {{ site_name }}{% endblock %}
+{% block body %}
+<div class="comp-head">{% if page.trophy %}<img src="{{ page.trophy }}" alt="">{% endif %}
+  <div><h1>{{ comp.name }} {{ page.label }}</h1>
+  <p>{% set w = page.places.get(1) %}{% if w %}Champions: <a href="{{ club_url(w.fm_uid, w) }}"><b>{{ w.name }}</b></a> · {% endif %}{{ page.games }} games, {{ page.goals }} goals ·
+    <a href="{{ competition_url(comp.fm_uid, comp.name) }}">All seasons ›</a></p></div></div>
+{% if page.final %}<div class="row-title"><h2>The final</h2></div><ul class="games">{{ p.game(page.final) }}</ul>{% endif %}
+<div class="split">
+  <section>
+    {% if page.table %}<div class="row-title"><h2>Final table</h2></div>{{ p.league_table({'table': page.table}, highlight=(page.places.get(1, {}).get('fm_uid'),)) }}{% endif %}
+    {% for r in page.rounds %}<div class="row-title"><h2>{{ r.name }}</h2></div><ul class="games">{% for g in r.games %}{{ p.game(g) }}{% endfor %}</ul>{% endfor %}
+  </section>
+  <section>
+    {% if page.places %}<div class="row-title"><h2>The podium</h2></div>
+    <table class="rank">{% for place in (1, 2, 3) %}{% set t = page.places.get(place) %}{% if t %}<tr><td class="l"><span class="place p{{ place }}">{{ place }}</span></td>
+      <td class="l"><a href="{{ club_url(t.fm_uid, t) }}">{% if t.crest %}<img class="crest" src="{{ t.crest }}" alt="">{% endif %}{{ t.name }}</a></td></tr>{% endif %}{% endfor %}</table>{% endif %}
+    {% if page.scorers %}<div class="row-title"><h2>Top scorers</h2></div>
+    <table class="rank"><tr><th>#</th><th class="l">Player</th><th class="l">Club</th><th>Goals</th></tr>
+    {% for s in page.scorers %}<tr><td>{{ loop.index }}</td><td class="l"><a href="{{ player_url(s.scorer_uid, s.name) }}">{{ s.name or 'Unknown' }}</a></td>
+      <td class="l muted">{{ s.team.name or '' }}</td><td><b>{{ s.goals }}</b>{% if s.penalties %} <small style="color:var(--muted)">({{ s.penalties }} pen)</small>{% endif %}</td></tr>{% endfor %}</table>{% endif %}
+  </section>
+</div>
+{% endblock %}

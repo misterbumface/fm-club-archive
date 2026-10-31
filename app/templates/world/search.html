@@ -1,0 +1,20 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% block title %}Search{% endblock %}
+{% block body %}
+<div class="crumbs">Search</div>
+<div class="hero"><div><h1>{{ '“' ~ term ~ '”' if term else 'Search' }}</h1><div class="sub">{% if not found %}Type at least two letters.{% endif %}</div></div></div>
+{% if found %}
+<div class="grid">
+<section><h2>People <small>{{ found.people|length }}</small></h2><div class="card"><table>
+  {% for p in found.people %}<tr><td>{{ m.person(p.fm_uid, p.name) }}</td><td class="n muted">{{ p.birth_date or '' }}</td></tr>{% else %}<tr><td class="muted">None.</td></tr>{% endfor %}</table></div></section>
+<section><h2>Teams <small>{{ found.teams|length }}</small></h2><div class="card"><table>
+  {% set lookup = {} %}{% for t in found.teams %}{% set _ = lookup.update({t.fm_uid: t}) %}{% endfor %}
+  {% for t in found.teams %}<tr><td>{{ m.team(t.fm_uid, lookup) }}</td></tr>{% else %}<tr><td class="muted">None.</td></tr>{% endfor %}</table></div></section>
+<section><h2>Competitions <small>{{ found.competitions|length }}</small></h2><div class="card"><table>
+  {% for c in found.competitions %}<tr><td><a href="{{ url_for('world.competition', uid=c.fm_uid) }}">{{ c.name }}</a></td></tr>{% else %}<tr><td class="muted">None.</td></tr>{% endfor %}</table></div></section>
+<section><h2>Awards <small>{{ found.awards|length }}</small></h2><div class="card"><table>
+  {% for a in found.awards %}<tr><td><a href="{{ url_for('world.award', uid=a.fm_uid) }}">{{ a.name }}</a></td></tr>{% else %}<tr><td class="muted">None.</td></tr>{% endfor %}</table></div></section>
+</div>
+{% endif %}
+{% endblock %}

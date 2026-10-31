@@ -1,0 +1,12 @@
+<header class="ws-masthead">
+    <div class="ws-masthead-top">
+        <a href="{{ url_for('news.newsstand') }}">Newsstand</a>
+        <span>{{ outlet.tagline or '' }}</span>
+        {% if issue and issue.status == "draft" %}<a href="{{ url_for('news.desk') }}#issue-{{ issue.id }}">On the desk</a>{% else %}<a href="{{ url_for('news.outlet_page', slug=outlet.slug) }}">Back issues</a>{% endif %}
+    </div>
+    <h1>{{ outlet.name|upper }}</h1>
+    {% if issue %}<div class="ws-date-rule">
+        <time datetime="{{ issue.publication_date.isoformat() }}">{{ issue.publication_date.strftime("%A, %-d %B %Y") }}</time>
+        <span>News up to {{ issue.knowledge_cutoff.strftime("%-d %B %Y") }}</span>
+    </div>{% endif %}
+</header>

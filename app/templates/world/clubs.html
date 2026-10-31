@@ -1,0 +1,26 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% block title %}Clubs{% endblock %}
+{% macro crests(clubs) -%}
+<div class="club-grid">{% for t in clubs %}<a class="club-tile" href="{{ m.team_href(t.fm_uid, t) }}" title="{{ t.name }}">
+  {% if crest_url(t) %}<img src="{{ crest_url(t) }}" alt="" loading="lazy">{% else %}<span class="club-tile-ph">{{ t.name[:1] }}</span>{% endif %}
+  <span>{{ t.name }}</span></a>{% endfor %}</div>
+{%- endmacro %}
+{% block body %}
+<div class="hero"><div><h1>Clubs</h1>
+  <div class="sub">The clubs you follow, the biggest clubs in the world and the big leagues. Any other club: the search at the top.</div></div></div>
+
+{% if followed %}<h2>Your clubs</h2>{{ crests(followed) }}{% endif %}
+
+<h2>The biggest clubs <small>by the game's reputation</small></h2>
+{{ crests(biggest) }}
+
+{% for league in big_leagues %}
+<h2><a href="{{ url_for('world.competition', uid=league.fm_uid) }}">{{ league.name }}</a> <small>{{ league.nation or '' }} · {{ league.clubs|length }} clubs</small></h2>
+{{ crests(league.clubs) }}
+{% endfor %}
+
+{% if other_leagues %}<h2>Other top divisions</h2>
+<div class="card league-list">{% for league in other_leagues %}<a href="{{ url_for('world.competition', uid=league.fm_uid) }}">{{ league.name }}
+  <span class="muted">{{ league.nation or '' }}</span></a>{% endfor %}</div>{% endif %}
+{% endblock %}

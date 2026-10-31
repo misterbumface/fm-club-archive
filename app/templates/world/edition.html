@@ -1,0 +1,65 @@
+{% extends "world/base.html" %}
+{% import "world/_macros.html" as m %}
+{% block title %}{{ comp.name }} {{ edition.season_label }}{% endblock %}
+{% block body %}
+{% set champion = competitions.get(parts[0].competition_uid) if parts else None %}
+{{ m.trail(crumbs('competition', comp.fm_uid), here=edition.season_label) }}
+<div class="hero">{% if trophy_url(comp.fm_uid) %}<img class="crest" src="{{ trophy_url(comp.fm_uid) }}" alt="">{% endif %}<div>
+  <h1>{{ comp.name }} {{ edition.season_label }}</h1>
+  <div class="sub">{% if places.get(1) %}{{ 'Champion' if champion else 'Winner' }}: {{ teams.get(places[1], {}).get('name', '') }}{% if champion %} ({{ champion.short_name }}){% endif %}{% if places.get(2) %} · runner-up {{ teams.get(places[2], {}).get('name', '') }}{% endif %} · {% endif %}{{ played|length }} games · {{ goals }} goals</div></div></div>
+{% set st = stages %}
+{% set tab_items = [('overview', 'Overview', None)] %}
+{% if st.groups %}{% set tab_items = tab_items + [('groups', 'League phase' if st.groups|length == 1 and st.groups[0].name == 'League phase' else ('Table' if is_league and st.groups|length == 1 else 'Groups'), st.groups|length if st.groups|length > 1 else None)] %}{% endif %}
+{% if st.bracket %}{% set tab_items = tab_items + [('knockout', 'Knockout', st.bracket|length ~ ' rounds')] %}{% endif %}
+{% if st.qualifying %}{% set tab_items = tab_items + [('qualifying', 'Qualifying', st.qualifying|length ~ ' rounds')] %}{% endif %}
+{% if not st.groups and not st.bracket %}{% set tab_items = tab_items + [('rounds', 'Table' if is_league and rounds|length <= 1 else 'Rounds', None)] %}{% endif %}
+{% set tab_items = tab_items + [('story', 'Story', None if story else 'not written')] %}
+{{ m.tabs(tab_items) }}
+
+<section class="tab-panel" id="overview">
+{% if parts %}<h2>Titles this season</h2><div class="card"><table>
+  {% for p in parts %}<tr><td>{{ m.comp(p.competition_uid, competitions, edition.year if p.edition else None) }}{% if loop.first %} <span class="pill gold">champion</span>{% endif %}</td>
+    <td>{% if p.winners.get(edition.year) %}{{ m.team(p.winners[edition.year], teams) }}{% else %}<span class="muted">not decided yet</span>{% endif %}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if final %}<h2>The final{% if champion %} <small>{{ champion.name }}</small>{% endif %}</h2><div class="card">{% call m.result(final, teams) %}{{ final.date }}{% if final.attendance %} · {{ '{:,}'.format(final.attendance) }} spectators{% endif %}{% if final.home_penalties is not none %} · {{ final.home_penalties }}–{{ final.away_penalties }} on penalties{% endif %}{% endcall %}</div>{% endif %}
+<div class="grid"><section><h2>Top scorers</h2><div class="card"><table>{% for s in scorers %}<tr><td>{{ loop.index }}</td><td>{{ m.person(s.scorer_uid, s.name or 'unknown') }}<div class="note">{{ teams.get(s.team_uid, {}).get('name', '') }}</div></td>
+  <td class="n"><b>{{ s.goals }}</b>{% if s.penalties %} <span class="muted">({{ s.penalties }} pen)</span>{% endif %}</td></tr>{% else %}<tr><td class="muted">No goal lists for this edition.</td></tr>{% endfor %}</table></div></section></div>
+</section>
+
+{% if st.groups %}<section class="tab-panel" id="groups">
+{% for r in st.groups %}<h2>{{ 'Regular season' if is_league and r.name == 'League phase' else r.name }} <small>{{ r.games|length }} games</small></h2>
+<div class="card">{{ m.standings(r.table, teams) }}
+  {% if st.bracket %}<div class="zone-legend"><span class="zone-through">into the knockout rounds</span><span class="zone-play-off">into the play-off round</span><span class="zone-out">out</span></div>{% endif %}
+  <details><summary class="muted">The games</summary>{% for f in r.games %}{% if f.home_goals is not none %}{{ m.result(f, teams) }}{% endif %}{% endfor %}</details></div>
+{% endfor %}
+</section>{% endif %}
+
+{% if st.bracket %}<section class="tab-panel" id="knockout">
+<h2>The knockout rounds</h2>
+<div class="bracket">{% for col in st.bracket %}<div class="bracket-col"><h4>{{ col.name }}</h4>
+  <div class="bracket-ties">{% for tie in col.ties %}{% if tie %}{{ m.tie_box(tie, teams) }}{% else %}<div class="tie tie-empty"></div>{% endif %}{% endfor %}</div></div>{% endfor %}</div>
+</section>{% endif %}
+
+{% if st.qualifying %}<section class="tab-panel" id="qualifying">
+{% for r in st.qualifying %}<h2>{{ r.name|replace('Round ', 'Qualifying round ') }} <small>{{ r.games[0].date }} · {{ r.ties|length }} {{ 'tie' if r.ties|length == 1 else 'ties' }}</small></h2>
+<div class="tie-grid">{% for tie in r.ties %}{{ m.tie_box(tie, teams) }}{% endfor %}</div>
+{% endfor %}
+</section>{% endif %}
+
+{% if not st.groups and not st.bracket %}<section class="tab-panel" id="rounds">
+<section>{% if is_league and rounds|length <= 1 %}<h2>Table <small>built from the results</small></h2>
+  <div class="card">{{ m.standings(table, teams) }}</div>
+{% else %}<h2>Rounds</h2>
+  {% for r in rounds|reverse %}{% set games = r.games %}<div class="card" style="margin-bottom:14px">
+    <h3>{{ 'Regular season' if is_league and r.name == 'League phase' else r.name }} <span class="muted" style="font: 13px var(--sans)">{{ games[0].date }} · {{ games|length }} {{ 'game' if games|length == 1 else 'games' }}{% if r.legs %}, with {{ r.legs }}{% endif %}</span></h3>
+    {% if r.table %}{{ m.standings(r.table, teams) }}
+      <details><summary class="muted">The games</summary>{% for f in games %}{% if f.home_goals is not none %}{{ m.result(f, teams) }}{% endif %}{% endfor %}</details>
+    {% else %}{% for f in games %}{% if f.home_goals is not none %}{{ m.result(f, teams) }}{% endif %}{% endfor %}{% endif %}</div>{% endfor %}
+{% endif %}</section>
+</section>{% endif %}
+
+<section class="tab-panel" id="story">
+{{ m.chronicle('The ' ~ (comp.short_name or comp.name)|replace('UEFA ', '') ~ ' Chronicle', edition.season_label, story, story_sections,
+               chapters, url_for('world.write_edition_story', uid=comp.fm_uid, year=edition.year), 'New story' if story else 'Write story',
+               'the story of ' ~ comp.name ~ ' ' ~ edition.season_label, versions) }}
+</section>
+{% endblock %}

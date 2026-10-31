@@ -1,0 +1,7 @@
+{% extends "world/base.html" %}
+{% block title %}Server Error - FM Club Archive{% endblock %}
+{% block content %}
+<h1>500</h1>
+<p>Something went wrong processing that request.</p>
+<a href="{{ url_for('world.home') }}">Back to dashboard</a>
+{% endblock %}

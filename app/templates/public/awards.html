@@ -1,0 +1,7 @@
+{% extends "public/base.html" %}
+{% block title %}Awards · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">Awards</h1>
+<table class="rank"><tr><th class="l">Award</th><th>Years</th><th>Last</th></tr>
+{% for r in rows %}<tr><td class="l"><a href="{{ url_for('public.award', uid=r.fm_uid, name=slug(r.name)) }}">{{ r.name }}</a></td><td>{{ r.years }}</td><td>{{ r.last_year }}</td></tr>{% endfor %}</table>
+{% endblock %}

@@ -1,0 +1,26 @@
+{# One post of the social feed: a club's (its crest), a player's (his face), a fan's or a journalist's (a coloured initial). #}
+{% macro post_card(post, match_ids={}, replies=0, reply=false) -%}
+{% set account = post.account %}
+{% set own = account_url(account) %}
+{% set picture = crest_url({'club_uid': account.club_uid}) if account.kind == 'club' else face_url(account.person_uid) if account.kind == 'player' else None %}
+<article class="post {{ 'is-reply' if reply }}" id="post-{{ post.id }}">
+  <a class="post-avatar {{ 'is-face' if account.kind == 'player' }}" href="{{ own }}">{% if picture %}<img src="{{ picture }}" alt="">
+    {%- else %}<span class="fan-face {{ 'is-press' if account.kind == 'journalist' }}" style="--hue: {{ account.handle|account_hue }}">{{ account.name[:1] }}</span>{% endif %}</a>
+  <div class="post-body">
+    <div class="post-head"><a href="{{ own }}"><b>{{ account.name }}</b></a>{% if account.kind in ('club', 'player', 'journalist') %}<span class="verified" title="Official account">✔</span>{% endif %}
+      <span class="muted">@{{ account.handle }}{% if fan_label(account) %} · {{ fan_label(account) }}{% endif %} · {{ post.posted_on|day_month }} {{ post.posted_on.year }}</span></div>
+    <p>{{ post|post_text }}</p>
+    <div class="post-actions muted">
+      {% if not reply %}<a class="post-count" href="{{ url_for('social.thread', post_id=post.id) }}" title="Replies">💬 {{ replies }}</a>{% endif %}
+      <span title="Reposts">🔁 {{ '{:,}'.format(post.reposts) }}</span><span title="Likes">♥ {{ '{:,}'.format(post.likes) }}</span>
+      {% if post.heat >= 60 %}<span class="post-hot" title="Heat {{ post.heat }} of 100: it stirs people up">🔥 Hot</span>{% endif %}
+      {% if post.kind == 'prediction' %}<span class="post-chip" title="A prediction: it will be checked against the result">🔮 Prediction</span>{% endif %}
+      {% if post.kind == 'called_it' %}<span class="post-chip" title="This fan predicted the exact score">🔮 Called it</span>{% endif %}
+      {% for link in post.links or [] %}
+        {% if link[1] == 'match' and match_ids.get(link[2]) %}<a class="post-match" href="{{ url_for('world.match', fixture_id=match_ids[link[2]]) }}">The match ›</a>
+        {% elif link[1] == 'article' %}<a class="post-match" href="{{ article_url(link[2]) }}">Read the article ›</a>{% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</article>
+{%- endmacro %}

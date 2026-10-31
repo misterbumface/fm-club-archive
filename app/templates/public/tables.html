@@ -1,0 +1,13 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}Tables · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">Tables</h1>
+{% if phases %}<div class="grid2">{% for t in phases %}<section>
+  <div class="row-title"><h2>{{ t.name }}</h2><a href="{{ tournament_url(t.uid, t.name) }}">Full table ›</a></div>
+  {{ p.league_table(t.groups[0], highlight=followed_teams, limit=8, wide=False) }}</section>{% endfor %}</div>{% endif %}
+<div class="grid2">{% for box in boxes %}<section>
+  <div class="row-title"><h2>{{ box.name }}</h2><a href="{{ url_for('public.table', uid=box.uid) }}">Full table ›</a></div>
+  {{ p.league_table(box, highlight=followed_teams, limit=6, wide=False) }}
+</section>{% endfor %}</div>
+{% endblock %}

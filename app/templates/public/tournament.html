@@ -1,0 +1,33 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}{{ page.name }} {{ page.label }} · {{ site_name }}{% endblock %}
+{% block body %}
+<div class="comp-head">{% if trophy_url(page.uid) %}<img src="{{ trophy_url(page.uid) }}" alt="">{% endif %}
+  <div><h1>{{ page.name }}</h1><p>{{ page.label }} · <a href="{{ competition_url(page.uid, page.name) }}">History ›</a></p></div></div>
+<div class="mtabs"><div class="wrap" style="padding:0"><nav>
+  {% if page.major %}<a href="#today">Today</a>{% endif %}{% if page.groups %}<a href="#tables">Tables</a>{% endif %}{% if page.recent %}<a href="#results">Results</a>{% endif %}{% if page.upcoming %}<a href="#fixtures">Fixtures</a>{% endif %}
+  {% if page.knockout %}<a href="#rounds">Rounds</a>{% endif %}{% if page.scorers %}<a href="#scorers">Top scorers</a>{% endif %}{% if items %}<a href="#news">News</a>{% endif %}
+</nav></div></div>
+{% if page.major %}<section class="mpart" id="today"><h2>{% if page.major.phase == 'about to start' %}Starts in {{ page.major.days_to_go }} day{{ 's' if page.major.days_to_go != 1 }}{% elif page.major.phase == 'over' %}The final has been played{% else %}Day {{ page.major.day }}{% endif %} <small style="color:var(--muted);font-size:14px;font-weight:400">{{ page.major.played }} of {{ page.major.games }} games played</small></h2>
+  {% if page.today_games %}<ul class="games">{% for g in page.today_games %}{{ p.game(g) }}{% endfor %}</ul>{% endif %}
+  {% if page.ours %}<h3>Our players at the tournament</h3>{{ p.ours_table(page.ours) }}{% endif %}
+</section>{% endif %}
+{% if page.groups %}<section class="mpart" id="tables"><h2>{{ 'League phase' if page.groups|length == 1 and page.groups[0].name == 'League phase' else 'Groups' }}</h2>
+  {% if page.groups|length == 1 %}{% set g = page.groups[0] %}
+    {% set zones = ((8, 'z-in'), (24, 'z-po'), (99, 'z-out')) if g.table|length == 36 else () %}
+    {{ p.league_table(g, highlight=followed_teams, zones=zones) }}
+    {% if zones %}<div class="zone-key"><span><i style="background:#00703c"></i>Last 16</span><span><i style="background:#1d70b8"></i>Knockout play-offs</span><span><i style="background:#c8102e"></i>Out</span></div>{% endif %}
+  {% else %}<div class="group-grid">{% for g in page.groups %}<div><h3>{{ g.name }}</h3>{{ p.league_table(g, highlight=followed_teams, wide=False) }}</div>{% endfor %}</div>{% endif %}
+</section>{% endif %}
+<div class="split">
+  {% if page.recent %}<section class="mpart" id="results"><h2>Latest results</h2><ul class="games">{% for g in page.recent %}{{ p.game(g) }}{% endfor %}</ul></section>{% endif %}
+  {% if page.upcoming %}<section class="mpart" id="fixtures"><h2>Fixtures</h2><ul class="games">{% for g in page.upcoming %}{{ p.game(g) }}{% endfor %}</ul></section>{% endif %}
+</div>
+{% if page.knockout %}<section class="mpart" id="rounds"><h2>Rounds</h2>
+  {% for r in page.knockout %}<div class="games-head">{{ r.name }}</div><ul class="games">{% for g in r.games %}{{ p.game(g) }}{% endfor %}</ul>{% endfor %}</section>{% endif %}
+{% if page.scorers %}<section class="mpart" id="scorers"><h2>Top scorers</h2>
+  <table class="rank" style="max-width:640px"><tr><th>#</th><th class="l">Player</th><th class="l">Team</th><th>Goals</th></tr>
+  {% for s in page.scorers %}<tr><td>{{ loop.index }}</td><td class="l"><a href="{{ player_url(s.scorer_uid, s.name) }}">{{ s.name or 'Unknown' }}</a></td><td class="l muted">{{ s.team.name or '' }}</td><td><b>{{ s.goals }}</b></td></tr>{% endfor %}</table></section>{% endif %}
+{% if items %}<section class="mpart" id="news"><h2>News</h2>
+<div class="grid4">{% for a in items %}<a class="card" href="{{ story_url(a) }}">{{ p.image(a) }}<h3>{{ a.headline }}</h3>{{ p.tag(a) }}</a>{% endfor %}</div></section>{% endif %}
+{% endblock %}

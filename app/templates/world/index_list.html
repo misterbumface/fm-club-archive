@@ -1,0 +1,18 @@
+{% extends "world/base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block body %}
+<div class="crumbs">{{ title }}</div>
+<div class="hero"><div><h1>{{ title }}</h1><div class="sub">{{ rows|length }} in the archive</div></div></div>
+<div class="card" style="margin-top:20px"><table>
+{% if kind == 'competition' %}
+  <tr><th>Competition</th><th class="n">Matches since 2022</th><th class="n">Last played</th></tr>
+  {% for r in rows %}<tr><td><a class="team" href="{{ url_for('world.competition', uid=r.fm_uid) }}">{% if trophy_url(r.fm_uid) %}<img src="{{ trophy_url(r.fm_uid) }}" alt="">{% endif %}{{ r.name }}</a></td><td class="n">{{ '{:,}'.format(r.matches) }}</td><td class="n">{{ r.last_played }}</td></tr>{% endfor %}
+{% elif kind == 'nation' %}
+  <tr><th>Nation</th><th class="n">Players</th></tr>
+  {% for r in rows %}<tr><td><a href="{{ url_for('world.nation', uid=r.fm_uid) }}">{{ r.name }}</a></td><td class="n">{{ '{:,}'.format(r.players) }}</td></tr>{% endfor %}
+{% else %}
+  <tr><th>Award</th><th class="n">Years</th><th class="n">Last</th></tr>
+  {% for r in rows %}<tr><td><a href="{{ url_for('world.award', uid=r.fm_uid) }}">{{ r.name }}</a></td><td class="n">{{ r.years }}</td><td class="n">{{ r.last_year }}</td></tr>{% endfor %}
+{% endif %}
+</table></div>
+{% endblock %}

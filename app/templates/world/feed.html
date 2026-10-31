@@ -1,0 +1,77 @@
+{% extends "world/base.html" %}
+{% from "world/_post.html" import post_card %}
+{% block title %}Feed{% endblock %}
+{% block body %}
+<div class="crumbs">The world's social feed</div>
+<div class="hero"><div>
+  {% if account %}<h1>{{ account.name }} <small class="muted">@{{ account.handle }}</small></h1>
+    <div class="sub">{% if account.kind == 'fan' %}{{ fan_label(account) }} · {{ tempers[account.persona.temper][0] }}: {{ tempers[account.persona.temper][1] }}
+      {% elif account.kind == 'player' %}{{ fan_label(account) }} · <a href="{{ url_for('world.person', uid=account.person_uid) }}">His page in the archive ›</a>
+      {% elif account.kind == 'journalist' %}{{ fan_label(account) }}
+      {% else %}The club's own account · <a href="{{ url_for('world.club', uid=account.club_uid) }}">The club in the archive ›</a>{% endif %}</div>
+  {% elif tag %}<h1>#{{ tag }}</h1><div class="sub">Every post with this hashtag, newest first.</div>
+  {% else %}<h1>Feed</h1>
+    <div class="sub">What the clubs post about their results, signings, sales, titles and managers, and what their fans answer, in game time.</div>{% endif %}
+</div></div>
+{% set hide_old_job = true %}{% include "news/_job.html" %}
+
+<div class="feed-grid">
+  <div class="feed">
+    <nav class="feed-tabs">
+      <a class="{{ 'on' if not account and not tag and show not in ('mine', 'talking') }}" href="{{ url_for('social.feed') }}">Everything</a>
+      <a class="{{ 'on' if not account and not tag and show == 'mine' }}" href="{{ url_for('social.feed', show='mine') }}">My clubs</a>
+      <a class="{{ 'on' if not account and not tag and show == 'talking' }}" href="{{ url_for('social.feed', show='talking') }}"
+         title="The threads the fans answered last, whatever the post's date">Talking now</a>
+      {% if account %}<a class="on" href="{{ request.full_path }}">@{{ account.handle }}</a>{% elif tag %}<a class="on" href="{{ request.full_path }}">#{{ tag }}</a>{% endif %}
+    </nav>
+    <a id="new-replies" class="feed-new" href="{{ url_for('social.feed', show='talking') }}" hidden data-url="{{ url_for('social.status') }}"
+       data-replies="{{ replies_now }}">New replies from the fans — show them</a>
+    {% for post in posts %}
+      {% if post.reply_to_id %}<div class="post-context muted">Replying in <a href="{{ url_for('social.thread', post_id=post.reply_to_id) }}#post-{{ post.id }}">a thread</a></div>{% endif %}
+      {{ post_card(post, match_ids, reply_counts.get(post.id, 0), reply=post.reply_to_id is not none) }}
+      {% for answer in first_replies.get(post.id, []) %}{{ post_card(answer, reply=true) }}{% endfor %}
+      {% if reply_counts.get(post.id, 0) > first_replies.get(post.id, [])|length %}<a class="post-more" href="{{ url_for('social.thread', post_id=post.id) }}">Show the whole thread ({{ reply_counts[post.id] }} replies) ›</a>{% endif %}
+    {% else %}
+    <div class="card muted">No posts yet. They are made after each import{% if not total %}; push the button to post the last two weeks now{% endif %}.</div>
+    {% endfor %}
+    {% set fan = account.id if account and account.kind != 'club' else None %}
+    <div class="actions">{% if page > 1 %}<a class="btn" href="{{ url_for('social.feed', show=show, club=club, account=fan, tag=tag or None, page=page - 1) }}">‹ Newer</a>{% endif %}
+      {% if more %}<a class="btn" href="{{ url_for('social.feed', show=show, club=club, account=fan, tag=tag or None, page=page + 1) }}">Older ›</a>{% endif %}</div>
+  </div>
+
+  <aside class="feed-side">
+    <section class="card"><h3>The fans</h3>
+      {% if slow.on and slow.model %}<p class="note">While the app is open, the fans answer the latest posts by themselves with
+        {{ slow.model }}: their replies appear one by one, every few seconds, up to {{ slow.limit }} threads after each import
+        ({{ slow.done }} so far{% if slow.waiting %}, {{ slow.waiting }} replies on their way{% endif %}).</p>
+      {% elif slow.on %}<p class="note">With Ollama running, the fans answer the latest posts by themselves while the app is open,
+        one reply every few seconds.</p>
+      {% else %}<p class="note">The fans' replies are turned off in Settings.</p>{% endif %}</section>
+    {% if topics.tags or topics.people %}<section class="card"><h3>Trending <small class="muted">this week</small></h3>
+      {% for name, count in topics.tags %}<a class="feed-account" href="{{ url_for('social.feed', tag=name) }}"><b>#{{ name }}</b>
+        <small class="muted">{{ count }} post{{ 's' if count != 1 }}</small></a>{% endfor %}
+      {% for uid, name, count in topics.people %}<a class="feed-account" href="{{ url_for('world.person', uid=uid) }}"><b>{{ name }}</b>
+        <small class="muted">named in {{ count }} post{{ 's' if count != 1 }}</small></a>{% endfor %}</section>{% endif %}
+    <section class="card"><h3>Most liked</h3>
+      {% for liked, likes in trending %}<a class="feed-account" href="{{ url_for('social.feed', club=liked.club_uid) }}">
+        <b>{{ liked.name }}</b><small class="muted">@{{ liked.handle }} · ♥ {{ '{:,}'.format(likes) }}</small></a>
+      {% else %}<div class="muted">No posts yet.</div>{% endfor %}</section>
+    <section class="card"><form method="post" action="{{ url_for('social.catch_up') }}">
+      <button class="btn" type="submit">Post the latest news</button></form>
+      <p class="note">Imports make the clubs' posts by themselves. You can turn the feed off in Settings.</p></section>
+  </aside>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", () => {  // the slow writer's new replies: a notice, as on a real feed
+  const notice = document.getElementById("new-replies");
+  const look = async () => {
+    try {
+      const now = await (await fetch(notice.dataset.url, {cache: "no-store"})).json();
+      if (now.replies > Number(notice.dataset.replies)) { notice.hidden = false; return; }
+    } catch (error) { /* try again later */ }
+    setTimeout(look, 30000);
+  };
+  setTimeout(look, 30000);
+});
+</script>
+{% endblock %}
