@@ -534,3 +534,48 @@ def test_misfiring_strikers_and_tired_legs(small_world, monkeypatch):
     (tired,) = found["tired_legs"]
     assert tired.facts["games_in_the_last_30_days"] == 4 and tired.facts["his_state"].startswith("jaded")
     assert tired.headline == "Fred Flop (Tottenham) jaded after 4 games in a month"
+
+
+def test_a_bid_says_who_plays_in_his_position_at_both_clubs_from_the_team_sheets(small_world):
+    """Chelsea's strikers are the players who start up front, not the youth players rated best there (31 Oct 2026): a bid's
+    notebook names who he would compete with at the bidding club and who plays there at his own club without him."""
+    from app.services import world_queries as q
+
+    _season(small_world)
+    kid = 305
+    with small_world.begin() as c:
+        games = list(c.exec_driver_sql("select id, home_uid, away_uid from fixtures where competition_uid = %d and home_goals is not null "
+                                       "and date >= '2063-08-01'" % LEAGUE))
+        sheets = []
+        for fixture, home, away in games:
+            for team, side in ((home, 0), (away, 1)):
+                starter = {CHELSEA: SCORER, ARSENAL: STAR}.get(team)
+                if starter:
+                    sheets.append({**_match_player(fixture, side, starter, 0.5, 1, 2), "played": 1, "start_position": "ST (C)"})
+        c.execute(world.WorldMatchPlayer.__table__.insert(), sheets)
+        c.execute(world.WorldPerson.__table__.insert(), [{"fm_uid": kid, "name": "Kid Youth", "as_of": AS_OF, "team_uid": CHELSEA}])
+        c.execute(world.WorldTransferOffer.__table__.insert(), [
+            {"team_uid": ARSENAL, "person_uid": SCORER, "squad_uid": ARSENAL, "fee": 43_000_000, "status": "made", "offered_on": date(2063, 9, 1),
+             "until": date(2063, 9, 8), "completes_on": date(2063, 9, 8), "as_of": AS_OF}])
+        assert q.sheet_positions(c, [SCORER, kid]) == {SCORER: "ST (C)"}  # the kid never started for the first team
+    (bid,) = _found(small_world)["transfer_bid"]
+    moves = bid.facts["if_he_moves"]
+    assert moves["at_the_bidding_club"]["who_plays_there"] == ["Stan Star: 4 starts there since 2063-07-01, 4 goals in them"]
+    assert moves["at_the_bidding_club"]["starters_there_a_game"] == 1
+    assert moves["at_his_club_without_him"]["his_starts_there"] == "4 starts, 4 goals since 2063-07-01"
+    assert moves["at_his_club_without_him"]["who_plays_there"] == ["nobody has started there since 2063-07-01"]
+
+
+def test_the_squad_lines_put_the_youth_team_players_apart(small_world):
+    """Verlhac, Rodríguez and Spyrou play for Chelsea's U21s and U18s: on the club page they are not first-team strikers."""
+    from app.services import world_queries as q
+
+    _season(small_world)
+    with small_world.begin() as c:
+        club = c.exec_driver_sql("select club_uid from teams where fm_uid = %d" % CHELSEA).scalar()
+        c.execute(world.WorldTeam.__table__.insert(), [{"fm_uid": 6301, "club_uid": club, "nation_uid": None, "name": "Chelsea U21", "age_limit": 21, "as_of": AS_OF}])
+        c.execute(world.WorldPerson.__table__.insert(), [{"fm_uid": 305, "name": "Kid Youth", "as_of": AS_OF, "team_uid": CHELSEA}])
+        c.execute(world.WorldPlayerGame.__table__.insert(), [
+            {"person_uid": 305, "team_uid": 6301, "played_on": date(2063, 8, 30), "status": "played", "minutes": 90, "as_of": AS_OF},
+            {"person_uid": SCORER, "team_uid": 6301, "played_on": date(2063, 7, 30), "status": "unused", "minutes": 0, "as_of": AS_OF}])
+        assert q._youth_only(c, CHELSEA, 2063, [305, SCORER]) == {305}

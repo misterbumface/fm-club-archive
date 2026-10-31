@@ -23,7 +23,7 @@ import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 from urllib.parse import urljoin, urlsplit
@@ -381,17 +381,25 @@ def last_publish() -> dict | None:
     return json.loads(raw) if raw else None
 
 
+def utc_now() -> datetime:
+    """Now as the databases keep their stamps (CURRENT_TIMESTAMP: UTC, without a zone)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def archive_changed_since(when: datetime) -> bool:
-    """Whether the archive gained an import or an edition since ``when`` (the export is then stale)."""
+    """Whether the archive gained an import, an edition or a changed story since ``when`` (UTC; the export is then stale).
+    A story corrected by hand changes no edition (three morale sentences, 31 Oct 2026)."""
     from sqlalchemy import func, select
 
     from app.models import world as world_models
+    from app.models.world_soccer_article import WorldSoccerArticle
     from app.models.world_soccer_issue import WorldSoccerIssue
 
     newest_issue = db.session.query(func.max(WorldSoccerIssue.updated_at)).scalar()
+    newest_story = db.session.query(func.max(WorldSoccerArticle.updated_at)).scalar()
     with db.engines[world_models.BIND].connect() as connection:
         newest_import = connection.execute(select(func.max(world_models.WorldSave.imported_at))).scalar()
-    for stamp in (newest_issue, newest_import):
+    for stamp in (newest_issue, newest_story, newest_import):
         if stamp is None:
             continue
         if isinstance(stamp, str):
@@ -440,7 +448,7 @@ def publish(site, out_dir: Path, archive_name: str, followed: tuple[int, ...], t
     else:
         export = export_site(site, out_dir, followed, progress, workers=workers)
         try:
-            set_setting(EXPORTED_SETTING, datetime.now().isoformat(timespec="seconds"))
+            set_setting(EXPORTED_SETTING, utc_now().isoformat(timespec="seconds"))
             set_setting(EXPORTED_VERSION_SETTING, app_version())
         except Exception:  # noqa: BLE001 - no app context (tests): the stamp is not kept
             pass

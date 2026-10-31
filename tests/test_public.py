@@ -515,14 +515,22 @@ def test_a_publish_renders_again_only_when_the_archive_changed(site, tmp_path, a
     site_publish.export_site(site, out, (630,))
     with site.app_context():
         assert not site_publish.export_is_fresh(out)  # never stamped: render
-        site_publish.set_setting(site_publish.EXPORTED_SETTING, datetime.now().isoformat(timespec="seconds"))
+        site_publish.set_setting(site_publish.EXPORTED_SETTING, site_publish.utc_now().isoformat(timespec="seconds"))
         assert not site_publish.export_is_fresh(out)  # stamped, but by no known app: render
         site_publish.set_setting(site_publish.EXPORTED_VERSION_SETTING, site_publish.app_version())
         assert site_publish.export_is_fresh(out)  # stamped after every import, by this app: fresh
         site_publish.set_setting(site_publish.EXPORTED_VERSION_SETTING, "an older app")
         assert not site_publish.export_is_fresh(out)  # a new app may draw the pages differently: render
-        assert site_publish.archive_changed_since(datetime.now() - timedelta(days=4000))  # the fixtures' import lies after that
-        assert not site_publish.archive_changed_since(datetime.now() + timedelta(minutes=1))
+        assert site_publish.archive_changed_since(site_publish.utc_now() - timedelta(days=4000))  # the fixtures' import lies after that
+        assert not site_publish.archive_changed_since(site_publish.utc_now() + timedelta(minutes=1))
+        site_publish.set_setting(site_publish.EXPORTED_VERSION_SETTING, site_publish.app_version())
+        site_publish.set_setting(site_publish.EXPORTED_SETTING, (site_publish.utc_now() + timedelta(seconds=1)).isoformat(timespec="seconds"))
+        assert site_publish.export_is_fresh(out)
+        story = WorldSoccerArticle.query.first()
+        story.body += " Corrected."  # a story corrected by hand, a little later: the export is stale
+        story.updated_at = site_publish.utc_now() + timedelta(seconds=2)
+        db.session.commit()
+        assert not site_publish.export_is_fresh(out)
     kept = site_publish.export_from_folder(out)
     assert kept.pages > 5 and kept.assets >= 1 and "/404.html" in kept.types
 

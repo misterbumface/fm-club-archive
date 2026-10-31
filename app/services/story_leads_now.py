@@ -43,6 +43,7 @@ POSITION_GROUPS = {"GK": "GK", "D (C)": "DC", "D (R)": "R", "WB (R)": "R", "D (L
                    "AM (C)": "AMC", "M (R)": "W", "AM (R)": "W", "M (L)": "W", "AM (L)": "W", "ST (C)": "ST"}
 REPLACED_DAYS = 120  # players who left this long before a signing in his position
 REGULAR_STARTS = 5
+SAME_PLACE_PLAYERS = 4  # the players in a position a transfer story names
 CONCERN_BEFORE_DAYS = 42  # a concern that ended this long before a move still explains it
 LUCK_GAMES = 6  # league games with a report before expected points are news
 EURO_BIG, EURO_BOTH = 7500, 6000  # a European tie is previewed when one club is this well known, or both are this
@@ -59,9 +60,42 @@ def position_words(code: str | None) -> str | None:
     return POSITION_WORDS.get(code or "", code)
 
 
+def position_picture(w, person: int, team: int, code: str | None) -> dict:
+    """Who plays in a player's position at a club, from its team sheets this season: the starters there (him left out) with
+    their starts and goals and any open concern, how many the club starts there, and its formation when the save gives it.
+    The first team's sheets leave the youth players out (Chelsea's strikers, 31 Oct 2026)."""
+    group = POSITION_GROUPS.get(code or "")
+    if not group:
+        return {}
+    codes = [c for c, g in POSITION_GROUPS.items() if g == group]
+    since = date(w.season, 7, 1)
+    players = q.position_starts(w.c, team, codes, str(since), str(w.until))
+    if not players:  # a calendar-year league between seasons
+        since = w.until - timedelta(days=365)
+        players = q.position_starts(w.c, team, codes, str(since), str(w.until))
+    others = [p for p in players if p["uid"] != person][:SAME_PLACE_PLAYERS]
+    injured = q.current_injuries(w.c, [p["uid"] for p in others])
+    lines = []
+    for p in others:
+        line = f"{p['name']}: {p['starts']} starts there since {since}, {p['goals'] or 0} goals in them"
+        if p["uid"] in injured:
+            line += f"; injured, out until about {injured[p['uid']]['back_on']}"
+        if worries := _concerns_before(w, p["uid"], w.until):
+            line += "; unhappy: " + "; ".join(worries)
+        lines.append(line)
+    his = next((p for p in players if p["uid"] == person), None)
+    tactic = w.rows("select formation from team_tactics where team_uid = :t and formation is not null order by played_on desc, id desc limit 1", t=team)
+    facts = {"club": w.name(team), "position": position_words(code),
+             "his_starts_there": f"{his['starts']} starts, {his['goals'] or 0} goals since {since}" if his else None,
+             "who_plays_there": lines or ["nobody has started there since " + str(since)],
+             "starters_there_a_game": q.starters_a_game(w.c, team, codes, str(since), str(w.until)),
+             "formation": tactic[0]["formation"] if tactic else None}
+    return {k: v for k, v in facts.items() if v is not None}
+
+
 def transfer_context(w, person: int, to_uid: int, day: date) -> dict:
     """Where a signing fits at his new club: his position, the players in that position who left the club in the last
-    months (whom he replaces), those injured now, and those he competes with (their league games this season)."""
+    months (whom he replaces), and who plays there now (position_picture)."""
     code = q.main_positions(w.c, [person]).get(person)
     if not code:
         return {}
@@ -69,28 +103,23 @@ def transfer_context(w, person: int, to_uid: int, day: date) -> dict:
     left = w.rows("select t.person_uid, t.to_uid, t.fee, t.kind, t.date, p.name from transfers t join people p on p.fm_uid = t.person_uid "
                   "where t.from_uid = :c and t.date > :s and t.date <= :d and t.kind in (1, 2, 3, 4, 7, 8, 9) and t.person_uid != :p",
                   c=to_uid, s=str(day - timedelta(days=REPLACED_DAYS)), d=str(w.until), p=person)
-    squad = w.rows("select fm_uid, name from people where team_uid = :c and fm_uid != :p and staff_job is null", c=to_uid, p=person)
-    positions = q.main_positions(w.c, [r["person_uid"] for r in left] + [r["fm_uid"] for r in squad])
-    same = [r for r in squad if POSITION_GROUPS.get(positions.get(r["fm_uid"])) == group]
-    injured = q.current_injuries(w.c, [r["fm_uid"] for r in same])
-    marks = ",".join(str(uid) for uid in [r["fm_uid"] for r in same] + [r["person_uid"] for r in left]) or "0"
+    positions = q.main_positions(w.c, [r["person_uid"] for r in left])
+    marks = ",".join(str(r["person_uid"]) for r in left) or "0"
     starts = {r["person_uid"]: r["starts"] or 0 for r in w.rows(
         f"select person_uid, sum(starts) starts from player_seasons where team_uid = :c and kind = 1 and season_start in (:y, :l) "
         f"and person_uid in ({marks}) group by person_uid", c=to_uid, y=w.season, l=w.season - 1)}
     # Those who mattered: a regular (five league starts in two seasons) or sold for a fee.
     gone = [r for r in left if POSITION_GROUPS.get(positions.get(r["person_uid"])) == group
             and (starts.get(r["person_uid"], 0) >= REGULAR_STARTS or r["fee"])]
-    left_ids = {r["person_uid"] for r in left}
-    rivals = sorted((r for r in same if r["fm_uid"] not in left_ids and starts.get(r["fm_uid"])), key=lambda r: -starts[r["fm_uid"]])[:3]
+    picture = position_picture(w, person, to_uid, code)
     facts = {"position": position_words(code),
              "same_position_players_who_left": [
                  f"{r['name']} ({q.TRANSFER_KINDS.get(r['kind'], 'left').lower()} to {w.name(r['to_uid']) or 'no club'}, {r['date']}"
                  + (f", £{r['fee'] / 1e6:.1f}m" if r["fee"] else "") + f", {starts.get(r['person_uid'], 0)} league starts in the last two seasons)"
                  for r in gone] or None,
-             "same_position_injured_now": [f"{r['name']} (out until about {injured[r['fm_uid']]['back_on']})"
-                                           for r in same if r["fm_uid"] in injured] or None,
-             "competing_for_the_place": [f"{r['name']} ({starts[r['fm_uid']]} league starts in the last two seasons)"
-                                         for r in rivals] or None,
+             "who_plays_there_now": picture.get("who_plays_there"),
+             "starters_there_a_game": picture.get("starters_there_a_game"),
+             "formation": picture.get("formation"),
              "his_concerns_before_the_move": _concerns_before(w, person, day) or None}
     return {k: v for k, v in facts.items() if v is not None}
 
@@ -996,6 +1025,11 @@ def transfer_market(w) -> list:
                  "fee_euros": round(b["fee"] * 1.166), "rising_with_add_ons_to_pounds": b["fee_max"] if b["fee_max"] and b["fee_max"] > b["fee"] else None,
                  "status": b["status"], "bid_date": str(b["offered_on"]), "status_known_since": _changed(b),
                  "completes_on": str(b["completes_on"]) if b["status"] == "agreed" and b["completes_on"] else None}
+        code = q.main_positions(w.c, [b["person_uid"]]).get(b["person_uid"])
+        if code:  # how it would go: whom he would compete with, and who plays there at his club if he leaves
+            moves = {"at_the_bidding_club": position_picture(w, b["person_uid"], bidder, code),
+                     "at_his_club_without_him": position_picture(w, b["person_uid"], owner, code) if owner else None}
+            facts["if_he_moves"] = {k: v for k, v in moves.items() if v}
         leads.append(Lead("transfer_bid", f"{b['bidder']} bid £{b['fee'] / 1e6:.1f}m for {b['name']} ({b['status']})",
                           date.fromisoformat(str(b["offered_on"])), (w.rep(bidder) or 3000) / 1000 * 10 * (1.2 if b["status"] in ("agreed", "collapsed") else 1.0),
                           {k: v for k, v in facts.items() if v is not None}, [f"person:{b['person_uid']}", f"club:{bidder}"] + ([f"club:{owner}"] if owner else []),

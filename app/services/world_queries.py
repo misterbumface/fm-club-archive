@@ -422,6 +422,17 @@ def club_season(connection: Connection, team_uid: int, season: int) -> dict:
 SQUAD_LINES = (("Goalkeepers", ("GK",)), ("Defence", ("D (C)", "D (L)", "D (R)", "SW", "WB (L)", "WB (R)")),
                ("Midfield", ("DM", "M (C)", "M (L)", "M (R)", "AM (C)")), ("Attack", ("AM (L)", "AM (R)", "ST (C)")))
 RECENT_RESULTS, COMING_UP, COMING_UP_DAYS = 6, 5, 28
+YOUTH_LINE = "Playing for the youth teams"
+
+
+def _youth_only(connection: Connection, team_uid: int, season: int, uids) -> set[int]:
+    """The players on a club's books who played this season only for its youth teams (the U21s, the U18s): the first
+    team's squad lines leave them out (Verlhac, Rodríguez and Spyrou are not Chelsea's strikers, 31 Oct 2026)."""
+    marks = ",".join(str(int(uid)) for uid in uids) or "0"
+    return {r["person_uid"] for r in _rows(connection, "select distinct g.person_uid from player_games g join teams t on t.fm_uid = g.team_uid "
+                                                       "where t.age_limit is not null and t.club_uid = (select club_uid from teams where fm_uid = :t) "
+                                                       f"and g.played_on >= :s and g.person_uid in ({marks}) and coalesce(g.minutes, 0) > 0",
+                                           t=team_uid, s=f"{season}-07-01")}
 
 
 def season_overview(connection: Connection, team_uid: int, season: int, data: dict) -> dict:
@@ -444,14 +455,15 @@ def season_overview(connection: Connection, team_uid: int, season: int, data: di
     else:
         people = _rows(connection, f"select fm_uid uid, name, birth_date from people where fm_uid in "
                                    f"({','.join(str(int(u)) for u in stats) or '0'})")
+    youth = _youth_only(connection, team_uid, season, [p["uid"] for p in people if p["uid"] not in stats]) if current else set()
     positions = main_positions(connection, [p["uid"] for p in people])
     injured = current_injuries(connection, [p["uid"] for p in people]) if current else {}
     new = {t["person_uid"] for t in data["signed"]}
     when = today if current else date(season + 1, 6, 30)
-    lines = {name: [] for name, _ in SQUAD_LINES}
+    lines = {name: [] for name, _ in SQUAD_LINES} | {YOUTH_LINE: []}
     for p in people:
         code = positions.get(p["uid"])
-        line = next((name for name, codes in SQUAD_LINES if code in codes), "Midfield")
+        line = YOUTH_LINE if p["uid"] in youth else next((name for name, codes in SQUAD_LINES if code in codes), "Midfield")
         s = stats.get(p["uid"], {})
         lines[line].append({**p, "position": code, "age": age_on(p["birth_date"], when), "apps": s.get("apps", 0),
                             "goals": s.get("goals", 0), "assists": s.get("assists", 0), "rating": s.get("rating"),
@@ -465,7 +477,7 @@ def season_overview(connection: Connection, team_uid: int, season: int, data: di
         keep = set(range(min(3, len(table)))) | set(range(max(mine - 2, 0), min(mine + 3, len(table))))
         around = [table[i] for i in sorted(keep)]
     return {"current": current, "today": today, "recent": recent, "upcoming": upcoming,
-            "form": [f["result"] for f in played[-RECENT_RESULTS:]], "squad_lines": [(name, lines[name]) for name, _ in SQUAD_LINES],
+            "form": [f["result"] for f in played[-RECENT_RESULTS:]], "squad_lines": [(name, lines[name]) for name, _ in SQUAD_LINES] + [(YOUTH_LINE, lines[YOUTH_LINE])],
             "table_around": around}
 
 
@@ -576,7 +588,46 @@ def main_positions(connection: Connection, uids) -> dict[int, str]:
         top = [code for code, rating in ratings.items() if rating == best]
         counts = elevens.get(row["person_uid"], Counter())
         found[row["person_uid"]] = max(top, key=lambda code: counts[code])
+    found.update(sheet_positions(connection, uids))
     return found
+
+
+SHEET_STARTS, SHEET_MIN = 30, 3  # a player's newest starts on the team sheets, and how many make his position
+
+
+def sheet_positions(connection: Connection, uids) -> dict[int, str]:
+    """Where a player starts on the team sheets: the commonest of his newest starts. It beats his best position rating:
+    Chelsea's strikers are the three who start up front, not the youth players rated best there (31 Oct 2026)."""
+    marks = ",".join(str(int(uid)) for uid in uids) or "0"
+    starts: dict[int, Counter] = defaultdict(Counter)
+    for row in _rows(connection, "select person_uid, start_position from (select m.person_uid, m.start_position, row_number() over "
+                                 "(partition by m.person_uid order by f.date desc) n from match_players m join fixtures f on f.id = m.fixture_id "
+                                 f"where m.person_uid in ({marks}) and m.played = 1 and m.minute_on = 0 and m.start_position is not null) "
+                                 "where n <= :k", k=SHEET_STARTS):
+        starts[row["person_uid"]][row["start_position"]] += 1
+    return {uid: counts.most_common(1)[0][0] for uid, counts in starts.items() if sum(counts.values()) >= SHEET_MIN}
+
+
+def position_starts(connection: Connection, team_uid: int, codes, since: str, until: str) -> list[dict]:
+    """The team's starters in some positions between two dates, from its team sheets (competitive games): each player's
+    starts there and his goals in them, most starts first. A club's youth players are not on its first team's sheets."""
+    marks = ",".join(f"'{c}'" for c in codes) or "''"
+    return _rows(connection, "select m.person_uid uid, p.name, count(*) starts, sum(m.goals) goals from match_players m "
+                             "join fixtures f on f.id = m.fixture_id join competitions c on c.fm_uid = f.competition_uid "
+                             "join people p on p.fm_uid = m.person_uid where ((f.home_uid = :t and m.side = 0) or (f.away_uid = :t and m.side = 1)) "
+                             f"and m.played = 1 and m.minute_on = 0 and m.start_position in ({marks}) and f.date > :s and f.date <= :u "
+                             "and c.scope in ('league', 'cup', 'continental') group by m.person_uid order by starts desc, goals desc",
+                 t=team_uid, s=since, u=until)
+
+
+def starters_a_game(connection: Connection, team_uid: int, codes, since: str, until: str) -> int | None:
+    """How many players the team usually starts in these positions (one striker or two), from its team sheets."""
+    marks = ",".join(f"'{c}'" for c in codes) or "''"
+    rows = _rows(connection, "select n, count(*) games from (select m.fixture_id, sum(m.start_position in (" + marks + ")) n "
+                             "from match_players m join fixtures f on f.id = m.fixture_id where ((f.home_uid = :t and m.side = 0) "
+                             "or (f.away_uid = :t and m.side = 1)) and m.played = 1 and m.minute_on = 0 and f.date > :s and f.date <= :u "
+                             "group by m.fixture_id) group by n order by games desc limit 1", t=team_uid, s=since, u=until)
+    return rows[0]["n"] if rows else None
 
 
 def club_seasons(connection: Connection, team_uid: int) -> list[int]:
