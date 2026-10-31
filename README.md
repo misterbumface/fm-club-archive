@@ -20,7 +20,7 @@ Terminal app once, and after that it is a normal app.
 - **An AI writer.** The cheapest is a [DeepSeek](https://platform.deepseek.com/) API key: make an
   account, add a little credit, and make a key. An [OpenAI](https://platform.openai.com/) key also
   works. If your Mac has a lot of memory you can use a free local model with
-  [Ollama](https://ollama.com/) instead, but it is slower and writes less well.
+  [Ollama](https://ollama.com/) instead, but it is slower and writes less good (sic).
 - **Optional: graphics packs** for logos, flags, faces and stadiums (see below).
 
 ## Install it
