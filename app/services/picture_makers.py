@@ -186,10 +186,14 @@ def invoke_models() -> dict[str, list[str]]:
 
 
 def draw_portrait(prompt: str, seed: int) -> bytes:
-    """A portrait: on InvokeAI when it is the maker, else with Draw Things' portrait model (WaveSpeed and OpenAI draw no
-    portraits)."""
+    """A portrait from the chosen maker; Draw Things draws it with its own portrait model. OpenAI and WaveSpeed draw them
+    too (31 Oct 2026: with OpenAI chosen, "New picture" still asked Draw Things)."""
     if maker() == "invoke":
         return invoke_draw(prompt, seed, 1024, 1024)
+    if maker() == "openai":
+        return openai_draw(prompt, 1024, 1024)
+    if maker() == "wavespeed":
+        return wavespeed_draw(prompt, seed, 1024, 1024)
     return world_portraits.draw(prompt, seed=seed, model=draw_things_portrait_model())
 
 

@@ -139,3 +139,15 @@ def test_draw_things_models_are_chosen_in_settings(monkeypatch):
     monkeypatch.setattr(world_portraits, "draw_edit", lambda prompt, reference, seed, model, **size: sent.update(model=model) or b"png")
     picture_makers.edit("x", b"face", 1)
     assert sent["model"] == world_portraits.EDIT_MODEL
+
+
+@pytest.mark.usefixtures("app")
+def test_a_portrait_comes_from_the_chosen_maker(monkeypatch):
+    calls = []
+    monkeypatch.setattr(picture_makers, "openai_draw", lambda prompt, w, h: calls.append(("openai", w, h)) or b"png")
+    monkeypatch.setattr(picture_makers, "wavespeed_draw", lambda prompt, seed, w, h: calls.append(("wavespeed", w, h)) or b"png")
+    monkeypatch.setattr(picture_makers.world_portraits, "draw", lambda *a, **k: calls.append(("draw things",)) or b"png")
+    for name in ("openai", "wavespeed", "draw_things"):
+        picture_makers.set_maker(name, commit=False)
+        picture_makers.draw_portrait("a face", 1)
+    assert calls == [("openai", 1024, 1024), ("wavespeed", 1024, 1024), ("draw things",)]
