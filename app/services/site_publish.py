@@ -39,6 +39,7 @@ HOSTNAME_SETTING = "publish_hostname"
 ACCOUNT_SETTING = "publish_account_id"
 LAST_SETTING = "publish_last"
 EXPORTED_SETTING = "publish_exported_at"  # when the folder was last rendered: a Publish renders again only when the archive changed since
+EXPORTED_VERSION_SETTING = "publish_exported_version"  # and the app that rendered it: a new app may draw the pages differently
 MAX_FILES = 20_000
 MAX_FILE_BYTES = 25 * 1024 * 1024
 COMPATIBILITY_DATE = "2025-01-01"
@@ -57,7 +58,7 @@ _EDITION = re.compile(r"^/competitions/\d+/[^/]+/\d{4}$")
 
 def kind_of(path: str) -> str:
     """The kind of page a path is: the crawl's rules go by it."""
-    if path.startswith(("/static/", "/logos/", "/faces/", "/trophies/")):
+    if path.startswith(("/static/", "/logos/", "/faces/", "/trophies/", "/stadiums/")):
         return "asset"
     if _EDITION.match(path):
         return "edition"  # one season of a competition
@@ -400,9 +401,17 @@ def archive_changed_since(when: datetime) -> bool:
     return False
 
 
+def app_version() -> str:
+    from macapp.version import APP_VERSION
+
+    return APP_VERSION
+
+
 def export_is_fresh(out_dir: Path) -> bool:
     """Whether the folder holds an export and nothing changed in the archive since it was rendered."""
     stamp = setting(EXPORTED_SETTING)
+    if setting(EXPORTED_VERSION_SETTING) != app_version():  # a new app: the pages may have changed (the about page, 31 Oct 2026)
+        return False
     if not stamp or not (out_dir / ".types.json").exists():
         return False
     try:
@@ -432,6 +441,7 @@ def publish(site, out_dir: Path, archive_name: str, followed: tuple[int, ...], t
         export = export_site(site, out_dir, followed, progress, workers=workers)
         try:
             set_setting(EXPORTED_SETTING, datetime.now().isoformat(timespec="seconds"))
+            set_setting(EXPORTED_VERSION_SETTING, app_version())
         except Exception:  # noqa: BLE001 - no app context (tests): the stamp is not kept
             pass
     manifest, files = manifest_of(out_dir)

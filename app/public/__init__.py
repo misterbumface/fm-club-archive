@@ -137,8 +137,9 @@ def stories(limit: int | None = None, section: str | None = None) -> list:
 
 
 def picture(article) -> str | None:
-    """The article's own picture; else one of the first person's action photos (they rotate by the story's number), his face,
-    a picture from its club's or its competition's pool, the crest of its first club or its competition's logo."""
+    """The article's picture, chosen as the desk chooses it (news._picture), so the site shows what the curator saw (31 Oct
+    2026): its own picture; the archive's photographs, match-day and stadium pictures of its subjects; a face or a trophy;
+    the club's stadium from the game's stadium pack; then a picture from its club's or competition's pool, a crest or a logo."""
     from app.services import world_images
 
     if article.image_url and article.image_url.startswith("/static/"):
@@ -146,30 +147,48 @@ def picture(article) -> str | None:
     logo = re.fullmatch(r"/logos/(club|competition|nation)/\w+/(\d+)\.png", article.image_url or "")
     if logo:
         return url_for("public.logo", entity_type=logo.group(1), fm_uid=int(logo.group(2)))
-    for link in article.entity_links:
-        if link.entity_type in ("person", "player"):
-            photos = [image for image in world_images.pictures(f"person:{link.entity_id}", ("photograph",)) if image.is_active]
-            if photos:
-                return photos[article.id % len(photos)].url
-            if _face_path(link.entity_id):
-                return url_for("public.face", uid=link.entity_id)
+    refs = [link.world_ref for link in article.entity_links if link.world_ref]
+    for ref in refs:
+        found = [image for image in world_images.pictures(ref, ("photograph", "matchday", "stadium"))
+                 if image.is_active and (image.url or "").startswith("/static/")]
+        if found:
+            return found[article.id % len(found)].url  # they rotate by the story's number, as on the desk
+    for ref in refs:
+        kind, _, rest = ref.partition(":")
+        uid = int(rest.split(":")[0]) if kind in ("person", "edition", "competition") and rest.split(":")[0].isdigit() else None
+        if kind == "person" and uid and _face_path(uid):
+            return url_for("public.face", uid=uid)
+        if kind in ("edition", "competition") and uid:
+            trophy = history.trophy(uid)
+            if trophy:
+                return trophy
+    for ref in refs:
+        if ref.startswith("club:") and ref.split(":")[1].isdigit():
+            stadium = _stadium_of(int(ref.split(":")[1]))
+            if stadium:
+                return url_for("public.stadium", stadium_uid=stadium)
     from app.services.article_pictures import pool_picture
 
     pooled = pool_picture(article)
     if pooled:
         return pooled
+    from app.services.logo_assets import resolve_logo_path
+
     for link in article.entity_links:
-        if link.entity_type == "club":
-            from app.services.logo_assets import resolve_logo_path
-
-            if resolve_logo_path("club", link.entity_id, "normal"):
-                return url_for("public.logo", entity_type="club", fm_uid=link.entity_id)
-        if link.entity_type == "competition":
-            from app.services.logo_assets import resolve_logo_path
-
-            if resolve_logo_path("competition", link.entity_id, "normal"):
-                return url_for("public.logo", entity_type="competition", fm_uid=link.entity_id)
+        if link.entity_type == "club" and resolve_logo_path("club", link.entity_id, "normal"):
+            return url_for("public.logo", entity_type="club", fm_uid=link.entity_id)
+        if link.entity_type == "competition" and resolve_logo_path("competition", link.entity_id, "normal"):
+            return url_for("public.logo", entity_type="competition", fm_uid=link.entity_id)
     return None
+
+
+def _stadium_of(team_uid: int) -> int | None:
+    """The home stadium of a club or team, when the game's stadium pack has its picture."""
+    from app.routes.world import stadium_path
+
+    with football.connect() as c:
+        row = c.execute(db.text("select stadium_uid from teams where fm_uid = :u"), {"u": team_uid}).first()
+    return row[0] if row and row[0] and stadium_path(row[0]) else None
 
 
 def _face_path(uid: int) -> Path | None:
@@ -570,6 +589,16 @@ def face(uid: int):
     if path is None:
         abort(404)
     return send_file(path, conditional=True, max_age=3600)
+
+
+@public_bp.get("/stadiums/<int:stadium_uid>.jpg")
+def stadium(stadium_uid: int):
+    from app.routes.world import stadium_path
+
+    path = stadium_path(stadium_uid)
+    if path is None:
+        abort(404)
+    return send_file(path, conditional=True, max_age=86400)
 
 
 @public_bp.get("/trophies/<int:uid>.png")

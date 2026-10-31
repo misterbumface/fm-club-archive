@@ -516,7 +516,11 @@ def test_a_publish_renders_again_only_when_the_archive_changed(site, tmp_path, a
     with site.app_context():
         assert not site_publish.export_is_fresh(out)  # never stamped: render
         site_publish.set_setting(site_publish.EXPORTED_SETTING, datetime.now().isoformat(timespec="seconds"))
-        assert site_publish.export_is_fresh(out)  # stamped after every import: fresh
+        assert not site_publish.export_is_fresh(out)  # stamped, but by no known app: render
+        site_publish.set_setting(site_publish.EXPORTED_VERSION_SETTING, site_publish.app_version())
+        assert site_publish.export_is_fresh(out)  # stamped after every import, by this app: fresh
+        site_publish.set_setting(site_publish.EXPORTED_VERSION_SETTING, "an older app")
+        assert not site_publish.export_is_fresh(out)  # a new app may draw the pages differently: render
         assert site_publish.archive_changed_since(datetime.now() - timedelta(days=4000))  # the fixtures' import lies after that
         assert not site_publish.archive_changed_since(datetime.now() + timedelta(minutes=1))
     kept = site_publish.export_from_folder(out)

@@ -36,9 +36,10 @@ def _picture(article: WorldSoccerArticle) -> tuple[str | None, bool]:
         return article.image_url, False
     refs = [link.world_ref for link in article.entity_links if link.world_ref]
     for ref in refs:
-        found = world_pictures(ref, ("photograph", "matchday", "stadium"))
+        found = [image for image in world_pictures(ref, ("photograph", "matchday", "stadium"))
+                 if image.is_active and (image.url or "").startswith("/static/")]
         if found:
-            return found[0].url, False
+            return found[article.id % len(found)].url, False  # they rotate by the story's number, as on the site
     for ref in refs:
         kind, _, rest = ref.partition(":")
         uid = int(rest.split(":")[0]) if kind in ("person", "edition", "competition", "club") else None
