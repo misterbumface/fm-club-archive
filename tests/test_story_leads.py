@@ -204,3 +204,25 @@ def test_a_signing_of_this_year_is_scouted_as_a_signing_with_his_old_clubs_caree
     assert lead.facts["signed"] == "transfer from Arsenal on 2063-03-01, £5.6m"
     assert person["career_by_club"] == ["Arsenal 2061/62 to 2062/63: 34 games, 3 goals"]
     assert person["joined_club_now"] == "transfer from Arsenal on 2063-03-01, £5.6m"
+
+
+def test_a_scouting_report_lists_the_games_he_was_in_and_those_he_sat_out(small_world):
+    """Bähr had 23 minutes from the bench this season; the paper had him best on the pitch in a 2-1 over West Ham U21 that
+    never happened (1 Nov 2026). The report lists his games, newest first, and his unused appearances; January is this season."""
+    with small_world.begin() as c:
+        c.execute(world.WorldTeam.__table__.insert(), [{"fm_uid": 6301, "club_uid": CHELSEA, "nation_uid": None, "name": "Chelsea U21", "age_limit": 21, "as_of": AS_OF},
+                                                       {"fm_uid": 6302, "club_uid": 700, "nation_uid": None, "name": "Spurs U21", "age_limit": 21, "as_of": AS_OF}])
+        c.execute(world.WorldPerson.__table__.insert(), [
+            {"fm_uid": 77, "name": "Mark Webber", "birth_date": date(2046, 5, 26), "as_of": AS_OF, "team_uid": CHELSEA, "current_ability": 86, "potential_ability": 198}])
+        c.execute(world.WorldPlayerGame.__table__.insert(), [
+            {"person_uid": 77, "team_uid": 6301, "played_on": date(2063, 9, 2), "opponent_uid": 6302, "status": "played", "minutes": 10, "goals": 0, "assists": 1, "rating": 7.3, "as_of": AS_OF},
+            {"person_uid": 77, "team_uid": 6301, "played_on": date(2063, 9, 9), "opponent_uid": 6302, "status": "unused", "minutes": None, "goals": None, "assists": None, "rating": None, "as_of": AS_OF},
+            {"person_uid": 77, "team_uid": 6301, "played_on": date(2063, 9, 16), "opponent_uid": 6302, "status": "played", "minutes": 4, "goals": 0, "assists": 0, "rating": None, "as_of": AS_OF},
+            {"person_uid": 77, "team_uid": 6301, "played_on": date(2063, 9, 20), "opponent_uid": 6302, "status": "unused", "minutes": None, "goals": None, "assists": None, "rating": None, "as_of": AS_OF}])
+    with small_world.connect() as c:
+        (report,) = [lead for lead in find_leads(c, date(2063, 9, 10), date(2063, 9, 24)) if lead.kind == "scouting"]
+    assert report.facts["this_season"]["season"] == "2063/64"
+    assert report.facts["his_games_this_season"] == ["2063-09-16, Chelsea U21 v Spurs U21: 4 minutes, 0 goals, 0 assists",
+                                                     "2063-09-02, Chelsea U21 v Spurs U21: 10 minutes, 0 goals, 1 assists, rating 7.3"]
+    assert report.facts["games_he_sat_out_as_an_unused_substitute"] == 2
+    assert report.facts["his_teams_newest_game"] == "2063-09-20, Chelsea U21 v Spurs U21: he was unused"

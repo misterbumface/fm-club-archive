@@ -71,7 +71,10 @@ KIND_NOTES = {
                  "on the playing days and bring the reader to the present.",
     "appointment": "This is news: a former player has just been appointed to a staff job.",
     "scouting": "This is a scouting report: your scouts have watched him closely. Describe what they saw and his standout "
-                "traits in a scout's language, with concrete moments rather than labels. Nobody knows how good a player will "
+                "traits in a scout's language, with concrete moments rather than labels: the moments come only from the games in "
+                "his_games_this_season, with his minutes, goals and assists as given there; a game not listed, or one he sat "
+                "out, holds no moment of his, and a team's result is never his performance. With no games listed, write of "
+                "his qualities, not of games. Nobody knows how good a player will "
                 "become: you may guess, as scouts and journalists do, but never state his future as a fact, and never give "
                 "ratings or numbers for his ability. scout_view is one scout's private note: build on it in your own words, "
                 "never quote it, and do not compare him with 'his age group'.",

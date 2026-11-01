@@ -620,7 +620,7 @@ def _scouting(w: _World) -> list[Lead]:
         strengths = [name.lower() for name, value in sorted((attributes or {}).items(), key=lambda kv: -kv[1])[:4] if value >= 13]
         team = w.team(r["team_uid"])
         club_uid = team.get("club_uid") or r["team_uid"]
-        season = w.season if w.until.month >= 9 else w.season - 1
+        season = w.season - 1 if w.until.month in (7, 8) else w.season  # in pre-season, the season just ended (January is this one's)
         # the season's games by club: a player's figures must not read as his current team's
         played = w.rows("select t.name team, sum(s.starts + s.substitute_appearances) games, sum(s.goals) goals from player_seasons s "
                         "join teams t on t.fm_uid = s.team_uid where s.person_uid = :p and s.season_start = :s and s.kind in (1, 2, 3) "
@@ -633,7 +633,8 @@ def _scouting(w: _World) -> list[Lead]:
                  "scout_view": random.Random(r["fm_uid"]).choice(SCOUT_VIEWS[level]),
                  "standout_traits": strengths or None,
                  "this_season": {"season": q.season_label(season),
-                                 "by_club": [{"club": p["team"], "games": p["games"] or 0, "goals": p["goals"] or 0} for p in played]}}
+                                 "by_club": [{"club": p["team"], "games": p["games"] or 0, "goals": p["goals"] or 0} for p in played]},
+                 **_his_games(w, r["fm_uid"], season)}
         if moved and moved["kind"] != 14 and (w.until - date.fromisoformat(str(moved["date"])[:10])).days < SIGNED_RECENTLY_DAYS:
             # a signing of this year is no academy product (Büchel, from Bielefeld in August, read as four years at Chelsea)
             facts["signed"] = (f"{q.TRANSFER_KINDS.get(moved['kind'], 'joined').lower()} from {moved['from_name'] or 'no club'} "
@@ -642,6 +643,26 @@ def _scouting(w: _World) -> list[Lead]:
                           [f"person:{r['fm_uid']}", f"club:{club_uid}"], w.beats_for(r["team_uid"]) | {"young"}))
     leads.sort(key=lambda lead: -lead.score)
     return [lead for lead in leads if "home" not in lead.beats][:10] + [lead for lead in leads if "home" in lead.beats][:3]
+
+
+SCOUT_GAMES = 8  # a scouting report lists this many of his newest games
+
+
+def _his_games(w: _World, person: int, season: int) -> dict:
+    """The games a scouted player was in this season, newest first, and those he sat out: the only games a writer may put
+    him in (a 2-1 win over West Ham U21 that never happened, with him the best player on the pitch, 1 Nov 2026)."""
+    rows = w.rows("select g.played_on, t.name team, o.name opponent, g.status, g.minutes, g.goals, g.assists, g.rating from player_games g "
+                  "join teams t on t.fm_uid = g.team_uid left join teams o on o.fm_uid = g.opponent_uid where g.person_uid = :p "
+                  "and g.played_on >= :s and g.played_on <= :u order by g.played_on desc", p=person, s=f"{season}-07-01", u=str(w.until))
+    played = [r for r in rows if r["status"] == "played" and (r["minutes"] or 0) > 0]
+    lines = [f"{r['played_on']}, {r['team']} v {r['opponent'] or 'unknown'}: {r['minutes']} minutes, {r['goals'] or 0} goals, {r['assists'] or 0} assists"
+             + (f", rating {r['rating']:.1f}" if r["rating"] else "") for r in played[:SCOUT_GAMES]]
+    unused = sum(1 for r in rows if r["status"] == "unused")
+    facts = {"his_games_this_season": lines or "none: he has not played a game this season",
+             "games_he_sat_out_as_an_unused_substitute": unused or None}
+    if played and rows and rows[0]["status"] != "played":
+        facts["his_teams_newest_game"] = f"{rows[0]['played_on']}, {rows[0]['team']} v {rows[0]['opponent'] or 'unknown'}: he was {rows[0]['status']}"
+    return {k: v for k, v in facts.items() if v is not None}
 
 
 def _academy_scorers(w: _World) -> list[Lead]:

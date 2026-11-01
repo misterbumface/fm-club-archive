@@ -85,7 +85,8 @@ PROMPT_NOTE = (
     "notebook does not give it, ask for it instead of writing it from memory or leaving it vague; a reader of a club story "
     "wants to know where the club stands. Use the competition and club names exactly as the notebook writes them. Ask only "
     f"what the piece needs, at most {MAX_QUESTIONS}; the answers are facts like the notebook's. When the archive has no "
-    "answer, leave the fact out."
+    "answer, leave the fact out. A result you look up says nothing of who played in it: a player's part in a game is only "
+    "what the notebook or the player question gives for him."
 )
 
 

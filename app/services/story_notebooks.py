@@ -628,6 +628,35 @@ def shot_words(across: float, height: float) -> str:
     return "inside the post" if corner else "into the middle of the goal"
 
 
+CHANCES_TOLD = 10  # the chances that were not goals a match notebook lists, the nearest misses first
+POST, BAR = 3.66, 2.44
+
+
+def chance_words(outcome: str, across: float, height: float) -> str:
+    """A chance that was not a goal, in words: where it went and what became of it (31 Oct 2026: the save gives every shot's
+    crossing point and second, and the writers invented the rest)."""
+    if outcome == "woodwork":
+        return "hit the bar" if height >= BAR - 0.4 else "hit the post"
+    if outcome == "off target":
+        wide, over = abs(across) > POST, height > BAR
+        return "wide and over" if wide and over else "over the bar" if over else "wide" if wide else "off target"
+    if outcome == "blocked":
+        return "blocked"
+    if outcome == "saved":
+        if abs(across) > POST or height > BAR:
+            return "saved, going wide"
+        return "saved " + ("low at the post" if abs(across) >= 2.2 and height <= 0.9 else "high at the post" if abs(across) >= 2.2 and height >= 1.7
+                           else "at the post" if abs(across) >= 2.2 else "low in the middle" if height <= 0.9 else "high in the middle" if height >= 1.7
+                           else "in the middle")
+    return outcome
+
+
+def _chance_rank(shot: dict) -> tuple:
+    """The nearest misses first: the woodwork, then saves in the frame, then blocks, then the rest; the earliest first."""
+    order = {"woodwork": 0, "saved": 1 if abs(shot["across"]) <= POST and shot["height"] <= BAR else 3, "blocked": 2}
+    return (order.get(shot["outcome"], 4), shot["minute"], shot["second"])
+
+
 def match_notebook(connection: Connection, fixture_id: int) -> dict | None:
     data = q.match(connection, fixture_id)
     if data is None:
@@ -642,8 +671,10 @@ def match_notebook(connection: Connection, fixture_id: int) -> dict | None:
     positions = q.main_positions(connection, scorers)
     club_standing = _standing_here(connection, scorers, (f["home_uid"], f["away_uid"]))
 
-    shots = q._rows(connection, "select side, person_uid, minute, across, height, outside_box from match_shots where fixture_id = :f "
-                                "and outcome = 'goal'", f=fixture_id)
+    every_shot = q._rows(connection, "select s.side, s.person_uid, s.minute, s.second, s.outcome, s.across, s.height, s.outside_box, p.name "
+                                     "from match_shots s left join people p on p.fm_uid = s.person_uid where s.fixture_id = :f "
+                                     "order by s.minute, s.second", f=fixture_id)
+    shots = [sh for sh in every_shot if sh["outcome"] == "goal"]
     culprits = q._rows(connection, "select m.side, m.mistakes_leading_to_goal mistakes, p.name from match_players m join people p on p.fm_uid = m.person_uid "
                                    "where m.fixture_id = :f and coalesce(m.mistakes_leading_to_goal, 0) > 0", f=fixture_id)
     conceded = {0: sum(1 for g in data["goals"] if g["side"] == 1 and g["kind"] in (0, 1, 2)),
@@ -657,6 +688,7 @@ def match_notebook(connection: Connection, fixture_id: int) -> dict | None:
         shot = next((sh for sh in shots if sh["side"] == g["side"] and sh["person_uid"] == g["scorer_uid"] and abs(sh["minute"] - g["minute"]) <= 1), None)
         if shot:
             found["where_it_went"] = shot_words(shot["across"], shot["height"])
+            found["at"] = f"{shot['minute']}:{shot['second']:02d}"  # the clock to the second, from the shot
             if shot["outside_box"] == 1:
                 found["from_outside_the_box"] = True
         blamed = [c for c in culprits if c["side"] != g["side"]]  # the conceding side's mistakes: tied to the goal only when it is the only one
@@ -704,6 +736,11 @@ def match_notebook(connection: Connection, fixture_id: int) -> dict | None:
         "penalties": f"{f['home_penalties']}-{f['away_penalties']}" if f["home_penalties"] is not None else None,
         "attendance": f["attendance"] or None, "away_fans": f["away_fans"] or None,
         "goals": [goal(g) for g in data["goals"] if g["kind"] in (0, 1, 2)],
+        "chances_that_were_not_goals": [
+            {"at": f"{sh['minute']}:{sh['second']:02d}", "team": names.team(f["home_uid"] if sh["side"] == 0 else f["away_uid"]),
+             "player": sh["name"], "what": chance_words(sh["outcome"], sh["across"], sh["height"]),
+             **({"from_outside_the_box": True} if sh["outside_box"] == 1 else {})}
+            for sh in sorted((sh for sh in every_shot if sh["outcome"] != "goal" and sh["name"]), key=_chance_rank)[:CHANCES_TOLD]] or None,
         "mistakes_leading_to_goals": [f"{c['name']} ({names.team(f['home_uid'] if c['side'] == 0 else f['away_uid'])})"
                                       + (f", {c['mistakes']} goals" if c["mistakes"] > 1 else "") for c in culprits] or None,
         "shoot_out": [{"team": names.team(f["home_uid"] if g["side"] == 0 else f["away_uid"]), "taker": g["name"], "scored": g["kind"] == 4}

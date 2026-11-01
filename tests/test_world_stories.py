@@ -12,7 +12,7 @@ from app.models import world
 from app.models.world_story import ClubSeasonStory, EditionStory
 from app.services import player_notebook, story_notebooks, story_writer
 from app.services import world_queries as q
-from tests.test_world_pages import ARSENAL, CHELSEA, FA_CUP, LEAGUE, LIVERPOOL, MYERS, app, pages, small_world  # noqa: F401
+from tests.test_world_pages import ARSENAL, AS_OF, CHELSEA, FA_CUP, LEAGUE, LIVERPOOL, MYERS, app, pages, small_world  # noqa: F401
 
 
 def _final_id(engine) -> int:
@@ -71,6 +71,28 @@ def test_the_edition_and_match_notebooks(small_world):
     assert match["goals"][0] == {"minute": "19'", "team": "Chelsea", "scorer": "Ken Myers", "kind": "goal", "age": 23,
                                  "nationality": "English", "position": None}
     assert match["away_league_before"]["position"] == 1
+    assert "at" not in match["goals"][0] and match["chances_that_were_not_goals"] is None  # no shot list for the final
+
+
+def test_the_match_notebook_tells_each_goal_to_the_second_and_the_chances_that_were_not_goals(small_world):
+    """The save keeps every shot's second and where it crossed the line; the notebook gave only the goals' minute, so a
+    writer who wanted moments invented them (31 Oct 2026)."""
+    final = _final_id(small_world)
+    with small_world.begin() as c:
+        c.execute(world.WorldMatchShot.__table__.insert(), [
+            {"fixture_id": final, "side": 1, "seq": 0, "person_uid": MYERS, "minute": 19, "second": 7, "outcome": "goal", "across": 2.9, "height": 0.4, "outside_box": None, "as_of": AS_OF},
+            {"fixture_id": final, "side": 1, "seq": 1, "person_uid": MYERS, "minute": 12, "second": 27, "outcome": "saved", "across": 3.1, "height": 0.3, "outside_box": None, "as_of": AS_OF},
+            {"fixture_id": final, "side": 1, "seq": 2, "person_uid": MYERS, "minute": 45, "second": 29, "outcome": "woodwork", "across": 3.7, "height": 0.2, "outside_box": None, "as_of": AS_OF},
+            {"fixture_id": final, "side": 1, "seq": 3, "person_uid": MYERS, "minute": 49, "second": 2, "outcome": "off target", "across": 2.98, "height": 5.33,
+             "outside_box": 1, "as_of": AS_OF},
+            {"fixture_id": final, "side": 1, "seq": 4, "person_uid": MYERS, "minute": 62, "second": 42, "outcome": "blocked", "across": -2.7, "height": 0.18, "outside_box": None, "as_of": AS_OF}])
+    with small_world.connect() as c:
+        match = story_notebooks.match_notebook(c, final)
+    assert match["goals"][0]["at"] == "19:07" and match["goals"][0]["where_it_went"] == "into the bottom corner"
+    chances = match["chances_that_were_not_goals"]
+    assert [(ch["at"], ch["what"]) for ch in chances] == [("45:29", "hit the post"), ("12:27", "saved low at the post"), ("62:42", "blocked"),
+                                                          ("49:02", "over the bar")]
+    assert chances[3]["from_outside_the_box"] is True and chances[0]["player"] == "Ken Myers" and chances[0]["team"] == "Chelsea"
 
 
 def test_the_check_refuses_years_and_scores_not_in_the_notebook():
