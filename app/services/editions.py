@@ -104,8 +104,22 @@ def earlier_coverage(lead: Lead, before: date, leave_out: int | None = None) -> 
         about = [link.label for link in article.entity_links if link.world_ref in wanted]
         found.append({"date": str(article.issue.publication_date), "outlet": article.issue.edition_name,
                       "headline": article.headline, "standfirst": article.standfirst, "about": about or None,
-                      "same_subject": bool(key and key in refs)})
+                      "same_subject": bool(key and key in refs), "what_it_was": _what_it_was(article.lead_key, before)})
     return found
+
+
+def _what_it_was(lead_key: str | None, before: date) -> str | None:
+    """A preview is told as one, with the game's date, and whether that game has been played yet: a writer read "Chelsea's
+    late show leaves Rovers dreaming" (a preview) as a match already played (1 Nov 2026)."""
+    parts = (lead_key or "").split(":")
+    if len(parts) >= 3 and parts[0].endswith("preview") and parts[1] == "match":
+        try:
+            day = date.fromisoformat(parts[2])
+        except ValueError:
+            return "a preview"
+        return (f"a preview of a game on {day:%-d %B %Y}" +
+                (": not yet played, so nothing in it has happened" if day >= before else ""))
+    return None
 
 
 RELATED_STORIES = 5

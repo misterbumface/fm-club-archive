@@ -195,6 +195,16 @@ def test_earlier_coverage_finds_a_player_who_was_a_side_character(app):
     found = editions.earlier_coverage(move, date(2063, 7, 1))
     assert [(f["headline"], f["about"]) for f in found] == [("A final against his old club", ["Ken Myers"])]
     assert editions.earlier_coverage(move, date(2063, 2, 1)) == []  # nothing from after the cutoff
+    assert found[0]["what_it_was"] is None
+    preview = WorldSoccerArticle(issue=old, headline="Chelsea's late show leaves Rovers dreaming", body="…", byline="E. M.",
+                                 lead_key=f"club_preview:match:2063-03-05:{CHELSEA}:596:2063")
+    preview.entity_links.append(WorldSoccerEntityLink(entity_type="person", entity_id=MYERS, world_ref=f"person:{MYERS}", label="Ken Myers"))
+    db.session.add(preview)
+    db.session.commit()
+    kinds = {f["headline"]: f["what_it_was"] for f in editions.earlier_coverage(move, date(2063, 3, 2))}
+    assert kinds["Chelsea's late show leaves Rovers dreaming"] == "a preview of a game on 5 March 2063: not yet played, so nothing in it has happened"
+    kinds = {f["headline"]: f["what_it_was"] for f in editions.earlier_coverage(move, date(2063, 7, 1))}
+    assert kinds["Chelsea's late show leaves Rovers dreaming"] == "a preview of a game on 5 March 2063"
 
 
 def test_the_desk_lists_saves_and_refuses_files_outside_the_games_folder(app, tmp_path, monkeypatch):

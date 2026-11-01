@@ -768,7 +768,9 @@ def write_article(outlet: Outlet, lead: Lead, published: date, prominence: str =
     if earlier:
         prompt += (" earlier_coverage is what the papers have already written about these people and this subject, newest "
                    "first ('about' says whom each piece concerned): continue the story, refer back where it helps ('three "
-                   "months after his move…', 'the old boy who decided the final'), and never repeat it.")
+                   "months after his move…', 'the old boy who decided the final'), and never repeat it. A piece whose "
+                   "what_it_was is a preview looked ahead to a game: its headline tells nothing that happened, and a game "
+                   "not yet played has no result, no late show and no hero.")
     prompt += archive_questions.PROMPT_NOTE
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content": json.dumps(notebook, ensure_ascii=False, default=str)}]
     article = _ask_with_questions(model, key, messages, published, notebook)
