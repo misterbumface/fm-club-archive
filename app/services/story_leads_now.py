@@ -419,6 +419,116 @@ def expectations(w) -> list:
     return leads
 
 
+CHECKIN_WEIGHT = 4.5  # the higher league of the move this strong (the big European leagues): the clubs worth checking on
+CHECKIN_POINTS = ((0.3, "about a third of the season played"), (0.55, "just past halfway"), (0.8, "the run-in"))
+CHECKINS = 2  # at most this many check-ins in a cycle: flavour, not a column every week
+FALLEN_SEASONS = 3  # a big club stays a fallen giant this many seasons below its old level
+FALLEN_YEARS, FALLEN_ABOVE = 10, 6  # ... when it spent this many of the last ten seasons above its level now
+FALLEN_RANK = 3  # ... and is among the best known of its new league
+NEW_BOYS_RANK = 3  # a promoted club among the least known of its new league
+NEW_BOYS_SEASONS = 2  # ... that played at this level at most this many of the last ten seasons
+
+
+def check_ins(w) -> list:
+    """Every so often, how a big club that went down is doing below, or a small club that came up is doing among the
+    big ones: once at each of three points of the league season (a third, past halfway, the run-in), at most a couple
+    in a cycle. The table, the form, last season, the manager, the scorers and the regulars."""
+    from app.services.story_leads import Lead
+
+    seasons = [w.season - k for k in range(FALLEN_YEARS + 1)]
+    for season in seasons:
+        w.level(0, season)
+    now = w._levels[w.season]
+    by_league: dict[int, list[int]] = defaultdict(list)
+    for team, (league, _) in now.items():
+        by_league[league].append(team)
+    found = []
+    for team, (league, level) in now.items():
+        if not level or not league:
+            continue
+        history = [w._levels[s].get(team, (None, None))[1] for s in seasons[1:]]
+        last = history[0]
+        known = sorted(by_league[league], key=lambda t: -(w.rep(t) or 0))
+        rank = known.index(team) + 1
+        if last and last < level:  # down: when, from where, and was it a big club there
+            down_for = 1
+        else:
+            down_for = next((k for k, lv in enumerate(history[:FALLEN_SEASONS], 1) if lv and lv < level and all(
+                x == level for x in history[:k - 1])), None)
+        angle = None
+        if down_for and sum(1 for lv in history if lv and lv < level) >= FALLEN_ABOVE and rank <= FALLEN_RANK:
+            old_league = w._levels[w.season - down_for].get(team, (None, None))[0]
+            if w.weight(old_league) >= CHECKIN_WEIGHT:
+                angle = ("fallen", old_league, down_for)
+        elif last and last > level and rank > len(known) - NEW_BOYS_RANK and w.weight(league) >= CHECKIN_WEIGHT:
+            here_before = sum(1 for lv in history[1:] if lv and lv <= level)
+            if here_before <= NEW_BOYS_SEASONS:
+                angle = ("new_boys", w._levels[w.season - 1].get(team, (None, None))[0], here_before)
+        if angle is None:
+            continue
+        start, end = _window(w, league)
+        table = q.league_table(w.c, league, start, end)
+        before = {r["team_uid"]: r for r in q.league_table(w.c, league, start, str(w.since))} if start <= str(w.since) else {}
+        place = {r["team_uid"]: i for i, r in enumerate(table, 1)}
+        if team not in place:
+            continue
+        row, total = table[place[team] - 1], 2 * (len(table) - 1)
+        played_before = before.get(team, {}).get("played", 0)
+        point = next(((i, words) for i, (share, words) in enumerate(CHECKIN_POINTS) if played_before < share * total <= row["played"]), None)
+        if point is None:
+            continue
+        found.append((team, league, angle, point, table, place, row, total))
+    leads = []
+    for team, league, (kind, other, count), (index, stage), table, place, row, total in found:
+        club, comp = w.name(team), _comp_name(w, league)
+        if kind == "fallen":
+            story = (f"a big club relegated from the {_comp_name(w, other)}: {'their first' if count == 1 else _nth(count)} season "
+                     f"in the {comp}")
+        else:
+            story = (f"promoted from the {_comp_name(w, other)} last season, among the least known clubs in the {comp}; "
+                     f"{count} of the previous ten seasons at this level")
+        facts = {"club": club, "competition": comp, "the_story": story, "how_far_in": f"{stage}: {row['played']} of {total} games",
+                 "place": _place_words(w, league, table, place, team), "points_behind_first": table[0]["points"] - row["points"],
+                 "points_above_last": row["points"] - table[-1]["points"],
+                 "promotion_and_relegation_places": "how many go up or down is not known here, so name no such places",
+                 "last_season": _last_finish(w, team), "manager": _manager(w, team),
+                 "top_scorers": _team_scorers(w, team, league), "regulars": _regular_lines(w, team)}
+        size = 0.55 + (0.15 if w.followed(team) else 0) + 0.05 * index
+        leads.append(Lead("check_in", f"{club}: {stage} in the {comp}, {place[team]} of {len(table)}", w.until,
+                          w.weight(league) * 10 * size, {k: v for k, v in facts.items() if v not in (None, [], "")},
+                          [f"club:{team}", f"competition:{league}"], w.beats_for(team, competition_uid=league),
+                          slug=f"{team}:{w.season}:{index}"))
+    return sorted(leads, key=lambda lead: -lead.score)[:CHECKINS]
+
+
+def _nth(n: int) -> str:
+    return {2: "second", 3: "third", 4: "fourth"}.get(n, f"{n}th")
+
+
+def _last_finish(w, team: int) -> str | None:
+    """Where the club finished its league last season."""
+    league, _ = w.level(team, w.season - 1)
+    if not league:
+        return None
+    start, end = q.league_window(w.c, league, w.season - 1)
+    table = q.league_table(w.c, league, start, end)
+    spot = next((i for i, r in enumerate(table, 1) if r["team_uid"] == team), None)
+    return f"{spot} of {len(table)} in the {_comp_name(w, league)}" if spot else None
+
+
+def _team_scorers(w, team: int, league: int) -> list[str]:
+    rows = w.rows("select p.name, s.goals, s.starts + s.substitute_appearances games from player_seasons s join people p on p.fm_uid = s.person_uid "
+                  "where s.team_uid = :t and s.league_uid = :l and s.season_start = :y and s.kind = 1 and s.goals > 0 order by s.goals desc limit 3",
+                  t=team, l=league, y=w.season)
+    return [f"{r['name']}: {r['goals']} league goals in {r['games']} games" for r in rows]
+
+
+def _regular_lines(w, team: int) -> list[str]:
+    """The team's regulars from its team sheets, most starts first; empty when the archive cannot tell."""
+    regulars = q.regulars(w.c, team, w.until) or {}
+    return [f"{p['name']} ({q.regular_words(p)})" for p in sorted(regulars.values(), key=lambda p: -p["starts"])][:8]
+
+
 def form_players(w) -> list:
     """Big names far below their reputation this season, and small names far above it: league average ratings after a few
     games in a covered league."""
@@ -1706,6 +1816,6 @@ def tired_legs(w) -> list:
     return sorted(leads, key=lambda lead: -lead.score)[:6]
 
 
-FINDERS = (round_ups, finishing, tired_legs, derbies, runs, expectations, form_players, stat_watch, injury_blows, previews, promised_reports, expected_points,
+FINDERS = (round_ups, finishing, tired_legs, derbies, runs, expectations, check_ins, form_players, stat_watch, injury_blows, previews, promised_reports, expected_points,
            continental_rounds, european_nights, international_rounds, national_teams, transfer_market, tournament_leads.tournament_coverage,
            followed_games, scouting_follow_ups, kings_wages, contracts_running_down, managers_out, features.travel_log, features.interviews, wars_of_words, under_pressure, vacancies, transfer_rumours)

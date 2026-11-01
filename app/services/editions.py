@@ -48,7 +48,7 @@ SECTIONS = {"title": "Champions", "giant_killing": "Upsets", "big_win": "Results
             "legend": "Legends", "all_time": "Legends", "anniversary": "On this day", "legend_profile": "Legends",
             "dynasty": "Dynasties", "great_final": "Great finals", "appointment": "Appointments",
             "where_now": "Where are they now", "league_round": "The round", "misfiring": "Numbers", "clinical": "Numbers", "tired_legs": "Form", "run": "Form", "derby": "Derbies", "preview": "Coming up",
-            "injury_blow": "Injuries", "underperformer": "Form", "overperformer": "Form", "expectations": "Form",
+            "injury_blow": "Injuries", "underperformer": "Form", "overperformer": "Form", "expectations": "Form", "check_in": "Check-in",
             "stat_watch": "Numbers", "performance": "Results", "sending_off": "Results", "smash_and_grab": "Results",
             "system_change": "Tactics", "position_change": "Tactics", "partnership": "Tactics", "tactical_trend": "Tactics",
             "dropped": "Selection", "breakthrough": "Next generation", "unsettled": "Dressing room", "dressing_room": "Dressing room",
@@ -196,7 +196,7 @@ def printed_keys(outlet: Outlet) -> set[str]:
 KIND_LIMITS = {"scouting": 3, "legend_profile": 1, "career_end": 1, "milestone": 1, "club_record": 1, "misfiring": 1, "clinical": 1, "tired_legs": 1, "academy": 2, "dynasty": 1, "great_final": 1,
                "where_now": 1, "appointment": 2, "performance": 2, "sending_off": 1, "smash_and_grab": 1,
                "league_round": 2, "run": 2, "derby": 2, "giant_killing": 2, "preview": 2, "injury_blow": 2, "underperformer": 1, "overperformer": 1,
-               "expectations": 1, "stat_watch": 1, "system_change": 1, "position_change": 1, "dropped": 2, "breakthrough": 1,
+               "expectations": 1, "check_in": 1, "stat_watch": 1, "system_change": 1, "position_change": 1, "dropped": 2, "breakthrough": 1,
                "partnership": 1, "tactical_trend": 1, "big_win": 2, "unsettled": 2, "dressing_room": 1, "settled": 1, "expected_points": 1, "continental_round": 2,
                "european_nights": 1, "international_round": 2, "national_team": 1, "promised_report": 4, "transfer_interest": 2, "transfer_bid": 2,
                "tournament_report": 6, "tournament_preview": 4, "tournament_round_up": 1, "our_players_at_tournament": 1, "player_of_the_tournament": 1,
@@ -207,7 +207,7 @@ KIND_LIMITS = {"scouting": 3, "legend_profile": 1, "career_end": 1, "milestone":
 # what happens: its front story is news of the season, current news ranks higher, and it prints at most one story
 # that looks back, one scouting report and three transfers. The history, young and transfer papers are as before.
 NOSTALGIA = {"legend", "legend_profile", "where_now", "anniversary", "all_time", "career_end", "dynasty", "great_final"}
-SEASON_NEWS = {"league_round", "misfiring", "clinical", "tired_legs", "run", "derby", "preview", "injury_blow", "underperformer", "overperformer", "expectations",
+SEASON_NEWS = {"league_round", "misfiring", "clinical", "tired_legs", "run", "derby", "preview", "injury_blow", "underperformer", "overperformer", "expectations", "check_in",
                "stat_watch", "title", "giant_killing", "big_win", "performance", "sending_off", "smash_and_grab", "system_change",
                "position_change", "dropped", "breakthrough", "partnership", "unsettled", "dressing_room", "settled", "expected_points",
                "continental_round", "european_nights", "international_round", "national_team", "promised_report", "transfer_interest", "transfer_bid",

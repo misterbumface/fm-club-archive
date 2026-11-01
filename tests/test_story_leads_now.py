@@ -654,3 +654,25 @@ def test_a_european_preview_has_the_league_phase_table_and_each_sides_european_p
     assert preview.facts["away_place"] == "3 of 4 in the league phase, 1 points from 2 games, form DL"  # Arsenal, 1 point too, are behind on goal difference
     assert preview.facts["stage"].startswith("the league phase: one table of 4 teams; what each place earns")
     assert preview.facts["home_seasons_in_european_competition"] == 3 and preview.facts["away_seasons_in_european_competition"] == 0
+
+
+def test_a_small_club_that_came_up_gets_a_check_in_once_at_each_point_of_the_season(small_world):
+    """Big clubs that went down and small clubs that came up are checked on now and then (1 Nov 2026): Spurs, up from
+    the second level and the least known club of a strong league, get a check-in when the season passes halfway."""
+    second = 9101
+    _season(small_world)
+    with small_world.begin() as c:
+        comps = world.WorldCompetition.__table__
+        c.execute(comps.update().where(comps.c.fm_uid == LEAGUE).values(reputation=180))
+        c.execute(comps.insert(), [{"fm_uid": second, "name": "English Second Division", "short_name": "Second", "abbreviation": "ESD", "scope": "league", "nation_uid": 765, "level": 2,
+                                    "as_of": AS_OF}])
+        c.execute(world.WorldPlayerSeason.__table__.insert(), [
+            {"substitute_appearances": 0, "assists": 0, "player_of_match": 0, "goals_conceded": 0, "clean_sheets": 0, "yellow_cards": 0,
+             "red_cards": 0, "minutes": 0, "as_of": AS_OF, "seq": 0, "season_start": 2062, "kind": 1, "league_uid": second,
+             "person_uid": FLOP, "team_uid": SPURS, "starts": 30, "goals": 9, "rated_appearances": 30, "rating_total": 2100}])
+    (lead,) = _found(small_world)["check_in"]
+    assert lead.key == f"check_in:{SPURS}:2063:1"  # 2 of 6 played before the cycle, 4 after: past halfway
+    assert lead.facts["the_story"].startswith("promoted from the English Second Division last season, among the least known clubs")
+    assert lead.facts["how_far_in"] == "just past halfway: 4 of 6 games"
+    assert lead.facts["place"].startswith("4, 0 points from 4 games") and lead.facts["points_behind_first"] == 12
+    assert "name no such places" in lead.facts["promotion_and_relegation_places"]

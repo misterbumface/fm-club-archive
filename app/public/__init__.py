@@ -25,7 +25,7 @@ SITE_NAME = "World Sport"
 SECTIONS = OrderedDict([
     ("coming-up", ("Coming up", {"Coming up"})),
     ("europe", ("Europe", {"Europe", "Champions League"})),
-    ("results", ("Results", {"Results", "The round", "Upsets", "Derbies", "Champions", "Form", "Rising", "Fallen", "Finalists", "Third Place"})),
+    ("results", ("Results", {"Results", "The round", "Upsets", "Derbies", "Champions", "Form", "Rising", "Fallen", "Check-in", "Finalists", "Third Place"})),
     ("international", ("International", {"International", "Tournament", "Tournament Stories", "Tournament Briefing", "Knockout Briefs"})),
     ("transfers", ("Transfers", {"Transfers", "Appointments"})),
     ("analysis", ("Analysis", {"Tactics", "Numbers", "Records", "Selection", "Dressing room", "Injuries", "War of words"})),
