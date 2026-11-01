@@ -198,6 +198,30 @@ def _table(w, league: int) -> tuple[list[dict], dict[int, int], dict[int, int]]:
     return now, {r["team_uid"]: i for i, r in enumerate(now, 1)}, {r["team_uid"]: i for i, r in enumerate(before, 1)}
 
 
+PHASE_TEAMS = 4  # a continental competition's stage is a league phase when its table has this many teams
+
+
+def _phase_table(w, league: int, tables: dict) -> tuple[list[dict], dict[int, int], dict[int, int]]:
+    """The table of a competition for a preview: a current league's, or a continental competition's league phase, counted
+    once per cycle. A writer told Shamrock Rovers were in the knockout rounds, 29th of 36 with six points (1 Nov 2026)."""
+    if league not in tables and w.comp(league).get("scope") == "continental":
+        now = q.league_table(w.c, league, f"{w.season}-07-01", str(w.until))
+        tables[league] = (now, {r["team_uid"]: i for i, r in enumerate(now, 1)}, {}) if len(now) >= PHASE_TEAMS else ([], {}, {})
+    return tables.get(league, ([], {}, {}))
+
+
+def _place_words(w, league: int, table: list[dict], place: dict[int, int], team: int, form: bool = True) -> str:
+    row = table[place[team] - 1]
+    words = f"{place[team]} of {len(table)} in the league phase" if w.comp(league).get("scope") == "continental" else f"{place[team]}"
+    words += f", {row['points']} points from {row['played']} games"
+    return words + (f", form {''.join(row['form'])}" if form else "")
+
+
+def _european_seasons(w, team: int) -> int:
+    return w.rows("select count(distinct season_start) n from player_seasons where team_uid = :t and kind = 3 and season_start <= :s",
+                  t=team, s=w.season)[0]["n"] or 0
+
+
 def _row_text(w, place: int, r: dict) -> str:
     return (f"{place}. {w.name(r['team_uid'])}: {r['points']} points from {r['played']} games "
             f"({r['won']} won, {r['drawn']} drawn, {r['lost']} lost, goal difference {r['difference']:+d})")
@@ -502,7 +526,7 @@ def previews(w) -> list:
     for f in w.rows(f"select * from fixtures where competition_uid in ({comps}) and home_goals is null and date > :u and date <= :e "
                     f"order by date", u=str(w.until), e=str(w.until + timedelta(days=PREVIEW_DAYS))):
         home, away, league = f["home_uid"], f["away_uid"], f["competition_uid"]
-        table, place, _ = tables.get(league, ([], {}, {}))
+        table, place, _ = _phase_table(w, league, tables)
         derby = max((q.rivalry(w.c, home, away) or {}).get("level", 0), (q.rivalry(w.c, away, home) or {}).get("level", 0))
         top = place.get(home, 99) <= 6 and place.get(away, 99) <= 6
         big, both = max(w.rep(home) or 0, w.rep(away) or 0), min(w.rep(home) or 0, w.rep(away) or 0)
@@ -515,8 +539,7 @@ def previews(w) -> list:
                  "derby": derby >= DERBY_LEVEL or None}
         for side, team in (("home", home), ("away", away)):
             if team in place:
-                row = table[place[team] - 1]
-                facts[f"{side}_place"] = f"{place[team]}, {row['points']} points from {row['played']} games, form {''.join(row['form'])}"
+                facts[f"{side}_place"] = _place_words(w, league, table, place, team)
             standing = next((t for t in xg_table(w, league) if t["team_uid"] == team), None) if league in tables else None
             if standing and standing["games"] >= LUCK_GAMES:
                 facts[f"{side}_expected_goals_and_points"] = expected.words(standing)
@@ -1168,11 +1191,10 @@ def followed_games(w) -> list:
                            f"({w.name(home if g['side'] == 0 else away)})" for g in goals] or None,
                  "player_of_the_match": best[0]["name"] if best else None,
                  "treatment": "a brief: this was a friendly" if friendly else None}
-        table, place, _ = tables.get(league, ([], {}, {}))
+        table, place, _ = _phase_table(w, league, tables)
         for side, team in (("home", home), ("away", away)):
             if team in place:
-                row = table[place[team] - 1]
-                facts[f"{side}_place_now"] = f"{place[team]}, {row['points']} points from {row['played']} games"
+                facts[f"{side}_place_now"] = _place_words(w, league, table, place, team, form=False)
         article = previewed.get((str(f["date"]), home, away))
         if article is not None:
             facts["what_we_said"] = {"headline": article.headline, "standfirst": article.standfirst, "published": str(article.issue.publication_date),
@@ -1185,13 +1207,17 @@ def followed_games(w) -> list:
                     f"and date > :u and date <= :e order by date", u=str(w.until), e=str(w.until + timedelta(days=PREVIEW_DAYS))):
         home, away, league = f["home_uid"], f["away_uid"], f["competition_uid"]
         friendly = _is_friendly(w, league)
-        table, place, _ = tables.get(league, ([], {}, {}))
+        table, place, _ = _phase_table(w, league, tables)
+        continental = w.comp(league).get("scope") == "continental"
         facts = {"competition": _comp_name(w, league), "date": str(f["date"]), "home": w.name(home), "away": w.name(away),
-                 "treatment": "a brief: this is a friendly" if friendly else None}
+                 "treatment": "a brief: this is a friendly" if friendly else None,
+                 "stage": (f"the league phase: one table of {len(table)} teams; what each place earns at its end, and who goes through, "
+                           "is not known here, so say nothing of it") if continental and table else None}
         for side, team in (("home", home), ("away", away)):
             if team in place:
-                row = table[place[team] - 1]
-                facts[f"{side}_place"] = f"{place[team]}, {row['points']} points from {row['played']} games, form {''.join(row['form'])}"
+                facts[f"{side}_place"] = _place_words(w, league, table, place, team)
+            if continental:
+                facts[f"{side}_seasons_in_european_competition"] = _european_seasons(w, team)
             injured = w.rows("select p.name, i.injury from injuries i join people p on p.fm_uid = i.person_uid where i.current = 1 "
                              "and p.team_uid = :t and coalesce(p.reputation_world, 0) >= 3000 order by p.reputation_world desc limit 3", t=team)
             if injured:

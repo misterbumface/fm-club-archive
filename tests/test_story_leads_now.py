@@ -579,3 +579,27 @@ def test_the_squad_lines_put_the_youth_team_players_apart(small_world):
             {"person_uid": 305, "team_uid": 6301, "played_on": date(2063, 8, 30), "status": "played", "minutes": 90, "as_of": AS_OF},
             {"person_uid": SCORER, "team_uid": 6301, "played_on": date(2063, 7, 30), "status": "unused", "minutes": 0, "as_of": AS_OF}])
         assert q.youth_only(c, CHELSEA, 2063, [305, SCORER]) == {305}
+
+
+def test_a_european_preview_has_the_league_phase_table_and_each_sides_european_past(small_world):
+    """Shamrock Rovers, 29th of 36 with six points, were written as already in the knockout rounds for the first time: the
+    notebook had no table and no past (1 Nov 2026)."""
+    _season(small_world)
+    EUROPE = 1301394
+    with small_world.begin() as c:
+        c.execute(world.WorldCompetition.__table__.insert(), [{"fm_uid": EUROPE, "name": "UEFA Champions League", "short_name": "Champions League",
+                                                                "abbreviation": "UCL", "scope": "continental", "level": None, "reputation": 10000}])
+        c.execute(world.WorldFixture.__table__.insert(), [
+            _fixture("2063-08-20", CHELSEA, ARSENAL, (3, 0), EUROPE, 4812), _fixture("2063-08-20", LIVERPOOL, SPURS, (1, 1), EUROPE, 4812),
+            _fixture("2063-08-27", SPURS, CHELSEA, (0, 2), EUROPE, 4812), _fixture("2063-08-27", ARSENAL, LIVERPOOL, (2, 2), EUROPE, 4812),
+            _fixture("2063-09-10", CHELSEA, SPURS, None, EUROPE, 4812)])
+        c.execute(world.WorldPlayerSeason.__table__.insert(), [
+            {"person_uid": SCORER, "team_uid": CHELSEA, "season_start": y, "kind": 3, "league_uid": EUROPE, "starts": 1, "substitute_appearances": 0,
+             "assists": 0, "goals": 0, "player_of_match": 0, "goals_conceded": 0, "clean_sheets": 0, "yellow_cards": 0, "red_cards": 0, "minutes": 90,
+             "rated_appearances": 0, "rating_total": 0, "as_of": AS_OF, "seq": 10 + i} for i, y in enumerate((2061, 2062, 2063))])
+    found = _found(small_world)
+    (preview,) = [lead for lead in found["club_preview"] if lead.facts["competition"] == "UEFA Champions League"]
+    assert preview.facts["home_place"] == "1 of 4 in the league phase, 6 points from 2 games, form WW"
+    assert preview.facts["away_place"] == "3 of 4 in the league phase, 1 points from 2 games, form DL"  # Arsenal, 1 point too, are behind on goal difference
+    assert preview.facts["stage"].startswith("the league phase: one table of 4 teams; what each place earns")
+    assert preview.facts["home_seasons_in_european_competition"] == 3 and preview.facts["away_seasons_in_european_competition"] == 0
