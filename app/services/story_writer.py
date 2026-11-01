@@ -53,6 +53,9 @@ ARTICLE_RULES = (
     "of mind (frame_of_mind) are facts of the same kind: a friend, a manager he is close to, a man he dislikes, an open "
     "grievance may colour a quote or a line; no other relationship exists, and no number of them is given. What he said "
     "at press conferences (in_the_press) is given as the game's headlines and tones: use their spirit in your own words. "
+    "A player is injured, suspended or missing only when the notebook says so; a man absent from an expected line-up is "
+    "simply not expected to start, and the reason is not known. A player is the leading scorer only when the notebook "
+    "names him so. "
     "Morale, happiness, fitness and character are told in words, the way a club or a newspaper would put them; never as a "
     "score or a scale (no 'seven out of twenty'), which belongs to the game's screens, not to the world. "
 ) + _CRAFT
@@ -223,6 +226,51 @@ def number_faults(text: str, facts: str) -> list[str]:
     return faults
 
 
+_ABSENT = (r"\b(?:the\s+)?(injured|suspended|banned|sidelined|unavailable)\s+((?:[A-ZÀ-Ý][\w'’\-]+\s?){1,3})|"
+           r"((?:[A-ZÀ-Ý][\w'’\-]+\s){1,3})(?:is|are|was|were|remains|will be|still)\s+(?:still\s+)?"
+           r"(injured|suspended|banned|sidelined|unavailable|ruled out|out injured|out with [a-z ]{3,30})")
+_ABSENT_RE = re.compile(_ABSENT)
+_ABSENT_KEYS = ("injur", "suspend", "ban", "out", "fitness", "missing", "absent", "unavailable", "sent_off", "red")
+_TOP_SCORER_RE = re.compile(r"((?:[A-ZÀ-Ý][\w'’\-]+\s?){1,3}),?\s(?:[a-z'’\-]+\s){0,6}(leading|top) scorer|"
+                            r"\b(leading|top) scorer[^.;,]{0,30}?((?:[A-ZÀ-Ý][\w'’\-]+\s?){1,3})")
+_TOP_SCORER_KEYS = ("scorer", "goals", "scoring")
+
+
+def _facts_under(notebook: dict, keys: tuple[str, ...]) -> str:
+    """The notebook's values whose key holds one of ``keys``, as text, at any depth."""
+    out = []
+    def walk(value, key=""):
+        if isinstance(value, dict):
+            for k, v in value.items():
+                walk(v, k)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v, key)
+        elif any(word in key.lower() for word in keys):
+            out.append(str(value))
+    walk(notebook)
+    return " ".join(out).lower()
+
+
+def absence_faults(text: str, notebook: dict) -> list[str]:
+    """A player told as injured, banned or missing, or as the leading scorer, when the notebook says no such thing: the
+    writer explained a man's absence from an expected line-up with an injury he did not have (Belmonte, 1 Nov 2026)."""
+    faults = []
+    absent = _facts_under(notebook, _ABSENT_KEYS)
+    for m in _ABSENT_RE.finditer(text):
+        name = (m.group(2) or m.group(3) or "").strip()
+        word = m.group(1) or m.group(4)
+        if name and name.split()[-1].lower() not in absent:
+            faults.append(f"'{m.group(0).strip()}': the notebook says nothing of {name} being {word}; a player not in an expected "
+                          "line-up is simply not expected to start, so leave the reason out")
+    scorers = _facts_under(notebook, _TOP_SCORER_KEYS)
+    for m in _TOP_SCORER_RE.finditer(text):
+        name = (m.group(1) or m.group(4) or "").strip()
+        if name and name.split()[-1].lower() not in scorers:
+            faults.append(f"'{m.group(0).strip()}': the notebook does not make {name} a leading scorer; say only what it gives")
+    return faults
+
+
 def hard_faults(faults: list[str]) -> list[str]:
     """The faults that stop a text: wrong facts and copying. A stock phrase left in a second draft is only logged."""
     return [fault for fault in faults if not fault.startswith(STYLE_FAULT)]
@@ -252,6 +300,7 @@ def text_faults(text: str, notebook: dict) -> list[str]:
     faults += [f"the ground '{name}'" for name in dict.fromkeys(_GROUND.findall(text)) if not _known_ground(name, facts)]
     faults += number_faults(text, facts)
     faults += level_score_faults(text)
+    faults += absence_faults(text, notebook)
     if "home_form_before" in notebook and not notebook.get("match_report"):  # a match known only by its goals
         faults += [f"'{word}': the notebook has no match report, so tell nothing of the play beyond the goals"
                    for word in dict.fromkeys(m.group(0) for m in _PLAY.finditer(text))]

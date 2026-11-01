@@ -578,4 +578,4 @@ def test_the_squad_lines_put_the_youth_team_players_apart(small_world):
         c.execute(world.WorldPlayerGame.__table__.insert(), [
             {"person_uid": 305, "team_uid": 6301, "played_on": date(2063, 8, 30), "status": "played", "minutes": 90, "as_of": AS_OF},
             {"person_uid": SCORER, "team_uid": 6301, "played_on": date(2063, 7, 30), "status": "unused", "minutes": 0, "as_of": AS_OF}])
-        assert q._youth_only(c, CHELSEA, 2063, [305, SCORER]) == {305}
+        assert q.youth_only(c, CHELSEA, 2063, [305, SCORER]) == {305}

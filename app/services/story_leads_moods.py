@@ -43,7 +43,19 @@ def _concerns(w, where: str, **params) -> list[dict]:
     marks = ",".join(str(int(t)) for t in _teams(w)) or "0"
     rows = w.rows(f"select c.*, p.name player, p.birth_date, p.team_uid, p.reputation_world from person_concerns c "
                   f"join people p on p.fm_uid = c.person_uid where p.team_uid in ({marks}) and ({where})", **params)
-    return moods.describe([r for r in rows if (r["kind"], r["code"]) in fm_save.CONCERNS], w.c)
+    return moods.describe(_first_team(w, [r for r in rows if (r["kind"], r["code"]) in fm_save.CONCERNS]), w.c)
+
+
+def _first_team(w, rows: list[dict], uid: str = "person_uid", team: str = "team_uid") -> list[dict]:
+    """The rows of players who are not youth-team players: one on a club's books who played this season only for its U21s
+    or U18s is not a dressing-room story, nor a team-mate taking sides (31 Oct 2026)."""
+    by_team: dict[int, set[int]] = defaultdict(set)
+    for r in rows:
+        by_team[r[team]].add(r[uid])
+    youth: set[int] = set()
+    for t, uids in by_team.items():
+        youth |= q.youth_only(w.c, t, w.season, uids)
+    return [r for r in rows if r[uid] not in youth]
 
 
 def _mood_facts(w, uid: int) -> dict:
@@ -79,6 +91,7 @@ def unsettled(w) -> list:
         facts.update({"concern": c["text"], "since": str(c["started"]),
                       "told_his_team_mates": "yes" if c["told_team_mates"] else "not yet, as far as is known"})
         backers = moods.backers(w.c, [c["person_uid"]]).get(c["person_uid"], [])
+        backers = _first_team(w, [{**b, "team_uid": c["team_uid"]} for b in backers], uid="uid")
         if backers:
             facts["team_mates_who_think_he_is_treated_unfairly"] = ", ".join(b["name"] for b in backers)
         size = CONCERN_WEIGHT.get(c["code_key"], 0.6) * (0.6 + star / 15000 + (0.2 if c["told_team_mates"] else 0))
@@ -95,9 +108,10 @@ def taking_sides(w) -> list:
 
     kind, code = fm_save.TREATED_UNFAIRLY
     marks = ",".join(str(int(t)) for t in _teams(w)) or "0"
-    rows = w.rows(f"select c.about_person_uid about, c.person_uid uid, p.name, c.started from person_concerns c join people p on p.fm_uid = c.person_uid "
-                  f"where c.kind = :k and c.code = :c and p.team_uid in ({marks}) and c.started <= :u and (c.ended is null or c.ended > :u)",
-                  k=kind, c=code, u=str(w.until))
+    rows = w.rows(f"select c.about_person_uid about, c.person_uid uid, p.name, p.team_uid, c.started from person_concerns c "
+                  f"join people p on p.fm_uid = c.person_uid where c.kind = :k and c.code = :c and p.team_uid in ({marks}) "
+                  "and c.started <= :u and (c.ended is null or c.ended > :u)", k=kind, c=code, u=str(w.until))
+    rows = _first_team(w, rows, uid="uid")
     sides: dict[int, list[dict]] = defaultdict(list)
     for r in rows:
         if r["about"]:

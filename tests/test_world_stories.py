@@ -406,3 +406,21 @@ def test_a_count_of_goals_the_notebook_does_not_hold_is_a_fault():
     notebook = {"player": "Bruce Hilgers", "his_time_at_the_club": "since 2049/50: 154 games, 17 goals in league, cup and continental games"}
     assert "the count '27 goals'" in text_faults("His Chelsea career has included 27 goals, many of them important.", notebook)
     assert not [f for f in text_faults("His 17 goals in 154 games for the club tell the story. One goal was enough.", notebook) if f.startswith("the count")]
+
+
+def test_an_injury_a_ban_or_a_leading_scorer_the_notebook_lacks_is_a_fault():
+    """'Ponferrada will miss the injured Fran Belmonte, their leading scorer': the notebook had no injury and Rocchi
+    had more goals (1 Nov 2026)."""
+    from app.services.story_writer import absence_faults, hard_faults
+
+    notebook = {"home": "Ponferrada", "key_duels": ["Fran Belmonte (left winger) against Antonius Maertens"],
+                "home_expected_line_up": "Rosen, Rocchi, Salvador"}
+    faults = absence_faults("Ponferrada will miss the injured Fran Belmonte, their leading scorer in the league.", notebook)
+    assert len(faults) == 2 and "Belmonte being injured" in faults[0] and "leading scorer" in faults[1]
+    assert hard_faults(faults) == faults
+    assert absence_faults("Rocchi is suspended and Salvador remains sidelined.", notebook) and \
+        absence_faults("Their top scorer Federico Rocchi starts.", notebook)
+    told = notebook | {"home_injured": ["Fran Belmonte (twisted knee)"], "home_suspended": ["Federico Rocchi"],
+                       "home_top_scorers": ["Federico Rocchi 3 goals"]}
+    assert absence_faults("The injured Fran Belmonte is out; Rocchi is suspended; top scorer Rocchi.", told) == []
+    assert absence_faults("Ponferrada will miss nobody of note.", notebook) == []

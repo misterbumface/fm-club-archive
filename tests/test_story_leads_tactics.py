@@ -170,3 +170,25 @@ def test_a_preview_recalls_the_last_meeting_and_what_changed_since(small_world):
     assert "Young Kid (not in the likely eleven)" in chelsea["not_in_the_expected_eleven_now"]  # the usual 4-2-3-1 is expected
     assert "Chelsea 111" in chelsea["new_in_the_expected_eleven"]
     assert meeting["sides"]["Arsenal"]["shape"] == "4-4-2"
+
+
+def test_a_fit_regular_who_lost_his_place_is_told_as_dropped_not_injured(small_world):
+    """Belmonte was in Ponferrada's key duels but not their expected eleven, and the writer called him injured (1 Nov 2026):
+    a regular who rotated between two slots and lost both to specialists is told with his recent starts and his rating."""
+    _people(small_world)
+    with small_world.begin() as c:
+        c.execute(world.WorldCompetition.__table__.update().where(world.WorldCompetition.__table__.c.fm_uid == LEAGUE).values(scope="league", level=1))
+    as_striker = USUAL | {SIGNING: ("AM (L)", 19)} ; as_striker.pop(110)  # 111 up front, the signing wide, 110 on the bench
+    as_winger = USUAL | {110: ("ST (C)", 11), 111: ("AM (L)", 9)}  # 111 wide, 110 up front, the signing on the bench
+    specialists = USUAL | {SIGNING: ("ST (C)", 19)} ; specialists.pop(111)  # the signing up front, 110 wide, 111 on the bench
+    for day in ("2063-07-27", "2063-08-03", "2063-08-06"):
+        _match(small_world, day, as_striker, bench=(110,))
+    for day in ("2063-08-10", "2063-08-13", "2063-08-17"):
+        _match(small_world, day, as_winger, bench=(SIGNING,))
+    for day in ("2063-08-24", "2063-08-31", "2063-09-07", "2063-09-14"):
+        _match(small_world, day, specialists, bench=(111,))
+    with small_world.connect() as c:
+        home = tactics.expected_eleven(c, CHELSEA, date(2063, 9, 20))
+    assert 111 not in home["chosen"] and SIGNING in home["chosen"] and 110 in home["chosen"]
+    (why,) = [out for out in home["regulars_out"] if out.startswith("Chelsea 111")]
+    assert "fit, but started 0 of the last 4 games, on the bench in 4; average rating 7.0 in his recent starts" in why

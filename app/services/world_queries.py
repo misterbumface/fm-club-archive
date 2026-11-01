@@ -425,7 +425,7 @@ RECENT_RESULTS, COMING_UP, COMING_UP_DAYS = 6, 5, 28
 YOUTH_LINE = "Playing for the youth teams"
 
 
-def _youth_only(connection: Connection, team_uid: int, season: int, uids) -> set[int]:
+def youth_only(connection: Connection, team_uid: int, season: int, uids) -> set[int]:
     """The players on a club's books who played this season only for its youth teams (the U21s, the U18s): the first
     team's squad lines leave them out (Verlhac, Rodríguez and Spyrou are not Chelsea's strikers, 31 Oct 2026)."""
     marks = ",".join(str(int(uid)) for uid in uids) or "0"
@@ -455,7 +455,7 @@ def season_overview(connection: Connection, team_uid: int, season: int, data: di
     else:
         people = _rows(connection, f"select fm_uid uid, name, birth_date from people where fm_uid in "
                                    f"({','.join(str(int(u)) for u in stats) or '0'})")
-    youth = _youth_only(connection, team_uid, season, [p["uid"] for p in people if p["uid"] not in stats]) if current else set()
+    youth = youth_only(connection, team_uid, season, [p["uid"] for p in people if p["uid"] not in stats]) if current else set()
     positions = main_positions(connection, [p["uid"] for p in people])
     injured = current_injuries(connection, [p["uid"] for p in people]) if current else {}
     new = {t["person_uid"] for t in data["signed"]}

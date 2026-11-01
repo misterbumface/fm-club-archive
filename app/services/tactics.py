@@ -50,6 +50,7 @@ PROFILE_GAMES = 12  # the team's matches with a team sheet before this one, at m
 PROFILE_DAYS = 240  # ... within this many days
 MIN_GAMES = 3  # fewer, and a team has no usual shape yet
 REGULAR = 0.6  # a share of the starts that makes a regular
+DROPPED_GAMES = 4  # a fit regular's last games: how many he started tells whether he has been dropped
 PARTNERS_MIN = 4  # games together before a partnership is a fact
 APART_MIN = 3  # ... and games without one of them to compare with
 PARTNERSHIP_NOTES = 2  # a side's partnerships told, the clearest first
@@ -130,9 +131,10 @@ def team_profile(connection: Connection, team_uid: int, before: date, games: int
     shapes, slot_starts = Counter(), defaultdict(Counter)
     players: dict[int, dict] = {}
     pair_games: dict[tuple, list] = defaultdict(list)
-    results = []
+    results, sheets = [], []
     for f in fixtures:
         starters = [r for r in by_fixture[f["id"]] if r["start_position"] and r["person_uid"]]
+        sheets.append(({r["person_uid"] for r in starters}, {r["person_uid"] for r in by_fixture[f["id"]] if not r["start_position"]}))
         scored, conceded, result = q.result_for(f, team_uid)
         results.append((f["id"], scored, conceded, result))
         shapes[formation(r["start_position"] for r in starters)] += 1
@@ -163,7 +165,7 @@ def team_profile(connection: Connection, team_uid: int, before: date, games: int
     return {"team_uid": team_uid, "games": n, "shapes": shapes, "usual_shape": usual[0], "usual_share": usual[1],
             "slot_starts": slot_starts, "players": players,
             "regulars": {uid for uid, p in players.items() if n >= MIN_GAMES and p["starts"] >= REGULAR * n},
-            "partnerships": partnerships}
+            "partnerships": partnerships, "sheets": sheets}  # (starters, bench) of each game, newest first
 
 
 def _record(record: dict, fixtures: list[int]) -> dict:
@@ -435,6 +437,13 @@ def expected_eleven(connection: Connection, team: int, day: date, shape: str | N
     out |= {uid: "has left the club" for uid in candidates if uid not in here}
     chosen = pick_eleven(profile, slots, set(out))
     players = profile["players"]
+    for uid in profile["regulars"] - set(chosen) - set(out):  # a fit regular who lost his place: dropped, or rotated out
+        recent = profile["sheets"][:DROPPED_GAMES]
+        started = sum(uid in starters for starters, _ in recent)
+        benched = sum(uid in bench for _, bench in recent)
+        rating = _avg([r for rs in players[uid]["ratings"].values() for r in rs])
+        out[uid] = (f"fit, but started {started} of the last {len(recent)} games, on the bench in {benched}; average rating {rating} "
+                    "in his recent starts")
     line = "; ".join(f"{SHORT.get(slot, slot)} {players[uid]['name']}" for uid, slot in chosen.items())
     form = {uid: _avg([r for rs in players[uid]["ratings"].values() for r in rs]) for uid in chosen}
     missing = [f"{players[uid]['name']} ({SLOT_WORDS.get(players[uid]['slots'].most_common(1)[0][0])}, {why})"

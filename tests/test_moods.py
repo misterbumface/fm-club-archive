@@ -135,3 +135,26 @@ def test_a_preview_hears_who_is_not_fit_sharp_or_fresh(small_world):
         assert notes[-1] == "(as of 2063-09-15)"
         assert moods.fitness_notes(c, names, date(2063, 12, 1)) == []  # too far from the save to tell
     assert [moods.fatigue_word(v) for v in (-500, -151, 0, 250, 500)] == ["fresh", "fresh", "some fatigue", "tired", "jaded"]
+
+
+def test_a_youth_team_player_is_no_dressing_room_story_and_no_team_mate_taking_sides(small_world):
+    """A kid on the books who played only for the U21s wants to move on, and thinks the star is treated unfairly: the
+    papers' dressing room is the first team's (1 Nov 2026)."""
+    _moods(small_world)
+    kid = 199
+    with small_world.begin() as c:
+        club = c.exec_driver_sql("select club_uid from teams where fm_uid = %d" % CHELSEA).scalar()
+        c.execute(world.WorldTeam.__table__.insert(), [{"fm_uid": 6301, "club_uid": club, "nation_uid": None, "name": "Chelsea U21", "age_limit": 21, "as_of": AS_OF}])
+        c.execute(world.WorldPerson.__table__.insert(), [{"fm_uid": kid, "name": "Chelsea Kid", "as_of": AS_OF, "team_uid": CHELSEA, "reputation_world": 500}])
+        c.execute(world.WorldPlayerGame.__table__.insert(), [
+            {"person_uid": kid, "team_uid": 6301, "played_on": date(2063, 8, 30), "status": "played", "minutes": 90, "as_of": AS_OF}])
+        c.execute(world.WorldPersonConcern.__table__.insert(), [
+            _concern(kid, 0, MOVE_ON, date(2063, 9, 12)), _concern(kid, 1, UNFAIR, date(2063, 9, 12), about=STAR)])
+    with small_world.connect() as c:
+        w = _World(c, date(2063, 9, 1), SAVE_DAY, (CHELSEA,))
+        found = {finder.__name__: finder(w) for finder in dressing.FINDERS}
+    assert "Chelsea Kid" not in {lead.facts["player"] for lead in found["unsettled"]}
+    unsettled = {lead.facts["player"]: lead.facts for lead in found["unsettled"]}
+    assert unsettled["Big Star"]["team_mates_who_think_he_is_treated_unfairly"] == "Chelsea 102, Chelsea 103, Chelsea 104"
+    (side,) = found["taking_sides"]
+    assert side.headline == "3 Chelsea players take Big Star's side"
