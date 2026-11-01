@@ -35,7 +35,7 @@
     {% if page.market %}<div class="row-title"><h2>Transfer talk</h2></div>
     <p>{% if page.market.active %}Wanted by {% for r in page.market.active %}<a href="{{ club_url(r.team_uid, {'name': r.team}) }}"><b>{{ r.team }}</b></a>{{ ', ' if not loop.last }}{% endfor %}.{% endif %}
     {% if page.market.rumoured %} Rumoured: {% for r in page.market.rumoured %}<a href="{{ club_url(r.team_uid, {'name': r.team}) }}">{{ r.team }}</a>{{ ', ' if not loop.last }}{% endfor %}.{% endif %}</p>
-    {% if page.market.bids %}<ul class="latest">{% for b in page.market.bids[:5] %}<li>{{ b.when }} · <a href="{{ club_url(b.team_uid, {'name': b.team}) }}">{{ b.team }}</a> {% if b.loan %}asked for him on loan{% else %}bid £{{ '{:,}'.format(b.fee) }}{% if b.rising_to %}, rising to £{{ '{:,}'.format(b.rising_to) }}{% endif %}{% endif %} · {{ b.status }}{% if b.joins %}, joins {{ b.joins }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+    {% if page.market.bids %}<ul class="latest">{% for b in page.market.bids[:5] %}<li>{{ b.when }} · <a href="{{ club_url(b.team_uid, {'name': b.team}) }}">{{ b.team }}</a> {% if b.loan %}asked for him on loan{% else %}bid £{{ '{:,}'.format(b.fee) }}{% if b.rising_to %}, rising to £{{ '{:,}'.format(b.rising_to) }}{% endif %}{% endif %} · {{ b.status }}{% if b.asked_for %}, his club asked for £{{ '{:,}'.format(b.asked_for) }}{% endif %}{% if b.joins %}, joins {{ b.joins }}{% endif %}</li>{% endfor %}</ul>{% endif %}
     {% endif %}
     {% if items %}<div class="row-title"><h2>In the news</h2></div>
     <div class="list">{% for a in items %}<a class="card" href="{{ story_url(a) }}">{{ p.image(a) }}<div><h3>{{ a.headline }}</h3>{{ p.tag(a) }}</div></a>{% endfor %}</div>{% endif %}

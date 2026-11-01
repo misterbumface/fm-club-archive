@@ -56,6 +56,9 @@ ARTICLE_RULES = (
     "A player is injured, suspended or missing only when the notebook says so; a man absent from an expected line-up is "
     "simply not expected to start, and the reason is not known. A player is the leading scorer only when the notebook "
     "names him so. "
+    "Promotion, play-off and relegation places, a drop zone or safety, exist only as the notebook's league_rules give "
+    "them, told as what the league's past seasons showed; with no league_rules, or when they say it is not known, name "
+    "no such place. "
     "Morale, happiness, fitness and character are told in words, the way a club or a newspaper would put them; never as a "
     "score or a scale (no 'seven out of twenty'), which belongs to the game's screens, not to the world. "
 ) + _CRAFT

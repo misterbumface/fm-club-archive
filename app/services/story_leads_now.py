@@ -214,7 +214,22 @@ def _place_words(w, league: int, table: list[dict], place: dict[int, int], team:
     row = table[place[team] - 1]
     words = f"{place[team]} of {len(table)} in the league phase" if w.comp(league).get("scope") == "continental" else f"{place[team]}"
     words += f", {row['points']} points from {row['played']} games"
-    return words + (f", form {''.join(row['form'])}" if form else "")
+    words += f", form {''.join(row['form'])}" if form else ""
+    zone = q.zone_of(_zones(w, league), table, place[team])
+    return words + (f"; {zone}" if zone else "")
+
+
+def _zones(w, league: int) -> dict | None:
+    """The league's promotion and relegation places as its past seasons show them (world_queries.league_zones), once a
+    cycle. None for a continental competition or a cup."""
+    cache = w.__dict__.setdefault("_league_zones", {})
+    if league not in cache:
+        cache[league] = q.league_zones(w.c, league, w.season) if w.comp(league).get("scope") == "league" else None
+    return cache[league]
+
+
+def _league_rules(w, league: int) -> str | None:
+    return q.zone_words(_zones(w, league)) if w.comp(league).get("scope") == "league" else None
 
 
 def _european_seasons(w, team: int) -> int:
@@ -291,6 +306,7 @@ def round_ups(w) -> list:
                      "big_games": [_game_in_full(w, f, place) for f in ranked[:BIG_GAMES]],
                      "other_results": [_result_line(w, f) for f in ranked[BIG_GAMES:]] or None,
                      "games_played_by_the_leaders": table[0]["played"],
+                     "league_rules": _league_rules(w, league),
                      "table_top": [_row_text(w, i, r) for i, r in enumerate(table[:5], 1)],
                      "table_bottom": [_row_text(w, len(table) - 2 + i, r) for i, r in enumerate(table[-3:])],
                      "leader": w.name(leader), "leader_a_cycle_ago": w.name(leader_before) if leader_before and leader_before != leader else None,
@@ -490,7 +506,7 @@ def check_ins(w) -> list:
         facts = {"club": club, "competition": comp, "the_story": story, "how_far_in": f"{stage}: {row['played']} of {total} games",
                  "place": _place_words(w, league, table, place, team), "points_behind_first": table[0]["points"] - row["points"],
                  "points_above_last": row["points"] - table[-1]["points"],
-                 "promotion_and_relegation_places": "how many go up or down is not known here, so name no such places",
+                 "league_rules": _league_rules(w, league),
                  "last_season": _last_finish(w, team), "manager": _manager(w, team),
                  "top_scorers": _team_scorers(w, team, league), "regulars": _regular_lines(w, team)}
         size = 0.55 + (0.15 if w.followed(team) else 0) + 0.05 * index
@@ -639,14 +655,15 @@ def previews(w) -> list:
         table, place, _ = _phase_table(w, league, tables)
         derby = max((q.rivalry(w.c, home, away) or {}).get("level", 0), (q.rivalry(w.c, away, home) or {}).get("level", 0))
         top = place.get(home, 99) <= 6 and place.get(away, 99) <= 6
+        bottom = _bottom_clash(w, league, table, place, home, away)
         big, both = max(w.rep(home) or 0, w.rep(away) or 0), min(w.rep(home) or 0, w.rep(away) or 0)
         european = league in continental and (big >= EURO_BIG or both >= EURO_BOTH)
         national = league in internationals and w.team(home).get("age_limit") is None and (
             {w.team(home).get("nation_uid"), w.team(away).get("nation_uid")} & covered or both >= INTERNATIONAL_BOTH)
-        if not (w.followed(home, away) or derby >= DERBY_LEVEL or top or european or national or (league in cups and both >= CUP_BOTH)):
+        if not (w.followed(home, away) or derby >= DERBY_LEVEL or top or bottom or european or national or (league in cups and both >= CUP_BOTH)):
             continue
         facts = {"competition": _comp_name(w, league), "date": str(f["date"]), "home": w.name(home), "away": w.name(away),
-                 "derby": derby >= DERBY_LEVEL or None}
+                 "derby": derby >= DERBY_LEVEL or None, "league_rules": _league_rules(w, league) if league in tables else None}
         for side, team in (("home", home), ("away", away)):
             if team in place:
                 facts[f"{side}_place"] = _place_words(w, league, table, place, team)
@@ -663,6 +680,8 @@ def previews(w) -> list:
         size = PREVIEW_BASE + (0.25 if derby >= DERBY_LEVEL else 0) + (0.15 if top else 0) + (0.2 if league in continental else 0)
         bonus, drama = _drama(w, f, table, place)
         size += bonus
+        if (date.fromisoformat(str(f["date"])[:10]) - w.until).days > NEAR_DAYS:
+            size *= FAR_GAME  # the next cycle previews it closer to the day
         facts.update(drama)
         leads.append(Lead("preview", f"Coming up: {w.name(home)} v {w.name(away)}, {f['date']} ({_comp_name(w, league)})",
                           w.until, w.weight(league) * 10 * size, {k: v for k, v in facts.items() if v is not None},
@@ -957,9 +976,35 @@ LOSING_AT_STAKE = 4  # league defeats in a row
 RETURN_GAMES = 50  # games for the old club that make a player's return a story (one a side, the longest-serving)
 RECORD_WITHIN = 1  # goals from the club's scoring record
 RECORD_FLOOR = 50  # goals: a smaller record is not one
-DRAMA = {"title_decider": 0.3, "final": 0.3, "semi_final": 0.2, "relegation_six_pointer": 0.2, "manager_return": 0.2,
+NEAR_DAYS, FAR_GAME = 7, 0.85  # a game further away than this counts less in a preview's score
+TOP_CLASH = 4  # two clubs this high meet: a top-of-the-table clash
+CLASH_GAP = 6  # ... worth more with at most these points between them
+CLASH_TEAMS = 10  # a league this big has a bottom four worth a six-pointer when its past places are not known
+DRAMA = {"title_decider": 0.3, "final": 0.3, "semi_final": 0.2, "relegation_six_pointer": 0.35, "top_clash": 0.35, "close_clash": 0.1,
+         "manager_return": 0.2,
          "player_return": 0.1, "run_at_stake": 0.15, "record_chance": 0.15}
 DRAMA_CAP = 0.6
+
+
+def _bottom_clash(w, league: int, table: list[dict], place: dict[int, int], home: int, away: int) -> bool:
+    """Two clubs at the bottom meet from halfway through the season: both in the places that went down in past seasons
+    or within one place of them, or both in the bottom four when those places are not known."""
+    if home not in place or away not in place or not table or w.comp(league).get("scope") != "league":
+        return False
+    total, n = 2 * (len(table) - 1), len(table)
+    played = min(table[place[home] - 1]["played"], table[place[away] - 1]["played"])
+    zones = _zones(w, league)
+    if zones and zones["down"] and zones["teams"] == n:
+        line = n - zones["down"] - 1
+    elif n >= CLASH_TEAMS:
+        line = n - 4
+    else:
+        return False  # in a small league the bottom four is half the table
+    return min(place[home], place[away]) > line and played >= RELEGATION_SEASON * total
+
+
+def _nth_place(n: int) -> str:
+    return q._place(n)
 
 
 def _drama(w, f: dict, table: list[dict], place: dict[int, int]) -> tuple[float, dict]:
@@ -977,8 +1022,16 @@ def _drama(w, f: dict, table: list[dict], place: dict[int, int]) -> tuple[float,
             if gap <= TITLE_GAP:
                 facts["title_decider"] = f"first against second, {gap} point{'s' if gap != 1 else ''} apart, {total - played} games left"
                 bonus += DRAMA["title_decider"]
-        if first > len(table) - 4 and played >= RELEGATION_SEASON * total:
-            facts["relegation_six_pointer"] = f"both in the bottom four ({place[home]} and {place[away]} of {len(table)}), {total - played} games left"
+        gap = abs(table[first - 1]["points"] - table[second - 1]["points"])
+        if second <= TOP_CLASH and "title_decider" not in facts and played >= FORM_GAMES:
+            facts["top_clash"] = (f"{_nth_place(first)} against {_nth_place(second)}, {gap} point{'s' if gap != 1 else ''} apart, "
+                                  f"{total - played} games left")
+            bonus += DRAMA["top_clash"] + (DRAMA["close_clash"] if gap <= CLASH_GAP else 0)
+        if _bottom_clash(w, league, table, place, home, away):
+            zones = _zones(w, league)
+            where = (f"both at or near the places that went down in past seasons (the bottom {zones['down']})" if zones and zones["down"]
+                     else "both in the bottom four")
+            facts["relegation_six_pointer"] = f"{where}: {place[home]} and {place[away]} of {len(table)}, {total - played} games left"
             bonus += DRAMA["relegation_six_pointer"]
     comp = w.comp(league)
     if comp.get("scope") in ("cup", "continental") and f["stage"] is not None:
@@ -1167,24 +1220,32 @@ def transfer_market(w) -> list:
     for b in w.rows("select o.id, o.team_uid bidder_uid, o.person_uid, coalesce(o.fee_guaranteed, o.fee) fee, o.fee_max, o.status, "
                     "o.offered_on, o.completes_on, o.status_changed_on, p.name, "
                     "p.team_uid owner_uid, t.name bidder from transfer_offers o join people p on p.fm_uid = o.person_uid "
-                    f"join teams t on t.fm_uid = o.team_uid where {_BID_NEWS} and coalesce(o.loan, 0) = 0 "
-                    "order by o.fee desc limit 60", s=str(w.since), u=str(w.until)):
+                    f"join teams t on t.fm_uid = o.team_uid where ({_BID_NEWS} or (o.status = 'made' and {_COUNTERED})) "
+                    "and coalesce(o.loan, 0) = 0 and o.status != 'counter' order by o.fee desc limit 60", s=str(w.since), u=str(w.until)):
         bidder, owner = b["bidder_uid"], b["owner_uid"]
         if not (w.followed(bidder) or (owner and w.followed(owner)) or b["fee"] >= BID_FEE):
             continue
+        counter = w.rows("select fee, status_changed_on from transfer_offers where team_uid = :t and person_uid = :p and offered_on = :d "
+                         "and status = 'counter' order by fee desc limit 1", t=bidder, p=b["person_uid"], d=str(b["offered_on"]))
+        counter = counter[0] if counter and (not counter[0]["status_changed_on"] or str(counter[0]["status_changed_on"]) <= str(w.until)) else None
+        status = "countered" if counter and b["status"] == "made" else b["status"]
         facts = {"player": b["name"], "his_club": w.name(owner) if owner else None, "bidder": b["bidder"], "fee_pounds": b["fee"],
                  "fee_euros": round(b["fee"] * 1.166), "rising_with_add_ons_to_pounds": b["fee_max"] if b["fee_max"] and b["fee_max"] > b["fee"] else None,
-                 "status": b["status"], "bid_date": str(b["offered_on"]), "status_known_since": _changed(b),
+                 "status": status, "bid_date": str(b["offered_on"]), "status_known_since": _changed(b),
+                 "his_club_asked_for_pounds": counter["fee"] if counter else None,
+                 "the_counter_proposal": (f"{w.name(owner) if owner else 'his club'} answered with a counter-proposal: they asked for "
+                                          f"£{counter['fee'] / 1e6:.1f}m" + (f" (known since {counter['status_changed_on']})" if counter["status_changed_on"] else ""))
+                                         if counter else None,
                  "completes_on": str(b["completes_on"]) if b["status"] == "agreed" and b["completes_on"] else None}
         code = q.main_positions(w.c, [b["person_uid"]]).get(b["person_uid"])
         if code:  # how it would go: whom he would compete with, and who plays there at his club if he leaves
             moves = {"at_the_bidding_club": position_picture(w, b["person_uid"], bidder, code),
                      "at_his_club_without_him": position_picture(w, b["person_uid"], owner, code) if owner else None}
             facts["if_he_moves"] = {k: v for k, v in moves.items() if v}
-        leads.append(Lead("transfer_bid", f"{b['bidder']} bid £{b['fee'] / 1e6:.1f}m for {b['name']} ({b['status']})",
+        leads.append(Lead("transfer_bid", f"{b['bidder']} bid £{b['fee'] / 1e6:.1f}m for {b['name']} ({status})",
                           date.fromisoformat(str(b["offered_on"])), (w.rep(bidder) or 3000) / 1000 * 10 * (1.2 if b["status"] in ("agreed", "collapsed") else 1.0),
                           {k: v for k, v in facts.items() if v is not None}, [f"person:{b['person_uid']}", f"club:{bidder}"] + ([f"club:{owner}"] if owner else []),
-                          w.beats_for(bidder, owner) | {"transfers"}, slug=f"{b['person_uid']}:{bidder}:{b['offered_on']}:{b['status']}"))
+                          w.beats_for(bidder, owner) | {"transfers"}, slug=f"{b['person_uid']}:{bidder}:{b['offered_on']}:{status}"))
     # loan offers for a followed club's player, or from a followed club (King's Lynn for Chelsea's Spyrou, 3 Dec 2063)
     try:
         loans = w.rows("select o.team_uid bidder_uid, o.person_uid, o.status, o.offered_on, o.completes_on, o.status_changed_on, p.name, "
@@ -1204,7 +1265,7 @@ def transfer_market(w) -> list:
         leads.append(Lead("loan_offer", f"{b['bidder']} ask to borrow {b['name']} ({w.name(owner)})", date.fromisoformat(str(b["offered_on"])),
                           (w.rep(owner) or 3000) / 1000 * TRANSFER_SCALE, {k: v for k, v in facts.items() if v},
                           [f"person:{b['person_uid']}", f"club:{bidder}"] + ([f"club:{owner}"] if owner else []),
-                          w.beats_for(bidder, owner) | {"transfers"}, slug=f"{b['person_uid']}:{bidder}:{b['offered_on']}:{b['status']}"))
+                          w.beats_for(bidder, owner) | {"transfers"}, slug=f"{b['person_uid']}:{bidder}:{b['offered_on']}:{status}"))
     return leads
 
 
@@ -1212,6 +1273,9 @@ def transfer_market(w) -> list:
 _ANSWERS = ("rejected", "withdrawn", "collapsed", "agreed")
 _BID_NEWS = ("((o.offered_on > :s and o.offered_on <= :u) or (o.status_changed_on > :s and o.status_changed_on <= :u "
              f"and o.status in ({', '.join(repr(a) for a in _ANSWERS)})))")
+# a bid whose counter-proposal a save first showed in the cycle is news again, while the bid is still open
+_COUNTERED = ("exists (select 1 from transfer_offers c where c.team_uid = o.team_uid and c.person_uid = o.person_uid "
+              "and c.offered_on = o.offered_on and c.status = 'counter' and c.status_changed_on > :s and c.status_changed_on <= :u)")
 
 
 def _changed(bid) -> str | None:
@@ -1338,7 +1402,7 @@ def followed_games(w) -> list:
         table, place, _ = _phase_table(w, league, tables)
         continental = w.comp(league).get("scope") == "continental"
         facts = {"competition": _comp_name(w, league), "date": str(f["date"]), "home": w.name(home), "away": w.name(away),
-                 "treatment": "a brief: this is a friendly" if friendly else None,
+                 "treatment": "a brief: this is a friendly" if friendly else None, "league_rules": _league_rules(w, league) if place else None,
                  "stage": (f"the league phase: one table of {len(table)} teams; what each place earns at its end, and who goes through, "
                            "is not known here, so say nothing of it") if continental and table else None}
         for side, team in (("home", home), ("away", away)):

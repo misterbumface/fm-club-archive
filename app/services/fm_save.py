@@ -241,7 +241,7 @@ import mmap
 import re
 import struct
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Iterable, Iterator
@@ -2714,10 +2714,11 @@ class TransferOffer:
     loan_wage: int | None = None
     fee_guaranteed: int | None = None  # the offer as the game states it: the fee and the clauses that are part of it
     fee_max: int | None = None  # with every conditional add-on
+    counter: bool = False  # the selling club's counter-proposal to a bid, not a bid
 
     @property
     def status_word(self) -> str:
-        return BID_STATUS.get(self.status, f"status {self.status}")
+        return "counter" if self.counter else BID_STATUS.get(self.status, f"status {self.status}")
 
 
 def _plain_part(transfer_man: bytes) -> bytes:
@@ -2776,7 +2777,16 @@ def read_transfer_offers(transfer_man: bytes) -> list[TransferOffer]:
                                   dates[1] if len(dates) > 1 else None, dates[-1] if dates else None, loan, fee if loan else None,
                                   None if loan else fee + guaranteed, None if loan else fee + guaranteed + extra)
             found.setdefault((person, team, offer.fee, offer.offered_on, loan), offer)
-    return list(found.values())
+    return _mark_counters(list(found.values()))
+
+
+def _mark_counters(offers: list[TransferOffer]) -> list[TransferOffer]:
+    """A counter-proposal is a second record of a bid: the same bidder, player and day, another fee, status 00 and blank
+    answer dates (the game's 1 Jan 1900, so one date is read). Chelsea asked Juventus for £165m for Valera on their £71.5m
+    bid of 18 Jan 2064; Juventus withdrew (26 Jan 2064). A revised bid has dates of its own and stays a bid."""
+    bids = {(o.person, o.team, o.offered_on) for o in offers if not o.loan and o.until is not None}
+    return [replace(o, counter=True) if not o.loan and o.status == 0 and o.until is None and (o.person, o.team, o.offered_on) in bids
+            else o for o in offers]
 
 
 # -- appearance and nationality -------------------------------------------------------------------

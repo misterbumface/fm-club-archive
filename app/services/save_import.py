@@ -746,6 +746,8 @@ class _SaveReader:
             before = stored.get((b["team_uid"], b["person_uid"], b["fee"], b["offered_on"]))
             changed = before is not None and before.status != b["status"] and before.as_of < self.game_date
             b["status_changed_on"] = self.game_date if changed else before.status_changed_on if before is not None else None
+            if before is None and b["status"] == "counter":  # a counter-proposal is news the day a save first shows it
+                b["status_changed_on"] = self.game_date
         # guarded: an older save read later does not turn a rejected bid back into an open one
         self._put(connection, world.WorldTransferOffer, list(_unique(bids, key=lambda b: (b["team_uid"], b["person_uid"], b["fee"], b["offered_on"]))),
                   ["team_uid", "person_uid", "fee", "offered_on"], guarded=True)

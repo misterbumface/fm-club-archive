@@ -155,8 +155,8 @@ KIND_NOTES = {
                     "when few games are played.",
     "check_in": "This is a check-in on a club in an unusual place: a big club that went down, or a small club that came up. "
                 "Tell how their season is going from the notebook: the place, the points, the form, last season, the manager, "
-                "the scorers and the regulars. It is a mid-season look, not a verdict; promotion or relegation places are "
-                "not known, so say where they stand in points, not whether they are in a zone.",
+                "the scorers and the regulars. It is a mid-season look, not a verdict; promotion, play-off or relegation places "
+                "only as the notebook's league_rules give them, as what past seasons showed.",
     "stat_watch": "This is about a scoring pace: the league's top scorer, his goals and games this season and who chases "
                   "him. Report it as the season so far.",
     "system_change": "This is about a team that has changed its system: the usual shape, the new one, the results in each and "

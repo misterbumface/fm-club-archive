@@ -103,6 +103,8 @@ def test_runs_derbies_previews_and_injuries_are_news_now(small_world):
     (preview,) = found["preview"]
     assert preview.headline.startswith("Coming up: Liverpool v Arsenal, 2063-09-10")
     assert preview.facts["home_injured"] == ["Hal Hurt (broken ankle)"]
+    assert preview.facts["top_clash"] == "2nd against 3rd, 6 points apart, 2 games left"  # Rotherham v Liverpool was cut (2 Nov 2026)
+    assert "relegation_six_pointer" not in preview.facts  # four teams: no bottom four to speak of
     (blow,) = found["injury_blow"]
     assert blow.facts["club_games_he_misses"] == 1 and blow.facts["back_about"] == "2063-10-10"
 
@@ -228,6 +230,26 @@ def test_a_bid_from_an_earlier_cycle_is_news_again_when_it_is_answered(small_wor
         c.execute(world.WorldTransferOffer.__table__.update().values(status="rejected", status_changed_on=UNTIL))
     (answered,) = _found(small_world)["transfer_bid"]
     assert answered.headline == "Arsenal bid £43.0m for Sam Scorer (rejected)" and answered.facts["status_known_since"] == str(UNTIL)
+
+
+def test_a_counter_proposal_is_told_with_its_bid_never_as_a_bid(small_world):
+    """Chelsea asked Juventus for £165m for Valera on a £71.5m bid; the paper never said so (26 Jan 2064). The counter is
+    news with its bid when a save first shows it, and stays in the bid's story when the bid is answered."""
+    _season(small_world)
+    bid = {"team_uid": ARSENAL, "person_uid": SCORER, "squad_uid": ARSENAL, "offered_on": date(2063, 8, 1), "as_of": AS_OF}
+    with small_world.begin() as c:
+        c.execute(world.WorldTransferOffer.__table__.insert(), [
+            {**bid, "fee": 43_000_000, "status": "made", "until": date(2063, 9, 20), "completes_on": date(2063, 9, 20), "status_changed_on": None},
+            {**bid, "fee": 90_000_000, "status": "counter", "until": None, "completes_on": date(2063, 8, 1), "status_changed_on": UNTIL}])
+    (countered,) = _found(small_world)["transfer_bid"]
+    assert countered.headline == "Arsenal bid £43.0m for Sam Scorer (countered)"
+    assert countered.facts["his_club_asked_for_pounds"] == 90_000_000 and "asked for £90.0m" in countered.facts["the_counter_proposal"]
+    with small_world.begin() as c:
+        t = world.WorldTransferOffer.__table__
+        c.execute(t.update().where(t.c.status == "counter").values(status_changed_on=date(2063, 8, 10)))
+        c.execute(t.update().where(t.c.status == "made").values(status="withdrawn", status_changed_on=UNTIL))
+    (walked,) = _found(small_world)["transfer_bid"]
+    assert walked.headline == "Arsenal bid £43.0m for Sam Scorer (withdrawn)" and walked.facts["his_club_asked_for_pounds"] == 90_000_000
 
 
 def test_a_world_cup_in_play_gets_reports_previews_a_round_up_and_our_players(small_world):
@@ -675,4 +697,42 @@ def test_a_small_club_that_came_up_gets_a_check_in_once_at_each_point_of_the_sea
     assert lead.facts["the_story"].startswith("promoted from the English Second Division last season, among the least known clubs")
     assert lead.facts["how_far_in"] == "just past halfway: 4 of 6 games"
     assert lead.facts["place"].startswith("4, 0 points from 4 games") and lead.facts["points_behind_first"] == 12
-    assert "name no such places" in lead.facts["promotion_and_relegation_places"]
+    assert "name no promotion, play-off or relegation places" in lead.facts["league_rules"]  # one past season only: not known
+
+
+def test_a_leagues_places_come_from_its_past_seasons(small_world):
+    """Not known before (2 Nov 2026): the final tables of past seasons against the league each club played next. Here the
+    last team went down three seasons in a row; one season 3rd went down as well, a play-off."""
+    from app.services import world_queries as q
+
+    second = 9102
+    teams = (CHELSEA, LIVERPOOL, ARSENAL, SPURS)  # finishing in this order every season: the better side wins 1-0
+    with small_world.begin() as c:
+        comps = world.WorldCompetition.__table__
+        c.execute(comps.update().where(comps.c.fm_uid == LEAGUE).values(scope="league", level=1))
+        c.execute(comps.insert(), [{"fm_uid": second, "name": "Second", "short_name": "Second", "abbreviation": "S2", "scope": "league",
+                                    "nation_uid": 765, "level": 2}])
+        games, rows = [], []
+        for year in (2059, 2060, 2061):
+            for a in range(4):
+                for b in range(4):
+                    if a != b:
+                        games.append(_fixture(f"{year}-{9 + a:02d}-{10 + b}", teams[a], teams[b], (1, 0) if a < b else (0, 1), LEAGUE, 162))
+            for i, team in enumerate(teams):  # the season after: the last, and once also 3rd, in the second level
+                down = i == 3 or (i == 2 and year == 2060)
+                rows.append({"person_uid": 400 + i, "team_uid": team, "season_start": year + 1, "kind": 1, "league_uid": second if down else LEAGUE,
+                             "seq": year, "starts": 1, "substitute_appearances": 0, "goals": 0, "assists": 0, "player_of_match": 0,
+                             "goals_conceded": 0, "clean_sheets": 0, "yellow_cards": 0, "red_cards": 0, "minutes": 90, "rated_appearances": 0,
+                             "rating_total": 0, "as_of": AS_OF})
+        c.execute(world.WorldFixture.__table__.insert(), games)
+        c.execute(world.WorldPlayerSeason.__table__.insert(), rows)
+        zones = q.league_zones(c, LEAGUE, 2062)
+        assert zones == {"seasons": 3, "teams": 4, "up": 0, "down": 1, "extra_up": None, "extra_down": (3, 3, 1)}
+        words = q.zone_words(zones)
+        assert words.startswith("in the archive's last 3 seasons of this league the bottom team went down; in 1 of those seasons 3rd went down too")
+        table = [{"points": p} for p in (9, 7, 4, 3)]
+        assert q.zone_of(zones, table, 4) == "in the places that went down in past seasons, 1 point from 3rd"
+        assert q.zone_of(zones, table, 2) == "4 points above the places that went down in past seasons"
+        assert q.zone_of(zones, table[:3], 3) is None  # another size of league: the past says nothing
+        assert q.league_zones(c, LEAGUE, 2061) is None  # two seasons only: not known
+        assert "name no promotion, play-off or relegation places" in q.zone_words(None)

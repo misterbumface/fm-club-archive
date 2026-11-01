@@ -1286,6 +1286,23 @@ def test_news_items_of_the_four_decoded_kinds_are_read_by_their_fixed_places():
     assert found["job_link"].day == date(2063, 12, 26)
 
 
+def test_a_counter_proposal_is_the_second_record_of_a_bid_with_blank_answer_dates():
+    """Juventus's £71.5m bid for Valera (18 Jan 2064) and Chelsea's counter-proposal of £165m (newest save, 26 Jan 2064):
+    the same bidder, player and day; the counter has status 00 and the game's blank 1 Jan 1900 for its answer dates."""
+    def record(fee: int, status: int, dates: bytes) -> bytes:
+        return (b"\x02\x0d\x00" + struct.pack("<I", 615438) + b"\x00" + struct.pack("<I", 988) + b"\x00" + struct.pack("<I", 988) + struct.pack("<I", fee)
+                + struct.pack("<II", 5772, 0x0e0f2b) + bytes([status]) + b"\x16" + bytes(16) + dates + bytes(60))
+
+    offered = struct.pack("<HH", 18 | 0x1000, 2064)
+    bid = record(71_474_400, 0x03, b"\xff" * 4 + struct.pack("<HH", 24 | 0x1000, 2064) + b"\x00" + offered + b"\x00" + struct.pack("<HH", 34 | 0x1000, 2064))
+    counter = record(165_000_000, 0x00, b"\xff" * 4 + b"\x01\x00\x6c\x07\x00\x01\x00\x6c\x07" + offered)
+    offers = {o.fee: o for o in fm_save.read_transfer_offers(bytes(8) + bid + bytes(8) + counter + bytes(8))}
+    assert offers[71_474_400].status_word == "withdrawn" and not offers[71_474_400].counter
+    assert offers[165_000_000].status_word == "counter" and offers[165_000_000].offered_on == date(2064, 1, 18)
+    (alone,) = fm_save.read_transfer_offers(bytes(8) + counter + bytes(8))
+    assert alone.status_word == "made"  # without its bid it is not known as a counter
+
+
 def test_a_loan_offer_is_the_bid_record_with_03_and_no_fee():
     """King's Lynn's loan offer for Chelsea's Spyrou (Exhibit 7, 26 Oct 2026): 03 0d 00, offered 3 Dec 2063, to 27 Mar 2064."""
     offered, until = struct.pack("<HH", 337 | 0x1a00, 2063), struct.pack("<HH", 87 | 0x5a00, 2064)

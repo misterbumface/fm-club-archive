@@ -653,6 +653,105 @@ def regulars(connection: Connection, team_uid: int, until, since=None) -> dict[i
     return {uid: {k: v for k, v in p.items() if k != "_most"} for uid, p in players.items() if p["starts"] >= REGULAR_SHARE * games}
 
 
+ZONE_SEASONS = 6  # past seasons read for a league's promotion and relegation places
+ZONE_MIN_SEASONS = 3  # fewer finished seasons in the archive and the places are not known
+
+
+def _levels_next(connection: Connection, uids, season: int) -> dict[int, int]:
+    """Each team's league level in a season: the level of the league most of its league rows are in."""
+    marks = ",".join(str(int(u)) for u in uids) or "0"
+    found: dict[int, tuple[int, int]] = {}
+    for r in _rows(connection, f"select ps.team_uid, c.level, count(*) n from player_seasons ps join competitions c on c.fm_uid = ps.league_uid "
+                               f"where ps.season_start = :s and ps.kind = 1 and c.level is not null and ps.team_uid in ({marks}) "
+                               "group by ps.team_uid, c.level", s=season):
+        if r["n"] > found.get(r["team_uid"], (0, 0))[1]:
+            found[r["team_uid"]] = (r["level"], r["n"])
+    return {uid: level for uid, (level, _) in found.items()}
+
+
+def league_zones(connection: Connection, league_uid: int, season: int) -> dict | None:
+    """A league's promotion and relegation places, as its past seasons show them: the final tables of the last seasons
+    against the league each club played in the season after. The places that went up or down (nearly) every season, and
+    the places one more came from in the seasons with an extra mover (a play-off). None for a league without levels, a
+    format change, or too few seasons in the archive. The game's own rules are in the save but not read (2 Nov 2026)."""
+    level = (_one(connection, "select level from competitions where fm_uid = :c", c=league_uid) or {}).get("level")
+    if not level:
+        return None
+    size, seasons = None, []
+    for year in range(season - 1, season - 1 - ZONE_SEASONS, -1):
+        start, end = league_window(connection, league_uid, year)
+        table = league_table(connection, league_uid, start, end)
+        if len(table) < 4:
+            continue
+        if size is None:
+            size = len(table)
+        elif len(table) != size:
+            break  # another format before this season
+        after = _levels_next(connection, [r["team_uid"] for r in table], year + 1)
+        if len(after) < len(table) // 2:
+            continue  # the season after is not in the archive
+        seasons.append(([i for i, r in enumerate(table, 1) if (after.get(r["team_uid"]) or level) < level],
+                        [i for i, r in enumerate(table, 1) if (after.get(r["team_uid"]) or level) > level]))
+    if len(seasons) < ZONE_MIN_SEASONS:
+        return None
+    need = len(seasons) - 1 if len(seasons) >= 4 else len(seasons)  # one odd season (a deduction, a tie-break) is forgiven
+    up_count, down_count = Counter(p for up, _ in seasons for p in up), Counter(p for _, down in seasons for p in down)
+    up = next((n for n in range(size + 1) if up_count[n + 1] < need), size)
+    down = next((n for n in range(size + 1) if down_count[size - n] < need), size)
+    extra_up = [p for ups, _ in seasons if len(ups) > up for p in ups if p > up]
+    extra_down = [p for _, downs in seasons if len(downs) > down for p in downs if p <= size - down]
+    return {"seasons": len(seasons), "teams": size, "up": up, "down": down,
+            "extra_up": (min(extra_up), max(extra_up), sum(len(u) > up for u, _ in seasons)) if extra_up else None,
+            "extra_down": (min(extra_down), max(extra_down), sum(len(d) > down for _, d in seasons)) if extra_down else None}
+
+
+def zone_words(zones: dict | None) -> str:
+    """What the league's past seasons say of its places, for a notebook; the caution when they say nothing."""
+    if not zones:
+        return "how many go up or down is not known here, so name no promotion, play-off or relegation places"
+    k, parts = zones["seasons"], []
+    def often(n: int) -> str:
+        return "every season" if n == k else f"in {n} of those seasons"
+
+    if zones["up"]:
+        parts.append("the top team went up" if zones["up"] == 1 else f"the top {zones['up']} went up")
+    if zones["extra_up"]:
+        a, b, n = zones["extra_up"]
+        parts.append(f"{often(n)} one more went up from {_place(a)} to {_place(b)} (most likely play-offs)")
+    if zones["down"]:
+        parts.append("the bottom team went down" if zones["down"] == 1 else f"the bottom {zones['down']} went down")
+    if zones["extra_down"]:
+        a, b, n = zones["extra_down"]
+        parts.append(f"{often(n)} {_place(a) if a == b else f'one of {_place(a)} to {_place(b)}'} went down too (most likely a play-off)")
+    if not parts:
+        return "nobody went up or down in the archive's seasons"
+    return f"in the archive's last {k} seasons of this league " + "; ".join(parts) + ". Say so as what past seasons show, not as a rule."
+
+
+def zone_of(zones: dict | None, table: list[dict], place: int) -> str | None:
+    """Where a place stands against the league's past-season places: in them, or how far from them."""
+    if not zones or zones["teams"] != len(table):
+        return None
+    n, row = len(table), table[place - 1]
+    if zones["down"]:
+        safe = n - zones["down"]  # the lowest place that stayed up in past seasons
+        if place > safe:
+            gap = table[safe - 1]["points"] - row["points"]
+            return f"in the places that went down in past seasons, {gap} point{'s' if gap != 1 else ''} from {_place(safe)}"
+        if place > safe - 3:
+            gap = row["points"] - table[safe]["points"]
+            return f"{gap} point{'s' if gap != 1 else ''} above the places that went down in past seasons"
+    if zones["up"] and place <= zones["up"]:
+        return "in the places that went up in past seasons"
+    if zones["extra_up"] and zones["extra_up"][0] <= place <= zones["extra_up"][1]:
+        return "in the places one more team went up from in past seasons (most likely play-offs)"
+    return None
+
+
+def _place(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
 def regular_words(player: dict) -> str:
     """"a regular at ST (C): 16 starts in 24 games"."""
     return f"a regular at {player['position']}: {player['starts']} starts in {player['games']} games"
@@ -1846,9 +1945,12 @@ def transfer_market(connection: Connection, uid: int) -> dict:
                                  "where i.person_uid = :p order by i.rumoured, t.reputation desc, t.name", p=uid)
     bids = _rows(connection, "select o.*, t.name team, s.name squad from transfer_offers o join teams t on t.fm_uid = o.team_uid "
                              "left join teams s on s.fm_uid = o.squad_uid where o.person_uid = :p order by o.offered_on desc, o.fee desc", p=uid)
+    counters = {(b["team_uid"], str(b["offered_on"])): b["fee"] for b in bids if b["status"] == "counter"}
+    bids = [b for b in bids if b["status"] != "counter"]
     for b in bids:  # the offer as the game states it (the fee and its guaranteed clauses), and what add-ons may make it
         b["fee"] = b.get("fee_guaranteed") or b["fee"]
         b["rising_to"] = b["fee_max"] if b.get("fee_max") and b["fee_max"] > b["fee"] else None
+        b["asked_for"] = counters.get((b["team_uid"], str(b["offered_on"])))  # his club's counter-proposal
     return {"active": [r for r in interest if not r["rumoured"]], "rumoured": [r for r in interest if r["rumoured"]], "bids": bids}
 
 
