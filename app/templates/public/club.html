@@ -24,8 +24,9 @@
   {% if page.system %}<section><div class="row-title"><h2>How they play</h2><span style="color:var(--muted);font-size:13px">{{ page.system.name }}</span></div>
     <p><b>{{ page.system.formation or 'Shape unknown' }}</b>{% if page.system.style %} · {{ page.system.style }}{% endif %}{% if page.system.mentality %} · {{ page.system.mentality }}{% endif %}{% if page.system.fluidity %} · {{ page.system.fluidity }}{% endif %}</p>
     {{ p.formation(page.system) }}
-    <table class="rank"><tr><th class="l">Slot</th><th class="l">Role</th><th class="l">Duty</th><th class="l">Personalised</th></tr>
+    <table class="rank"><tr><th class="l">Slot</th><th class="l">Role</th><th class="l">Duty</th><th class="l">Usually</th><th class="l">Personalised</th></tr>
     {% for s in page.system.slots %}<tr><td class="l"><b>{{ s.code }}</b></td><td class="l">{{ s.role or 'role ' + s.role_key }}</td><td class="l muted">{{ s.duty }}</td>
+      {% if s.usually_span %}<td class="l" rowspan="{{ s.usually_span }}">{% for u in s.usually %}<a href="{{ player_url(u.uid, u.name) }}">{{ u.name }}</a> <span class="muted">{{ u.starts }}</span>{{ '; ' if not loop.last }}{% endfor %}</td>{% elif s.usually_span is not defined %}<td></td>{% endif %}
       <td class="l muted">{% for pl in s.players %}<a href="{{ player_url(pl.person_uid, pl.name) }}">{{ pl.name }}</a>{% if pl.short != s.short %} ({{ pl.role or 'role ' + pl.role_key }}, {{ pl.duty }}){% endif %}{{ '; ' if not loop.last }}{% endfor %}</td></tr>{% endfor %}</table></section>{% endif %}
   {% if page.systems %}<section><div class="row-title"><h2>Systems over the years</h2></div>
     <table class="rank"><tr><th class="l">Seasons</th><th class="l">Tactic</th><th class="l">Shape</th><th class="l">Style</th><th>Games</th></tr>

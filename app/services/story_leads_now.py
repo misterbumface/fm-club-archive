@@ -543,10 +543,9 @@ def previews(w) -> list:
             standing = next((t for t in xg_table(w, league) if t["team_uid"] == team), None) if league in tables else None
             if standing and standing["games"] >= LUCK_GAMES:
                 facts[f"{side}_expected_goals_and_points"] = expected.words(standing)
-            injured = w.rows("select p.name, i.injury from injuries i join people p on p.fm_uid = i.person_uid where i.current = 1 "
-                             "and p.team_uid = :t and coalesce(p.reputation_world, 0) >= 3000 order by p.reputation_world desc limit 3", t=team)
+            injured = _injured_regulars(w, team)
             if injured:
-                facts[f"{side}_injured"] = [f"{x['name']} ({x['injury']})" for x in injured]
+                facts[f"{side}_injured"] = injured
         meetings = w.rows("select * from fixtures where ((home_uid = :h and away_uid = :a) or (home_uid = :a and away_uid = :h)) "
                           "and home_goals is not null order by date desc limit 3", h=home, a=away)
         if meetings:
@@ -917,6 +916,23 @@ def _run_at_stake(w, team: int) -> str | None:
     return None
 
 
+INJURED_TOLD = 3
+
+
+def _injured_regulars(w, team: int) -> list[str]:
+    """The team's injured players who matter: its regulars on the team sheets, most starts first, with how much they
+    play. A team without enough sheets falls back to its best-known injured players."""
+    regulars = q.regulars(w.c, team, w.until)
+    if regulars is None:
+        return [f"{x['name']} ({x['injury']})" for x in w.rows(
+            "select p.name, i.injury from injuries i join people p on p.fm_uid = i.person_uid where i.current = 1 "
+            "and p.team_uid = :t and coalesce(p.reputation_world, 0) >= 3000 order by p.reputation_world desc limit :n", t=team, n=INJURED_TOLD)]
+    hurt = w.rows("select p.fm_uid, p.name, i.injury from injuries i join people p on p.fm_uid = i.person_uid where i.current = 1 "
+                  "and p.team_uid = :t", t=team)
+    hurt = sorted((x for x in hurt if x["fm_uid"] in regulars), key=lambda x: -regulars[x["fm_uid"]]["starts"])
+    return [f"{x['name']} ({x['injury']}; {q.regular_words(regulars[x['fm_uid']])})" for x in hurt[:INJURED_TOLD]]
+
+
 def _returns(w, team: int, other: int) -> tuple[list[str] | None, str]:
     """The team's manager or a player who used to be at the other club, and which of the two it is."""
     found = []
@@ -926,10 +942,12 @@ def _returns(w, team: int, other: int) -> tuple[list[str] | None, str]:
         if spells:
             when = ", ".join(f"{str(sp['started'])[:4]} to {str(sp['ended'])[:4] if sp['ended'] else 'now'}" for sp in spells)
             found.append(f"{boss[0]['name']}, {w.name(team)}'s manager, managed {w.name(other)} ({when})")
-    players = w.rows("select p.name, sum(ps.starts + ps.substitute_appearances) games, sum(ps.goals) goals, min(ps.season_start) first, "
+    players = w.rows("select p.fm_uid, p.name, sum(ps.starts + ps.substitute_appearances) games, sum(ps.goals) goals, min(ps.season_start) first, "
                      "max(ps.season_start) last from people p join player_seasons ps on ps.person_uid = p.fm_uid and ps.team_uid = :o "
-                     "and ps.kind in (1, 2, 3) where p.team_uid = :t group by p.fm_uid having games >= :g order by games desc limit 1",
+                     "and ps.kind in (1, 2, 3) where p.team_uid = :t group by p.fm_uid having games >= :g order by games desc",
                      o=other, t=team, g=RETURN_GAMES)
+    regulars = q.regulars(w.c, team, w.until)
+    players = [r for r in players if regulars is None or r["fm_uid"] in regulars][:1]  # a returning reserve is no story
     for row in players:
         span = q.season_label(row["first"]) if row["first"] == row["last"] else f"{q.season_label(row['first'])} to {q.season_label(row['last'])}"
         found.append(f"{row['name']} returns to {w.name(other)}: {row['games']} games and {row['goals']} goals there, {span}")
@@ -1218,10 +1236,9 @@ def followed_games(w) -> list:
                 facts[f"{side}_place"] = _place_words(w, league, table, place, team)
             if continental:
                 facts[f"{side}_seasons_in_european_competition"] = _european_seasons(w, team)
-            injured = w.rows("select p.name, i.injury from injuries i join people p on p.fm_uid = i.person_uid where i.current = 1 "
-                             "and p.team_uid = :t and coalesce(p.reputation_world, 0) >= 3000 order by p.reputation_world desc limit 3", t=team)
+            injured = _injured_regulars(w, team)
             if injured:
-                facts[f"{side}_injured"] = [f"{x['name']} ({x['injury']})" for x in injured]
+                facts[f"{side}_injured"] = injured
         meetings = w.rows("select * from fixtures where ((home_uid = :h and away_uid = :a) or (home_uid = :a and away_uid = :h)) "
                           "and home_goals is not null order by date desc limit 3", h=home, a=away)
         if meetings:

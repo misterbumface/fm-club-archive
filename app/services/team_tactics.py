@@ -16,6 +16,9 @@ LINES = (("GK",), ("SW", "D (R)", "D (C)", "D (L)", "WB (R)", "WB (L)"), ("DM",)
 SHORT = {"GK": "GK", "SW": "SW", "D (R)": "DR", "D (L)": "DL", "D (C)": "DC", "WB (R)": "WBR", "WB (L)": "WBL", "DM": "DM", "M (R)": "MR",
          "M (L)": "ML", "M (C)": "MC", "AM (R)": "AMR", "AM (L)": "AML", "AM (C)": "AMC", "ST (C)": "ST"}
 HISTORY_GAMES = 2  # a system seen in fewer dated matches is noted, not a spell
+USUALLY_EXTRA = 2  # the players named for a position: one per slot there, and this many more
+# The team-sheet positions that count for a slot: a full-back slot holds the wing-backs' starts too.
+SHEET_CODES = {"D (R)": ("D (R)", "WB (R)"), "D (L)": ("D (L)", "WB (L)"), "WB (R)": ("WB (R)", "D (R)"), "WB (L)": ("WB (L)", "D (L)")}
 
 
 def _slots(c: Connection, tactic_id: int) -> list[dict]:
@@ -43,8 +46,31 @@ def current(c: Connection, team_uid: int) -> dict | None:
         slot["players"] = [{"person_uid": p["person_uid"], "name": p["name"], "role": p["role"], "role_key": p["role_key"], "duty": p["duty"],
                             "short": _short(p)}
                            for p in personal if (p["position"], p["side"]) == (slot["position"], slot["side"])]
+    _usually(c, team_uid, slots)
     _place(slots)
     return {**row, "slots": slots, "lines": _lines(slots)}
+
+
+def _usually(c: Connection, team_uid: int, slots: list[dict]) -> None:
+    """Who starts in each slot's position this season, from the first team's sheets, most starts first. The sheets
+    have no side, so the slots of one position share one list: the first of them gets it (``usually``) with the
+    number of slots it spans (``usually_span``), the others a span of 0."""
+    newest = q._one(c, "select max(f.date) d from fixtures f where (f.home_uid = :t or f.away_uid = :t) and f.home_goals is not null",
+                    t=team_uid)
+    if not newest or not newest["d"]:
+        return
+    until = date.fromisoformat(str(newest["d"])[:10])
+    since = date(until.year if until.month >= 7 else until.year - 1, 7, 1)
+    seen: set[str] = set()
+    for slot in slots:
+        slot["usually"], slot["usually_span"] = [], 0
+        if slot["position"] in seen:
+            continue
+        seen.add(slot["position"])
+        span = sum(s["position"] == slot["position"] for s in slots)
+        codes = SHEET_CODES.get(slot["position"], (slot["position"],))
+        slot["usually"] = q.position_starts(c, team_uid, codes, str(since - date.resolution), str(until))[:span + USUALLY_EXTRA]
+        slot["usually_span"] = span
 
 
 def _place(slots: list[dict]) -> None:

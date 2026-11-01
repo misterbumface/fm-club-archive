@@ -281,7 +281,7 @@ def test_the_club_page_shows_how_they_play(site):
                 {"tactic_id": made, "seq": 101, "position": "AM (L)", "side": None, "duty": "Attack", "role_key": "6.02", "role": "Inverted Winger", "person_uid": 19},
                 {"tactic_id": old, "seq": 0, "position": "GK", "side": None, "duty": "Defend", "role_key": "0.01", "role": "Goalkeeper", "person_uid": None}])
     club = site.test_client().get("/clubs/630/chelsea").data.decode()
-    assert "How they play" in club and "4-3-3 DM Wide" in club and "Tiki-Taka" in club and "Sweeper Keeper" in club
+    assert "How they play" in club and "4-3-3 DM Wide" in club and "Tiki-Taka" in club and "Sweeper Keeper" in club and "Usually" in club
     assert "Lionel Messi" in club and "Inverted Winger, Attack" in club  # his personalised role
     assert "Systems over the years" in club and "Gardiola" in club and "Gegenpress" in club and "2063/64" in club
 

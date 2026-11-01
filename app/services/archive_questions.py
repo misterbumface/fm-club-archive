@@ -73,6 +73,12 @@ TOOLS = [
                                                        "club": {"type": "string", "description": "Optional, to tell two players apart."}},
                        "required": ["name"]}}},
     {"type": "function", "function": {
+        "name": "regulars",
+        "description": "A club's regular starters this season, by position, from its team sheets: the players who matter to the "
+                       "team, with their starts. Ask this for a club's key men, never list them from the whole registered squad, "
+                       "which holds youth players and reserves.",
+        "parameters": {"type": "object", "properties": {"club": {"type": "string"}}, "required": ["club"]}}},
+    {"type": "function", "function": {
         "name": "sql",
         "description": "A read-only SQL SELECT on the archive, for anything the other questions do not answer. At most 30 rows. "
                        + SQL_GUIDE,
@@ -227,10 +233,30 @@ class Archive:
                                  "sum(goals) goals from player_seasons where person_uid = :u and kind = 1 group by team_uid order by first", u=uid)
         return {"player": p["name"], "age": q.age_on(p["birth_date"], self.until) if p["birth_date"] else None,
                 "club": self.w.name(p["team_uid"]), "position": position_words(q.main_positions(self.c, [uid]).get(uid)),
-                "this_season": this or "no games this season",
+                "this_season": this or "no games this season", "in_his_team": self._standing(uid, p["team_uid"]),
                 "league_career": [f"{self.w.name(r['team_uid'])}, {q.season_label(r['first'])}"
                                   f"{' to ' + q.season_label(r['last']) if r['last'] != r['first'] else ''}: {r['games']} games, {r['goals']} goals"
                                   for r in career]}
+
+    def _standing(self, uid: int, team: int | None) -> str | None:
+        """Whether a player is one of his club's regulars this season, from the team sheets."""
+        regulars = q.regulars(self.c, team, self.until) if team else None
+        if regulars is None:
+            return None
+        return q.regular_words(regulars[uid]) if uid in regulars else "not a regular starter in the first team this season"
+
+    def _regulars(self, club: str) -> dict:
+        uid = self.team(club)
+        if uid is None:
+            return {"error": f"no club called {club}"}
+        regulars = q.regulars(self.c, uid, self.until)
+        if regulars is None:
+            return {"regulars": "the archive has too few of their team sheets this season to tell"}
+        by_position: dict[str, list[str]] = {}
+        for p in sorted(regulars.values(), key=lambda p: -p["starts"]):
+            by_position.setdefault(p["position"], []).append(f"{p['name']} ({p['starts']} starts)")
+        games = next(iter(regulars.values()))["games"] if regulars else 0
+        return {"team_sheets_this_season": games, "regulars_by_position": by_position}
 
     def _sql(self, query: str) -> dict:
         query = query.strip().rstrip(";")

@@ -620,6 +620,44 @@ def position_starts(connection: Connection, team_uid: int, codes, since: str, un
                  t=team_uid, s=since, u=until)
 
 
+REGULAR_SHARE = 0.25  # a regular starts at least this share of the team's games that have a team sheet (Chelsea rotate
+# three strikers: 16, 11 and 11 starts of 38)
+REGULAR_GAMES = 3  # fewer team sheets than this and the archive does not know the team's regulars
+
+
+def regulars(connection: Connection, team_uid: int, until, since=None) -> dict[int, dict] | None:
+    """A team's regular players, from its first-team team sheets (competitive games) of the season up to *until*: per
+    player his starts, the team's games with a sheet, and the position he starts in most. The way to know who matters
+    in a team, never the whole registered squad (youth players, reserves). None when too few sheets to tell."""
+    until = date.fromisoformat(str(until)[:10])
+    if since is None:
+        since = date(until.year if until.month >= 7 else until.year - 1, 7, 1)
+        if until - since < timedelta(days=21):  # the first weeks of a season: last season's sheets still tell
+            since = until - timedelta(days=365)
+    where = ("((f.home_uid = :t and m.side = 0) or (f.away_uid = :t and m.side = 1)) and f.date >= :s and f.date <= :u "
+             "and c.scope in ('league', 'cup', 'continental')")
+    head = "from match_players m join fixtures f on f.id = m.fixture_id join competitions c on c.fm_uid = f.competition_uid "
+    games = connection.execute(text(f"select count(distinct m.fixture_id) {head}where {where} and m.start_position is not null"),
+                               {"t": team_uid, "s": str(since), "u": str(until)}).scalar() or 0
+    if games < REGULAR_GAMES:
+        return None
+    rows = _rows(connection, f"select m.person_uid uid, p.name, m.start_position position, count(*) n {head}"
+                             f"join people p on p.fm_uid = m.person_uid where {where} and m.played = 1 and m.minute_on = 0 "
+                             "and m.start_position is not null group by m.person_uid, m.start_position", t=team_uid, s=str(since), u=str(until))
+    players: dict[int, dict] = {}
+    for r in rows:
+        mine = players.setdefault(r["uid"], {"name": r["name"], "starts": 0, "games": games, "position": r["position"], "_most": 0})
+        mine["starts"] += r["n"]
+        if r["n"] > mine["_most"]:
+            mine["position"], mine["_most"] = r["position"], r["n"]
+    return {uid: {k: v for k, v in p.items() if k != "_most"} for uid, p in players.items() if p["starts"] >= REGULAR_SHARE * games}
+
+
+def regular_words(player: dict) -> str:
+    """"a regular at ST (C): 16 starts in 24 games"."""
+    return f"a regular at {player['position']}: {player['starts']} starts in {player['games']} games"
+
+
 def starters_a_game(connection: Connection, team_uid: int, codes, since: str, until: str) -> int | None:
     """How many players the team usually starts in these positions (one striker or two), from its team sheets."""
     marks = ",".join(f"'{c}'" for c in codes) or "''"

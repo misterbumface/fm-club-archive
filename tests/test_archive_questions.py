@@ -46,6 +46,8 @@ def test_the_archive_answers_with_its_own_rules(small_world):
         assert record.startswith("Chelsea in these")
         player = json.loads(archive.answer("player", {"name": "Sam Scorer"}))
         assert player["club"] == "Chelsea" and player["this_season"][0]["goals"] == 4
+        assert player["in_his_team"] is None  # no team sheets in this world: nothing said
+        assert "too few" in json.loads(archive.answer("regulars", {"club": "Chelsea"}))["regulars"]
         rows = json.loads(archive.answer("sql", {"query": f"select count(*) from fixtures where competition_uid = {LEAGUE}"}))
         assert rows["rows"][0][0] > 0
         assert "error" in json.loads(archive.answer("sql", {"query": "delete from fixtures"}))

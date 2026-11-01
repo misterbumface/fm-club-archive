@@ -566,6 +566,57 @@ def test_a_bid_says_who_plays_in_his_position_at_both_clubs_from_the_team_sheets
     assert moves["at_his_club_without_him"]["who_plays_there"] == ["nobody has started there since 2063-07-01"]
 
 
+def test_the_club_system_says_who_usually_starts_in_each_slot(small_world):
+    """The club page's "How they play" names the players who start in each slot's position, from the team sheets; the
+    personalised roles alone left the keeper, the centre-backs and the striker empty (1 Nov 2026)."""
+    from app.services import team_tactics
+
+    _season(small_world)
+    with small_world.begin() as c:
+        games = list(c.exec_driver_sql("select id, home_uid, away_uid from fixtures where competition_uid = %d and home_goals is not null "
+                                       "and date >= '2063-08-01'" % LEAGUE))
+        c.execute(world.WorldMatchPlayer.__table__.insert(), [
+            {**_match_player(fixture, 0 if home == CHELSEA else 1, SCORER, 0.5, 1, 2), "played": 1, "start_position": "ST (C)"}
+            for fixture, home, away in games if CHELSEA in (home, away)])
+        (made,) = c.execute(world.WorldTeamTactic.__table__.insert().values(team_uid=CHELSEA, slot=1, name="Blues", as_of=AS_OF)).inserted_primary_key
+        c.execute(world.WorldTeamTacticSlot.__table__.insert(), [
+            {"tactic_id": made, "seq": 0, "position": "GK", "side": None, "duty": "Support", "role_key": "1.10", "role": "Sweeper Keeper"},
+            {"tactic_id": made, "seq": 1, "position": "ST (C)", "side": None, "duty": "Attack", "role_key": "1.08", "role": "Advanced Forward"}])
+        system = team_tactics.current(c, CHELSEA)
+    keeper, striker = system["slots"]
+    assert keeper["usually"] == [] and keeper["usually_span"] == 1
+    assert [(u["name"], u["starts"]) for u in striker["usually"]] == [("Sam Scorer", 4)] and striker["usually_span"] == 1
+
+
+def test_a_preview_names_the_injured_regulars_not_the_injured_reserves(small_world):
+    """Ponferrada "will miss the injured Fran Belmonte, their leading scorer" (31 Oct 2026): a preview's injured are the
+    team's regulars on its team sheets, with how much they play; an injured reserve, however well known, is left out."""
+    from app.services import world_queries as q
+
+    _season(small_world)
+    reserve = 306
+    with small_world.begin() as c:
+        games = [(r.id, r.home_uid) for r in c.execute(world.WorldFixture.__table__.select().where(
+            (world.WorldFixture.__table__.c.home_goals.is_not(None)) & (world.WorldFixture.__table__.c.date >= date(2063, 8, 1))
+            & ((world.WorldFixture.__table__.c.home_uid == LIVERPOOL) | (world.WorldFixture.__table__.c.away_uid == LIVERPOOL))))]
+        c.execute(world.WorldMatchPlayer.__table__.insert(), [
+            {**_match_player(fixture, 0 if home == LIVERPOOL else 1, HURT, 0.1, 0, 0), "played": 1, "start_position": "DM"}
+            for fixture, home in games[:3]] + [
+            {**_match_player(fixture, 0 if home == LIVERPOOL else 1, FLOP + 100, 0.1, 0, 0), "seq": 2, "played": 1, "start_position": "GK"}
+            for fixture, home in games])
+        c.execute(world.WorldPerson.__table__.insert(), [
+            {"fm_uid": reserve, "name": "Rex Reserve", "as_of": AS_OF, "team_uid": LIVERPOOL, "reputation_world": 9000},
+            {"fm_uid": FLOP + 100, "name": "Kurt Keeper", "as_of": AS_OF, "team_uid": LIVERPOOL, "reputation_world": 1000}])
+        c.execute(world.WorldInjury.__table__.insert(), [
+            {"person_uid": reserve, "seq": 0, "injury": "sore back", "injured_on": date(2063, 8, 30), "days": 20, "severity": "Minor",
+             "team_uid": LIVERPOOL, "current": 1, "as_of": AS_OF}])
+        regulars = q.regulars(c, LIVERPOOL, UNTIL)
+        assert set(regulars) == {HURT, FLOP + 100} and regulars[HURT]["starts"] == 3 and regulars[HURT]["games"] == 4
+        assert q.regulars(c, SPURS, UNTIL) is None  # no team sheets: the archive cannot tell
+    (preview,) = _found(small_world)["preview"]
+    assert preview.facts["home_injured"] == ["Hal Hurt (broken ankle; a regular at DM: 3 starts in 4 games)"]
+
+
 def test_the_squad_lines_put_the_youth_team_players_apart(small_world):
     """Verlhac, Rodríguez and Spyrou play for Chelsea's U21s and U18s: on the club page they are not first-team strikers."""
     from app.services import world_queries as q
