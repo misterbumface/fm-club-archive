@@ -55,7 +55,8 @@ def player_notebook(connection: Connection, uid: int, old_bio: str | None = None
     def competition(uid_: int | None) -> str | None:
         return competitions.get(uid_, {}).get("name") if uid_ else None
 
-    seasons = _seasons(connection, uid, career, team, competition)
+    main = q.main_positions(connection, [uid]).get(uid)  # the team sheets first, else the best rating
+    seasons = _seasons(connection, uid, career, team, competition, keeper=main == "GK")
     attributes = q.latest_attributes(connection, uid)
     positions = Counter(_position(b["position"]) for row in elevens for b in (row["club"], row["national"]) if b and b["position"])
     last_season = max((r["season"] for r in career.rows), default=None)
@@ -75,6 +76,7 @@ def player_notebook(connection: Connection, uid: int, old_bio: str | None = None
             "nationality": person.get("nationality"),
             "height_cm": attributes and attributes["height_cm"],
             "weight_kg": attributes and attributes["weight_kg"],
+            "main_position": _position(main),  # without it a keeper with no attribute record was written as a defender (2 Nov 2026)
             "positions": _positions(attributes),
             "positions_in_best_elevens": [p for p, _ in positions.most_common()],
             "last_season_with_games": q.season_label(last_season) if last_season else None,
@@ -133,7 +135,7 @@ def _position(code: str | None) -> str | None:
     return POSITION_WORDS.get(code, code) if code else None
 
 
-def _seasons(connection: Connection, uid: int, career: q.Career, team, competition) -> list[dict]:
+def _seasons(connection: Connection, uid: int, career: q.Career, team, competition, keeper: bool = False) -> list[dict]:
     rows = []
     for r in career.rows:
         league = r["league_uid"]
@@ -152,6 +154,7 @@ def _seasons(connection: Connection, uid: int, career: q.Career, team, competiti
             "club_games_all_competitions": r["all_apps"], "club_goals_all_competitions": r["all_goals"],
             "national_team_games": r["national_apps"], "national_team_goals": r["national_goals"],
             "won": [competition(c) for c in r["won"]],
+            **({"league_clean_sheets": r["clean_sheets"], "league_goals_conceded": r["conceded"]} if keeper and r["apps"] else {}),
         })
     return rows
 

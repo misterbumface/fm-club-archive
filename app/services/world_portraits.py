@@ -905,6 +905,26 @@ def squad_without_pictures(world: sqlite3.Connection, team_uid: int, season: int
     return [uid for (uid,) in squad if picture_of(uid, faces, old) is None]
 
 
+LOCAL_MAKERS = {"draw_things": "Draw Things", "invoke": "InvokeAI"}  # the makers a league's batch may run on: no cost per picture
+
+
+def league_without_pictures(world: sqlite3.Connection, league_uid: int, faces: dict[int, Path] | None = None,
+                            old: dict[int, Path] | None = None) -> list[tuple[int, int]]:
+    """The active first-team players of a league's clubs who have no picture, as (person, team), most games first: league
+    games in the league's newest season for a club, and still on that club's books (not a player who left, not staff)."""
+    season = world.execute("select max(season_start) from player_seasons where league_uid = ? and kind = 1", (league_uid,)).fetchone()[0]
+    if season is None:
+        return []
+    faces = face_pack_index() if faces is None else faces
+    old = old_portraits() if old is None else old
+    rows = world.execute(
+        "select ps.person_uid, ps.team_uid, sum(ps.starts + ps.substitute_appearances) games from player_seasons ps "
+        "join people p on p.fm_uid = ps.person_uid and p.team_uid = ps.team_uid where ps.league_uid = ? and ps.season_start = ? "
+        "and ps.kind = 1 and p.staff_job is null group by ps.person_uid, ps.team_uid having games > 0 order by games desc",
+        (league_uid, season))
+    return [(uid, team) for uid, team, _ in rows if picture_of(uid, faces, old) is None]
+
+
 def generate_team(
     world_db: Path, team_uid: int, season: int | None = None, progress: Callable[[str], None] = log.info
 ) -> int:

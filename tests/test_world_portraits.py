@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from pathlib import Path
 
 from app.services import world_portraits as wp
 
@@ -73,6 +74,27 @@ def test_a_team_season_lists_its_players_without_pictures(monkeypatch):
 
     assert wp.squad_without_pictures(world, 630) == [1, 2]  # latest season, most games first; 3 has a face
     assert wp.squad_without_pictures(world, 630, 2061) == [4]
+
+
+def test_a_league_lists_its_first_team_players_without_pictures(monkeypatch):
+    """La Liga's missing faces for InvokeAI (2 Nov 2026): league games in its newest season, still at that club, no staff,
+    most games first."""
+    import sqlite3
+
+    world = sqlite3.connect(":memory:")
+    world.execute("create table player_seasons (person_uid, team_uid, season_start, kind, league_uid, starts, substitute_appearances)")
+    world.execute("create table people (fm_uid, team_uid, staff_job)")
+    world.executemany("insert into player_seasons values (?, ?, ?, ?, ?, ?, ?)", [
+        (1, 630, 2063, 1, 11, 20, 0), (2, 650, 2063, 1, 11, 25, 1), (3, 630, 2063, 1, 11, 5, 0),  # 3 has a face
+        (4, 630, 2063, 1, 11, 9, 0),  # 4 has left for another club
+        (5, 630, 2063, 2, 11, 3, 0),  # 5 played only in a cup
+        (6, 630, 2062, 1, 11, 30, 0),  # 6 played last season only
+        (7, 630, 2063, 1, 11, 0, 0)])  # 7 never played
+    world.executemany("insert into people values (?, ?, ?)", [(1, 630, None), (2, 650, None), (3, 630, None), (4, 700, None),
+                                                               (5, 630, None), (6, 630, None), (7, 630, None)])
+    monkeypatch.setattr(wp, "picture_of", lambda uid, faces, old: faces.get(uid))
+    assert wp.league_without_pictures(world, 11, faces={3: Path("face.png")}, old={}) == [(2, 650), (1, 630)]
+    assert wp.league_without_pictures(world, 99, faces={}, old={}) == []
 
 
 def test_each_player_has_his_own_look_and_keeps_it():

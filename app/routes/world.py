@@ -38,6 +38,8 @@ world_bp = Blueprint("world", __name__)
 
 _PICTURES_TTL = 300  # seconds; a new portrait clears the cache at once
 _pictures: dict = {"at": 0.0, "faces": {}, "old": {}, "stadiums": {}}
+_league_jobs: dict[int, dict] = {}  # league -> {"text": progress, "stop": asked to stop} of a running "missing pictures" batch
+LEAGUE_FAILURES = 3  # failed pictures in a row stop a league's batch: the maker has most likely gone away
 _team_jobs: dict[tuple[int, int], str] = {}  # (team, season) -> progress text of a running "generate missing pictures"
 _bio_jobs: dict[tuple[int, int], str] = {}  # (team, season) -> progress text of a running "write missing bios"
 _photo_jobs: dict[int, str] = {}  # person -> progress text of a running "make an action photo"
@@ -459,15 +461,23 @@ def generate_team_pictures(uid: int, season: int):
         flash("Pictures for this squad are already being made.", "info")
         return redirect(url_for("world.club_season", uid=uid, season=season))
     world_db = Path(current_app.config["SQLALCHEMY_BINDS"][world_models.BIND].removeprefix("sqlite:///"))
+    app = current_app._get_current_object()
 
     def run() -> None:
-        try:
-            made = world_portraits.generate_team(world_db, uid, season, progress=lambda text: _team_jobs.__setitem__(key, f"Made {text}"))
-            _team_jobs[key] = f"Done: {made} new pictures."
-        except world_portraits.PortraitError as exc:
-            _team_jobs[key] = f"Done, with an error: {exc}"
-        finally:
-            _forget_pictures()
+        # in the app's context: the maker is read from the settings (without it the thread died at the first picture and
+        # the page said "Starting…" for ever, 2 Nov 2026)
+        with app.app_context():
+            try:
+                made = world_portraits.generate_team(world_db, uid, season, progress=lambda text: _team_jobs.__setitem__(key, f"Made {text}"))
+                _team_jobs[key] = f"Done: {made} new pictures."
+            except world_portraits.PortraitError as exc:
+                _team_jobs[key] = f"Done, with an error: {exc}"
+            except Exception as exc:  # noqa: BLE001 - the page must never wait for ever
+                app.logger.exception("squad pictures failed")
+                _team_jobs[key] = f"Done, with an error: {type(exc).__name__}: {exc}"
+            finally:
+                _forget_pictures()
+                db.session.remove()
 
     _team_jobs[key] = "Starting…"
     threading.Thread(target=run, name=f"pictures-{uid}-{season}", daemon=True).start()
@@ -636,7 +646,91 @@ def competition(uid: int):
         today = q.game_date(c)
     titles = Counter(e["places"][1] for e in editions if 1 in e["places"])
     return render_template("world/competition.html", comp=comp, editions=editions, teams=teams, today=today, parts=parts,
-                           competitions=competitions, most_titles=titles.most_common(12), now=now, clubs=clubs)
+                           competitions=competitions, most_titles=titles.most_common(12), now=now, clubs=clubs,
+                           league_pictures=_league_pictures(uid) if now["is_league"] else None)
+
+
+def _league_job_running(uid: int) -> bool:
+    return uid in _league_jobs and not _league_jobs[uid]["text"].startswith("Done")
+
+
+def _league_pictures(uid: int) -> dict | None:
+    """The competition page's card: the league's first-team players without a picture, and whether the maker is local."""
+    from app.services import picture_makers
+
+    faces, old = _picture_sources()
+    with _connection() as c:
+        missing = world_portraits.league_without_pictures(c.connection.driver_connection, uid, faces, old)
+    maker = picture_makers.maker()
+    return {"missing": len(missing), "maker": world_portraits.LOCAL_MAKERS.get(maker), "other_maker": maker,
+            "job": _league_jobs.get(uid, {}).get("text"), "running": _league_job_running(uid)}
+
+
+@world_bp.post("/competitions/<int:uid>/pictures")
+def generate_league_pictures(uid: int):
+    """Pictures for every first-team player of the league's clubs who has none, one after another in the background,
+    with a local maker only (Draw Things or InvokeAI): a few hundred pictures would cost real money online."""
+    from app.services import picture_makers
+
+    back = redirect(url_for("world.competition", uid=uid))
+    if _league_job_running(uid):
+        flash("Pictures for this league are already being made.", "info")
+        return back
+    if picture_makers.maker() not in world_portraits.LOCAL_MAKERS:
+        flash("A league's pictures are made only with a local maker: choose Draw Things or InvokeAI on the Settings page.", "error")
+        return back
+    ready, why = picture_makers.online()
+    if not ready:
+        flash(f"No pictures: {why}.", "error")
+        return back
+    world_db = Path(current_app.config["SQLALCHEMY_BINDS"][world_models.BIND].removeprefix("sqlite:///"))
+    with _connection() as c:
+        wanted = world_portraits.league_without_pictures(c.connection.driver_connection, uid, *_picture_sources())
+        names = q.teams(c, {team for _, team in wanted})
+    app = current_app._get_current_object()
+    job = _league_jobs[uid] = {"text": "Starting…", "stop": False}
+
+    def run() -> None:
+        made = failed = in_a_row = 0
+        with app.app_context():
+            try:
+                for number, (person, team) in enumerate(wanted, 1):
+                    if job["stop"]:
+                        break
+                    job["text"] = f"Making picture {number} of {len(wanted)} ({names.get(team, {}).get('name', '')}); {made} made so far"
+                    try:
+                        world_portraits.generate_one(world_db, person)  # keeps a picture made meanwhile
+                        made, in_a_row = made + 1, 0
+                    except world_portraits.PortraitError as exc:
+                        failed, in_a_row = failed + 1, in_a_row + 1
+                        app.logger.warning("league picture for %s: %s", person, exc)
+                        if in_a_row >= LEAGUE_FAILURES:
+                            job["text"] = f"Done, with an error: {made} new pictures, then {in_a_row} failed in a row ({exc})"
+                            return
+                    finally:
+                        db.session.remove()
+                        if made and made % 10 == 0:
+                            _forget_pictures()
+                end = "stopped" if job["stop"] else "finished"
+                job["text"] = f"Done ({end}): {made} new pictures" + (f", {failed} failed (see the log)." if failed else ".")
+            except Exception as exc:  # noqa: BLE001 - the page must never wait for ever
+                app.logger.exception("league pictures failed")
+                job["text"] = f"Done, with an error: {made} new pictures, then {type(exc).__name__}: {exc}"
+            finally:
+                _forget_pictures()
+
+    threading.Thread(target=run, name=f"league-pictures-{uid}", daemon=True).start()
+    flash(f"Making {len(wanted)} pictures with {world_portraits.LOCAL_MAKERS[picture_makers.maker()]}, one after another. "
+          "Reload this page to follow it.", "info")
+    return back
+
+
+@world_bp.post("/competitions/<int:uid>/pictures/stop")
+def stop_league_pictures(uid: int):
+    if _league_job_running(uid):
+        _league_jobs[uid]["stop"] = True
+        flash("The pictures stop after the one being made now.", "info")
+    return redirect(url_for("world.competition", uid=uid))
 
 
 @world_bp.get("/competitions/<int:uid>/<int:year>")

@@ -288,6 +288,89 @@ def test_the_notebook_holds_the_career_finals_and_milestones(small_world):
     assert notebook["old_bio"]["text"] == "Born in Dartford."
 
 
+def test_a_keepers_notebook_says_he_is_a_goalkeeper_with_his_clean_sheets(small_world):
+    """Dejan Markoski, Shamrock Rovers' goalkeeper with no attribute record, was written as a defender (2 Nov 2026): the
+    position from the team sheets is in the notebook, and a keeper's seasons carry clean sheets and goals conceded."""
+    from app.services import world_queries as q
+    from app.services.player_notebook import player_notebook
+
+    with small_world.connect() as c:
+        real = q.main_positions
+        q.main_positions = lambda connection, uids: {MYERS: "GK"}
+        try:
+            notebook = player_notebook(c, MYERS)
+        finally:
+            q.main_positions = real
+    assert notebook["player"]["main_position"] == "goalkeeper"
+    assert {"league_clean_sheets", "league_goals_conceded"} <= set(notebook["seasons"][0])
+
+
+def test_a_league_page_offers_its_missing_pictures_only_with_a_local_maker(pages, monkeypatch):
+    from app.services import picture_makers
+
+    with db.engines[world.BIND].begin() as c:  # Ken Myers is on Chelsea's books
+        c.execute(world.WorldPerson.__table__.update().where(world.WorldPerson.__table__.c.fm_uid == MYERS).values(team_uid=CHELSEA))
+    monkeypatch.setattr(picture_makers, "maker", lambda: "invoke")
+    page = pages.get(f"/competitions/{LEAGUE}").get_data(as_text=True)
+    assert "Make the missing pictures with InvokeAI (1)" in page  # Ken Myers, a Chelsea player with league games
+    monkeypatch.setattr(picture_makers, "maker", lambda: "openai")
+    page = pages.get(f"/competitions/{LEAGUE}").get_data(as_text=True)
+    assert "only with a local maker" in page and "Make the missing pictures" not in page
+    answer = pages.post(f"/competitions/{LEAGUE}/pictures", follow_redirects=True).get_data(as_text=True)
+    assert "only with a local maker" in answer  # refused: nothing is drawn online
+
+
+def test_a_leagues_pictures_are_made_one_after_another_and_fail_safely(pages, monkeypatch):
+    from app.services import picture_makers
+
+    with db.engines[world.BIND].begin() as c:
+        c.execute(world.WorldPerson.__table__.update().where(world.WorldPerson.__table__.c.fm_uid == MYERS).values(team_uid=CHELSEA))
+    monkeypatch.setattr(picture_makers, "maker", lambda: "invoke")
+    monkeypatch.setattr(picture_makers, "online", lambda: (True, ""))
+    monkeypatch.setattr(world_routes, "_forget_pictures", lambda: None)  # no real face pack in a test
+    made = []
+    monkeypatch.setattr(world_routes.world_portraits, "generate_one", lambda world_db, uid: made.append(uid))
+    pages.post(f"/competitions/{LEAGUE}/pictures")
+    for _ in range(100):
+        if world_routes._league_jobs[LEAGUE]["text"].startswith("Done"):
+            break
+        time.sleep(0.02)
+    assert made == [MYERS] and world_routes._league_jobs[LEAGUE]["text"] == "Done (finished): 1 new pictures."
+
+    def broken(world_db, uid):
+        raise world_routes.world_portraits.PortraitError("InvokeAI does not answer")
+
+    monkeypatch.setattr(world_routes.world_portraits, "generate_one", broken)
+    monkeypatch.setattr(world_routes, "LEAGUE_FAILURES", 1)
+    pages.post(f"/competitions/{LEAGUE}/pictures")
+    for _ in range(100):
+        if world_routes._league_jobs[LEAGUE]["text"].startswith("Done"):
+            break
+        time.sleep(0.02)
+    assert world_routes._league_jobs[LEAGUE]["text"].startswith("Done, with an error: 0 new pictures, then 1 failed in a row")
+
+
+def test_a_squads_pictures_are_made_with_the_makers_setting(pages, monkeypatch):
+    """The squad's "Generate missing pictures" ran outside the app: reading the maker failed, the thread died and the page
+    said "Starting…" for ever (2 Nov 2026)."""
+    from app.services import picture_makers
+
+    monkeypatch.setattr(world_routes, "_forget_pictures", lambda: None)
+    asked = []
+
+    def generate_team(world_db, team, season, progress):
+        asked.append(picture_makers.maker())  # needs the app's context
+        return 1
+
+    monkeypatch.setattr(world_routes.world_portraits, "generate_team", generate_team)
+    pages.post(f"/clubs/{CHELSEA}/2062/pictures")
+    for _ in range(100):
+        if world_routes._team_jobs[(CHELSEA, 2062)].startswith("Done"):
+            break
+        time.sleep(0.02)
+    assert asked == ["draw_things"] and world_routes._team_jobs[(CHELSEA, 2062)] == "Done: 1 new pictures."
+
+
 def test_the_bio_check_refuses_years_and_scores_that_are_not_in_the_notebook():
     from app.services.bio_writer import Draft, bio_faults
 

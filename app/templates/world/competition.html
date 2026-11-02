@@ -50,6 +50,21 @@
 <div class="club-grid">{% for t in clubs %}<a class="club-tile" href="{{ m.team_href(t.fm_uid, t) }}" title="{{ t.name }}">
   {% if crest_url(t) %}<img src="{{ crest_url(t) }}" alt="" loading="lazy">{% else %}<span class="club-tile-ph">{{ t.name[:1] }}</span>{% endif %}
   <span>{{ t.name }}</span></a>{% endfor %}</div>
+{% if league_pictures %}{% set lp = league_pictures %}
+<h2>Player pictures <small>first-team players of these clubs this season</small></h2>
+<div class="card"><div class="actions">
+  {% if lp.job %}<span class="pill green">{{ lp.job }}</span>{% endif %}
+  {% if lp.running %}
+  <form class="inline" method="post" action="{{ url_for('world.stop_league_pictures', uid=comp.fm_uid) }}">
+    <button class="btn" type="submit">Stop</button></form>
+  {% elif not lp.missing %}<span class="muted">Every one of them has a picture.</span>
+  {% elif lp.maker %}
+  <form class="inline" method="post" action="{{ url_for('world.generate_league_pictures', uid=comp.fm_uid) }}">
+    <button class="btn" type="submit">Make the missing pictures with {{ lp.maker }} ({{ lp.missing }})</button></form>
+  {% else %}<span class="muted">{{ lp.missing }} without a picture. A whole league is made only with a local maker: choose Draw Things or InvokeAI on the Settings page.</span>
+  {% endif %}
+</div></div>
+{% endif %}
 </section>{% endif %}
 
 <section class="tab-panel" id="history">
