@@ -48,7 +48,8 @@ EDIT_MODEL = os.environ.get("DRAW_THINGS_EDIT_MODEL", "flux_1_kontext_dev_q5p.ck
 ILLUSTRATION_DEFAULT = os.environ.get("DRAW_THINGS_ILLUSTRATION_MODEL") or None  # None: the one selected in Draw Things
 EDIT_STEPS = int(os.environ.get("DRAW_THINGS_EDIT_STEPS", "20"))
 # Club crests and makers' logos appear on kit even when the prompt forbids them; models that use a negative prompt avoid them.
-NEGATIVE_PROMPT = "logo, crest, club badge, emblem, sponsor, brand mark, text, lettering, watermark"
+# Scars, cuts and wounds come out far too strong, so no face gets them (InvokeAI's models take no negative prompt).
+NEGATIVE_PROMPT = "logo, crest, club badge, emblem, sponsor, brand mark, text, lettering, watermark, scar, cut, wound, blood"
 ARCHIVE_SIZE, GAME_SIZE = 512, 250
 FACE_PACK_BACKUPS = ARCHIVE_DIR / "backups" / "face pack"  # the face pack's own pictures, as they were before a new one
 _FACE_MAP = re.compile(r'<record from="([^"]+)" to="graphics/pictures/person/(?:r-)?(\d+)/portrait"')
@@ -193,11 +194,11 @@ _NOSES = ("a straight narrow nose", "a broad flat nose", "an aquiline nose with 
 _EYES = ("deep-set eyes", "wide-set eyes", "close-set eyes", "hooded eyes", "almond-shaped eyes", "large round eyes", "narrow eyes",
          "heavy-lidded eyes", "slightly downturned eyes", "upturned eyes")
 _BROWS = ("thick straight eyebrows", "thin arched eyebrows", "bushy eyebrows", "sparse light eyebrows", "sharply angled eyebrows",
-          "heavy low eyebrows", "eyebrows nearly meeting in the middle", "a small scar through one eyebrow")
+          "heavy low eyebrows", "eyebrows nearly meeting in the middle")
 _LIPS = ("thin lips", "full lips", "a wide mouth", "a small mouth", "a pronounced cupid's bow", "slightly uneven lips")
 _EARS = ("ears that stick out a little", "small flat ears", "large ears", "")
-_MARKS = ("", "", "", "a few freckles across the nose", "a small mole on one cheek", "faint acne scars on the cheeks",
-          "a thin scar on the chin", "a light sunburn across the nose", "a dimple in one cheek")
+_MARKS = ("", "", "", "a few freckles across the nose", "a small mole on one cheek",
+          "a light sunburn across the nose", "a dimple in one cheek")
 _EXPRESSIONS = ("a calm neutral expression", "a faint confident smile", "a serious determined look", "a relaxed half smile",
                 "an intense focused stare", "a broad friendly grin", "a slightly shy expression")
 # His character from the game's mental attributes: (attribute, high or low, expressions). A trait far
@@ -210,12 +211,12 @@ _CHARACTER = (
     ("Determination", True, ("a steely, determined stare", "a set jaw and focused eyes", "a hungry, driven look")),
     ("Teamwork", True, ("a warm, open smile", "a friendly smile that reaches the eyes", "an easy-going grin")),
     ("Work Rate", True, ("an earnest, eager expression", "a no-nonsense look", "a tired but satisfied smile")),
-    ("Bravery", True, ("a fearless, direct look", "a defiant stare", "a battle-hardened look")),
+    ("Bravery", True, ("a fearless, direct look", "a defiant stare", "a steady, unflinching look")),
     ("Composure", False, ("a slightly nervous expression", "a guarded, uncertain look", "a tense half smile")),
     ("Aggression", False, ("a gentle, soft-eyed expression", "a mild, polite smile")),
 )
 _YOUNG_EXPRESSIONS = ("a boyish grin", "a shy smile", "a wide-eyed, eager expression", "a slightly awkward smile")
-_VETERAN_EXPRESSIONS = ("a wry, knowing smile", "a weathered, world-weary look", "the relaxed smile of a veteran")
+_VETERAN_EXPRESSIONS = ("a wry, knowing smile", "a world-weary look", "the relaxed smile of a veteran")
 _SMILES = ("", "", "smiling with teeth showing", "a closed-mouth smile", "crow's feet at the corners of the eyes")
 
 
@@ -301,7 +302,7 @@ def appearance(facts: PortraitFacts, rng: random.Random) -> list[str]:
         look.append(f"{texture} {colour} hair, {rng.choice(styles)}")
     look.append(rng.choice(_YOUNG_FACIAL_HAIR if age < 19 else _FACIAL_HAIR))
     if age >= 31:
-        signs = ("fine lines around the eyes", "a weathered face") + (() if length == "bald" else ("a slightly receding hairline",))
+        signs = ("fine lines around the eyes", "a few lines on the forehead") + (() if length == "bald" else ("a slightly receding hairline",))
         look.append(rng.choice(signs))
     if 34 <= age < 50 and length != "bald":
         look.append(rng.choice(("greying temples", "a few grey hairs", "salt-and-pepper stubble")))
