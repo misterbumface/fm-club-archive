@@ -370,3 +370,16 @@ def test_a_news_paper_never_leads_with_the_market_and_a_kings_wage_waits_a_month
     plans = {plan.outlet.slug: [lead.kind for lead, _ in plan.items]
              for plan in editions.plan_editions(leads, all_outlets, {}, days=14, last_printed=last, until=date(2064, 1, 10))}
     assert "kings_wage" in plans[wire.slug]  # a month on: printed again
+
+
+def test_a_match_reports_questions_are_answered_as_of_its_game_day():
+    """The report of Chelsea 3-1 Shamrock Rovers (30 Jan 2064), written for the edition of 3 Feb, asked the archive for
+    recent results and led with the 3-0 at Forest that day; a report's questions now stop at its game."""
+    from app.services import article_writer
+    from app.services.story_leads import Lead
+
+    published = date(2064, 2, 3)
+    report = Lead("club_report", "Chelsea 3-1 Shamrock Rovers", date(2064, 1, 30), 70, {}, ["match:2064-01-30:630:596", "club:630"])
+    assert article_writer._as_of(report, published) == date(2064, 1, 30)
+    preview = Lead("club_preview", "Chelsea v Aston Villa", published, 60, {}, ["match:2064-02-13:630:603", "club:630"])
+    assert article_writer._as_of(preview, published) == published

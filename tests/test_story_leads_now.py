@@ -729,10 +729,12 @@ def test_a_leagues_places_come_from_its_past_seasons(small_world):
         zones = q.league_zones(c, LEAGUE, 2062)
         assert zones == {"seasons": 3, "teams": 4, "up": 0, "down": 1, "extra_up": None, "extra_down": (3, 3, 1)}
         words = q.zone_words(zones)
-        assert words.startswith("in the archive's last 3 seasons of this league the bottom team went down; in 1 of those seasons 3rd went down too")
+        assert words.startswith("from the archive's last 3 seasons of this league: the relegation zone: the bottom team; a relegation play-off, "
+                                "most likely: in 1 of those seasons 3rd went down too. Use the plain words")
         table = [{"points": p} for p in (9, 7, 4, 3)]
-        assert q.zone_of(zones, table, 4) == "in the places that went down in past seasons, 1 point from 3rd"
-        assert q.zone_of(zones, table, 2) == "4 points above the places that went down in past seasons"
+        assert q.zone_of(zones, table, 4) == "in the relegation zone, 1 point from safety"  # "the places that, season after season, have meant the drop"
+        assert q.zone_of(zones, table, 3) == "in the relegation play-off place, most likely"
+        assert q.zone_of(zones, table, 2) == "4 points above the relegation zone"
         assert q.zone_of(zones, table[:3], 3) is None  # another size of league: the past says nothing
         assert q.league_zones(c, LEAGUE, 2061) is None  # two seasons only: not known
         assert "name no promotion, play-off or relegation places" in q.zone_words(None)

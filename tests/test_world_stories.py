@@ -446,3 +446,21 @@ def test_an_injury_a_ban_or_a_leading_scorer_the_notebook_lacks_is_a_fault():
                        "home_top_scorers": ["Federico Rocchi 3 goals"]}
     assert absence_faults("The injured Fran Belmonte is out; Rocchi is suspended; top scorer Rocchi.", told) == []
     assert absence_faults("Ponferrada will miss nobody of note.", notebook) == []
+
+
+def test_a_continental_game_may_tell_the_league_only_as_background():
+    """"Seventeen points clear as Chelsea march on" reported Chelsea 3-1 Shamrock Rovers in the Champions League (3 Feb
+    2064): the clubs' own leagues may be background, never the opening."""
+    from app.services import story_writer
+
+    notebook = {"competition": "UEFA Champions League", "home": "Chelsea", "away": "Shamrock Rovers",
+                "home_in_their_own_league": "English Premier Division: 1, 67 points from 24 games. Background only: another competition, "
+                                            "which this game does not count in"}
+    bad = "Seventeen points clear as Chelsea march on\nThe champions won again.\nChelsea lead the English Premier Division. More."
+    faults = story_writer.own_league_lead_faults(bad, notebook)
+    assert any("'Seventeen points clear'" not in f and "points clear" in f for f in faults)
+    assert any("'English Premier Division' in the opening" in f for f in faults)
+    good = ("Markoski defies Chelsea, but the Blues win 3-1\nPardal broke the dam.\nChelsea beat Shamrock Rovers 3-1 in the Champions League. "
+            "More.\n\nAt home they lead the English Premier Division, a different matter entirely.")
+    assert story_writer.own_league_lead_faults(good, notebook) == []
+    assert story_writer.own_league_lead_faults(bad, {"competition": "English Premier Division"}) == []  # a league game: no check

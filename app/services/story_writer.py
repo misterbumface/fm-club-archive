@@ -56,9 +56,12 @@ ARTICLE_RULES = (
     "A player is injured, suspended or missing only when the notebook says so; a man absent from an expected line-up is "
     "simply not expected to start, and the reason is not known. A player is the leading scorer only when the notebook "
     "names him so. "
-    "Promotion, play-off and relegation places, a drop zone or safety, exist only as the notebook's league_rules give "
-    "them, told as what the league's past seasons showed; with no league_rules, or when they say it is not known, name "
-    "no such place. "
+    "A continental game is not a league game: the clubs' own leagues (home_in_their_own_league, away_in_their_own_league) "
+    "may be told as background, their form there, but the game counts in none of them, changes no league table and widens "
+    "no gap, and the piece leads with this game and its own competition. "
+    "Promotion, play-off and relegation places, the drop zone or safety, exist only as the notebook's league_rules give "
+    "them; then use the plain words a paper uses. With no league_rules, or when they say it is not known, name no such "
+    "place. "
     "Morale, happiness, fitness and character are told in words, the way a club or a newspaper would put them; never as a "
     "score or a scale (no 'seven out of twenty'), which belongs to the game's screens, not to the world. "
 ) + _CRAFT
@@ -289,6 +292,25 @@ def level_score_faults(text: str) -> list[str]:
     return faults
 
 
+_TABLE_TALK = re.compile(r"\b(?:points clear|title race|league leaders|top of the table|top of the league\b(?! phase))", re.I)
+
+
+def own_league_lead_faults(text: str, notebook: dict) -> list[str]:
+    """A continental game's piece that opens with a club's own league: its name in the headline, the standfirst or the first
+    sentence of the body. The league may come later as background (2 Nov 2026: "Seventeen points clear as Chelsea march
+    on" reported a Champions League game)."""
+    leagues = {str(v).split(":")[0] for k, v in notebook.items() if k.endswith("_in_their_own_league")}
+    if not leagues:
+        return []
+    paragraphs = [p for p in text.split("\n") if p.strip()]
+    opening = " ".join(paragraphs[:2]) + " " + (re.split(r"(?<=[.!?])\s", paragraphs[2], maxsplit=1)[0] if len(paragraphs) > 2 else "")
+    faults = [f"'{league}' in the opening: this game is in the {notebook.get('competition')}; lead with it, the league only as background later"
+              for league in sorted(leagues) if league.lower() in opening.lower()]
+    faults += [f"'{m.group(0)}' in the opening: league table talk; this game is in the {notebook.get('competition')}, lead with it"
+               for m in _TABLE_TALK.finditer(opening)]
+    return list(dict.fromkeys(faults))
+
+
 def text_faults(text: str, notebook: dict) -> list[str]:
     """Years and scores in the text that the notebook does not have, and copied background text."""
     facts = json.dumps(notebook, ensure_ascii=False, default=str)
@@ -304,6 +326,7 @@ def text_faults(text: str, notebook: dict) -> list[str]:
     faults += number_faults(text, facts)
     faults += level_score_faults(text)
     faults += absence_faults(text, notebook)
+    faults += own_league_lead_faults(text, notebook)
     if "home_form_before" in notebook and not notebook.get("match_report"):  # a match known only by its goals
         faults += [f"'{word}': the notebook has no match report, so tell nothing of the play beyond the goals"
                    for word in dict.fromkeys(m.group(0) for m in _PLAY.finditer(text))]

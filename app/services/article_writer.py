@@ -156,7 +156,7 @@ KIND_NOTES = {
     "check_in": "This is a check-in on a club in an unusual place: a big club that went down, or a small club that came up. "
                 "Tell how their season is going from the notebook: the place, the points, the form, last season, the manager, "
                 "the scorers and the regulars. It is a mid-season look, not a verdict; promotion, play-off or relegation places "
-                "only as the notebook's league_rules give them, as what past seasons showed.",
+                "only as the notebook's league_rules give them.",
     "stat_watch": "This is about a scoring pace: the league's top scorer, his goals and games this season and who chases "
                   "him. Report it as the season so far.",
     "system_change": "This is about a team that has changed its system: the usual shape, the new one, the results in each and "
@@ -244,7 +244,9 @@ KIND_NOTES = {
                           "the level a scout sees now). Settle our call honestly: right, early, or wrong, and say why, from the "
                           "facts given only. Refer to it as our report. Do not invent quotes, fees or games. Add to your JSON "
                           "answer a field \"verdict\" with one word, \"right\", \"early\" or \"wrong\": the paper's call on its own report.",
-    "club_report": "This is the report of a game of the club this paper follows, for its readers: the result, the goals, the "
+    "club_report": "This is the report of one game of the club this paper follows, told as of that game's day: its other "
+                   "games, before or after, have pieces of their own, so never lead with one or put it in the headline. The "
+                   "result, the goals, the "
                    "player of the match, what it means in the table. When what_we_said is there, settle what our preview said "
                    "against what happened in a sentence or two, as our preview, never mocked. Choose the length: a full "
                    "report when the facts carry a story, about 250 words when the game was ordinary, and a brief (60-120 words) "
@@ -780,7 +782,7 @@ def write_article(outlet: Outlet, lead: Lead, published: date, prominence: str =
                    "not yet played has no result, no late show and no hero.")
     prompt += archive_questions.PROMPT_NOTE
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content": json.dumps(notebook, ensure_ascii=False, default=str)}]
-    article = _ask_with_questions(model, key, messages, published, notebook)
+    article = _ask_with_questions(model, key, messages, _as_of(lead, published), notebook)
     faults = text_faults(_all_text(article), notebook)
     if faults:
         messages = [{"role": "system", "content": prompt},  # the answers are in the notebook now: no tool turns to carry
@@ -832,6 +834,22 @@ def picture_is_clean(picture: str, notebook: dict) -> bool:
         return False
     text = " " + " ".join(re.findall(r"[^\W\d_]+", picture.lower())) + " "
     return not any(f" {name} " in text for name in _names(notebook, set()))
+
+
+MATCH_REPORTS = {"club_report", "promised_report", "tournament_report"}
+
+
+def _as_of(lead, published: date) -> date:
+    """The day the writer's questions are answered for: a match report's game day, so the archive tells nothing that
+    happened after the game (the report of Chelsea 3-1 Shamrock Rovers led with the Forest game four days later, 3 Feb
+    2064); the edition's date for anything else."""
+    ref = lead.refs[0] if lead.kind in MATCH_REPORTS and lead.refs else ""
+    if ref.startswith("match:"):
+        try:
+            return min(published, date.fromisoformat(ref.split(":")[1]))
+        except ValueError:
+            pass
+    return published
 
 
 def _ask_with_questions(model: str, key: str, messages: list[dict], published: date, notebook: dict) -> dict:

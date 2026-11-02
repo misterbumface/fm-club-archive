@@ -714,18 +714,19 @@ def zone_words(zones: dict | None) -> str:
         return "every season" if n == k else f"in {n} of those seasons"
 
     if zones["up"]:
-        parts.append("the top team went up" if zones["up"] == 1 else f"the top {zones['up']} went up")
+        parts.append("the promotion places: the top team" if zones["up"] == 1 else f"the promotion places: the top {zones['up']}")
     if zones["extra_up"]:
         a, b, n = zones["extra_up"]
-        parts.append(f"{often(n)} one more went up from {_place(a)} to {_place(b)} (most likely play-offs)")
+        parts.append(f"the play-off places just below: {often(n)} one more went up from between {_place(a)} and {_place(b)}")
     if zones["down"]:
-        parts.append("the bottom team went down" if zones["down"] == 1 else f"the bottom {zones['down']} went down")
+        parts.append("the relegation zone: the bottom team" if zones["down"] == 1 else f"the relegation zone: the bottom {zones['down']}")
     if zones["extra_down"]:
         a, b, n = zones["extra_down"]
-        parts.append(f"{often(n)} {_place(a) if a == b else f'one of {_place(a)} to {_place(b)}'} went down too (most likely a play-off)")
+        parts.append(f"a relegation play-off, most likely: {often(n)} {_place(a) if a == b else f'one of {_place(a)} to {_place(b)}'} went down too")
     if not parts:
-        return "nobody went up or down in the archive's seasons"
-    return f"in the archive's last {k} seasons of this league " + "; ".join(parts) + ". Say so as what past seasons show, not as a rule."
+        return "nobody went up or down in the archive's seasons of this league, so name no promotion or relegation places"
+    return (f"from the archive's last {k} seasons of this league: " + "; ".join(parts) + ". Use the plain words a paper uses "
+            "(the relegation zone, safety, the promotion places, the play-offs).")
 
 
 def zone_of(zones: dict | None, table: list[dict], place: int) -> str | None:
@@ -737,15 +738,21 @@ def zone_of(zones: dict | None, table: list[dict], place: int) -> str | None:
         safe = n - zones["down"]  # the lowest place that stayed up in past seasons
         if place > safe:
             gap = table[safe - 1]["points"] - row["points"]
-            return f"in the places that went down in past seasons, {gap} point{'s' if gap != 1 else ''} from {_place(safe)}"
+            return f"in the relegation zone, {_points(gap)} from safety" if gap else "in the relegation zone, level on points with safety"
+        if zones["extra_down"] and zones["extra_down"][0] <= place <= zones["extra_down"][1]:
+            return "in the relegation play-off place, most likely"
         if place > safe - 3:
             gap = row["points"] - table[safe]["points"]
-            return f"{gap} point{'s' if gap != 1 else ''} above the places that went down in past seasons"
+            return f"{_points(gap)} above the relegation zone" if gap else "level on points with the relegation zone"
     if zones["up"] and place <= zones["up"]:
-        return "in the places that went up in past seasons"
+        return "in the promotion places"
     if zones["extra_up"] and zones["extra_up"][0] <= place <= zones["extra_up"][1]:
-        return "in the places one more team went up from in past seasons (most likely play-offs)"
+        return "in the play-off places"
     return None
+
+
+def _points(n: int) -> str:
+    return f"{n} point{'s' if n != 1 else ''}"
 
 
 def _place(n: int) -> str:

@@ -663,7 +663,8 @@ def previews(w) -> list:
         if not (w.followed(home, away) or derby >= DERBY_LEVEL or top or bottom or european or national or (league in cups and both >= CUP_BOTH)):
             continue
         facts = {"competition": _comp_name(w, league), "date": str(f["date"]), "home": w.name(home), "away": w.name(away),
-                 "derby": derby >= DERBY_LEVEL or None, "league_rules": _league_rules(w, league) if league in tables else None}
+                 "derby": derby >= DERBY_LEVEL or None, "league_rules": _league_rules(w, league) if league in tables else None,
+                 **_own_league_facts(w, league, (("home", home), ("away", away)))}
         for side, team in (("home", home), ("away", away)):
             if team in place:
                 facts[f"{side}_place"] = _place_words(w, league, table, place, team)
@@ -891,6 +892,32 @@ def international_rounds(w) -> list:
     return leads
 
 
+def _stage_words(table: list[dict]) -> str:
+    """A continental league phase, said plainly: what its places earn is not known, so no draw, knockout round, dead rubber
+    or favourites (a report of Chelsea 3-1 Shamrock Rovers had all four, 2 Nov 2026)."""
+    return (f"the league phase: one table of {len(table)} teams; what each place earns at its end, who goes through, whether "
+            "anything was at stake and what comes next are not known here, so say nothing of them")
+
+
+def _own_league_facts(w, league: int, sides) -> dict:
+    """For a continental game: each club's place in its own league, as background only. The game does not count there
+    (a Champions League report led with Chelsea "seventeen points clear" in England, 3 Feb 2064). Empty otherwise."""
+    if w.comp(league).get("scope") != "continental":
+        return {}
+    facts = {}
+    for side, team in sides:
+        domestic, _ = w.level(team, w.season)
+        if not domestic or w.comp(domestic).get("scope") != "league":
+            continue
+        start, end = _window(w, domestic)
+        table = q.league_table(w.c, domestic, start, end)
+        place = {r["team_uid"]: i for i, r in enumerate(table, 1)}
+        if team in place:
+            facts[f"{side}_in_their_own_league"] = (f"{_comp_name(w, domestic)}: {_place_words(w, domestic, table, place, team)}. Background "
+                                                    "only: another competition, which this game does not count in")
+    return facts
+
+
 def _comp_name(w, uid: int) -> str:
     """The competition's name, or "a friendly" for one the world does not know (an international friendly has no scope)."""
     return w.comp(uid).get("name") or "a friendly"
@@ -1029,7 +1056,7 @@ def _drama(w, f: dict, table: list[dict], place: dict[int, int]) -> tuple[float,
             bonus += DRAMA["top_clash"] + (DRAMA["close_clash"] if gap <= CLASH_GAP else 0)
         if _bottom_clash(w, league, table, place, home, away):
             zones = _zones(w, league)
-            where = (f"both at or near the places that went down in past seasons (the bottom {zones['down']})" if zones and zones["down"]
+            where = (f"both in or near the relegation zone (the bottom {zones['down']})" if zones and zones["down"]
                      else "both in the bottom four")
             facts["relegation_six_pointer"] = f"{where}: {place[home]} and {place[away]} of {len(table)}, {total - played} games left"
             bonus += DRAMA["relegation_six_pointer"]
@@ -1045,6 +1072,8 @@ def _drama(w, f: dict, table: list[dict], place: dict[int, int]) -> tuple[float,
             facts["round"], bonus = "a semi-final", bonus + DRAMA["semi_final"]
     for side, team, other in (("home", home, away), ("away", away, home)):
         run = _run_at_stake(w, team)
+        if run and comp.get("scope") == "continental":
+            run += " in their own league (background only: this game does not count there)"
         if run:
             facts[f"{side}_run_at_stake"], bonus = run, bonus + DRAMA["run_at_stake"]
         back, kind = _returns(w, team, other)
@@ -1322,7 +1351,8 @@ def promised_reports(w) -> list:
         best = w.rows("select p.name from match_reports r join people p on p.fm_uid = r.player_of_the_match_uid where r.fixture_id = :f", f=f["id"])
         said = {k: v for k, v in (article.lead or {}).get("facts", {}).items() if k in WHAT_WE_SAID}
         facts = {"competition": comp["name"], "date": str(f["date"]), "home": w.name(f["home_uid"]), "away": w.name(f["away_uid"]),
-                 "score": _score_text(f),
+                 "score": _score_text(f), **_own_league_facts(w, f["competition_uid"], (("home", f["home_uid"]), ("away", f["away_uid"]))),
+                 "stage": _stage_words(phase) if (phase := _phase_table(w, f["competition_uid"], {})[0]) else None,
                  "goals": [f"{('own goal by ' if g['kind'] == 1 else '') + (g['name'] or 'unknown')} {g['minute']}{'+' + str(g['added_time']) if g['added_time'] else ''}'{' (pen)' if g['kind'] == 2 else ''} "
                            f"({w.name(f['home_uid'] if g['side'] == 0 else f['away_uid'])})" for g in goals] or None,
                  "player_of_the_match": best[0]["name"] if best else None,
@@ -1382,8 +1412,11 @@ def followed_games(w) -> list:
                  "goals": [f"{('own goal by ' if g['kind'] == 1 else '') + (g['name'] or 'unknown')} {g['minute']}{'+' + str(g['added_time']) if g['added_time'] else ''}'{' (pen)' if g['kind'] == 2 else ''} "
                            f"({w.name(home if g['side'] == 0 else away)})" for g in goals] or None,
                  "player_of_the_match": best[0]["name"] if best else None,
-                 "treatment": "a brief: this was a friendly" if friendly else None}
+                 "treatment": "a brief: this was a friendly" if friendly else None,
+                 **_own_league_facts(w, league, (("home", home), ("away", away)))}
         table, place, _ = _phase_table(w, league, tables)
+        if w.comp(league).get("scope") == "continental" and table:
+            facts["stage"] = _stage_words(table)
         for side, team in (("home", home), ("away", away)):
             if team in place:
                 facts[f"{side}_place_now"] = _place_words(w, league, table, place, team, form=False)
@@ -1403,8 +1436,8 @@ def followed_games(w) -> list:
         continental = w.comp(league).get("scope") == "continental"
         facts = {"competition": _comp_name(w, league), "date": str(f["date"]), "home": w.name(home), "away": w.name(away),
                  "treatment": "a brief: this is a friendly" if friendly else None, "league_rules": _league_rules(w, league) if place else None,
-                 "stage": (f"the league phase: one table of {len(table)} teams; what each place earns at its end, and who goes through, "
-                           "is not known here, so say nothing of it") if continental and table else None}
+                 **_own_league_facts(w, league, (("home", home), ("away", away))),
+                 "stage": _stage_words(table) if continental and table else None}
         for side, team in (("home", home), ("away", away)):
             if team in place:
                 facts[f"{side}_place"] = _place_words(w, league, table, place, team)
