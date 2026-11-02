@@ -182,6 +182,28 @@ def _result_line(w, f: dict) -> str:
     return f"{f['date']}: {home} {_score_text(f)} {away}, {outcome}"
 
 
+def _league_record(w, team: int, league: int, day: str) -> str | None:
+    """A club's league season up to and with one game day: the record, every defeat and draw, and the run since the last
+    defeat. A report once gave Chelsea a defeat at Manchester City they had won 4-0 (6 Feb 2064)."""
+    start, _ = _window(w, league)
+    games = w.rows("select * from fixtures where competition_uid = :l and (home_uid = :t or away_uid = :t) and home_goals is not null "
+                   "and date >= :s and date <= :d order by date", l=league, t=team, s=start, d=day[:10])
+    if not games:
+        return None
+    won, drawn, lost = [], [], []
+    for f in games:
+        mine, theirs = (f["home_goals"], f["away_goals"]) if f["home_uid"] == team else (f["away_goals"], f["home_goals"])
+        (won if mine > theirs else drawn if mine == theirs else lost).append(f)
+    since = next((i for i in range(len(games) - 1, -1, -1) if games[i] in lost), None)
+    run = len(games) if since is None else len(games) - 1 - since
+    words = (f"{w.name(team)} in this league this season, up to and with this game: played {len(games)}, won {len(won)}, drawn {len(drawn)}, "
+             f"lost {len(lost)}. The defeats: {'; '.join(_result_line(w, f) for f in lost) or 'none'}. "
+             f"The draws: {'; '.join(_result_line(w, f) for f in drawn) or 'none'}. ")
+    words += (f"Unbeaten in all {run} league games this season." if since is None
+              else f"{run} league games unbeaten since the last defeat." if run else "This game was a defeat.")
+    return words + " These are all of their league results that are not wins: never tell another."
+
+
 def _manager(w, team: int) -> str | None:
     row = w.rows("select name, staff_since from people where staff_job = 'Manager' and staff_team_uid = :t limit 1", t=team)
     if not row:
@@ -1420,6 +1442,8 @@ def followed_games(w) -> list:
         for side, team in (("home", home), ("away", away)):
             if team in place:
                 facts[f"{side}_place_now"] = _place_words(w, league, table, place, team, form=False)
+            if league in tables:
+                facts[f"{side}_league_season"] = _league_record(w, team, league, str(f["date"]))
         article = previewed.get((str(f["date"]), home, away))
         if article is not None:
             facts["what_we_said"] = {"headline": article.headline, "standfirst": article.standfirst, "published": str(article.issue.publication_date),

@@ -263,6 +263,7 @@ class Archive:
         if not re.match(r"(?is)^\s*(select|with)\b", query) or ";" in query:
             return {"error": "only one SELECT is allowed"}
         connection = self.c.connection.driver_connection  # the sqlite3 connection under this one
+        _as_of_views(connection, self.until)
         connection.execute("pragma query_only = on")  # read-only while the writer's query runs: it can look, never touch
         connection.set_progress_handler(_too_long(), 200_000)
         try:
@@ -272,7 +273,39 @@ class Archive:
         finally:
             connection.set_progress_handler(None, 0)
             connection.execute("pragma query_only = off")
+            _drop_as_of_views(connection)
         return {"columns": names, "rows": [list(r) for r in rows[:SQL_ROWS]], "more_rows": len(rows) > SQL_ROWS}
+
+
+# The games after the article's day, hidden from the writer's SQL: temp views of the same names come before the tables
+# (a report of 6 Feb 2064 told the Crewe 6-0 of 9 Feb). A later game keeps its date and teams, without a result.
+_FIXTURE_RESULTS = ("home_goals", "away_goals", "home_goals_after_extra_time", "away_goals_after_extra_time", "home_penalties",
+                    "away_penalties", "attendance", "away_fans")
+_BY_FIXTURE = ("goals", "match_reports", "match_teams", "match_players", "match_shots")
+_BY_DAY = ("player_games", "team_tactics")
+
+
+def _as_of_views(connection, until: date) -> None:
+    _drop_as_of_views(connection)
+    day = str(until)
+    tables = {r[0] for r in connection.execute("select name from main.sqlite_master where type = 'table'")}
+    if "fixtures" not in tables:
+        return
+    columns = [r[1] for r in connection.execute("pragma main.table_info(fixtures)")]
+    picked = ", ".join(f"case when date <= '{day}' then {c} end {c}" if c in _FIXTURE_RESULTS else c for c in columns)
+    connection.execute(f"create temp view fixtures as select {picked} from main.fixtures")
+    for table in _BY_FIXTURE:
+        if table in tables:
+            connection.execute(f"create temp view {table} as select * from main.{table} "
+                               f"where fixture_id in (select id from main.fixtures where date <= '{day}')")
+    for table in _BY_DAY:
+        if table in tables:
+            connection.execute(f"create temp view {table} as select * from main.{table} where played_on <= '{day}'")
+
+
+def _drop_as_of_views(connection) -> None:
+    for table in ("fixtures", *_BY_FIXTURE, *_BY_DAY):
+        connection.execute(f"drop view if exists temp.{table}")
 
 
 def _too_long():

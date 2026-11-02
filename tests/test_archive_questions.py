@@ -1,7 +1,7 @@
 """The writers' questions to the archive (27 Oct 2026)."""
 
 import json
-from datetime import date
+from datetime import date, timedelta
 
 from app.services import archive_questions, story_writer
 from tests.test_story_leads_now import LEAGUE, _season
@@ -54,6 +54,18 @@ def test_the_archive_answers_with_its_own_rules(small_world):
         assert "error" in json.loads(archive.answer("sql", {"query": "with x as (select 1) delete from fixtures"}))  # query_only refuses it
         assert c.exec_driver_sql("select count(*) from fixtures").scalar() > 0
         assert "error" in json.loads(archive.answer("nonsense", {}))
+
+
+def test_the_writers_sql_sees_no_result_after_the_articles_day(small_world):
+    """A report of 6 Feb 2064 told the Crewe 6-0 of 9 Feb, from the SQL question: a later game keeps its date, not its result."""
+    _season(small_world)
+    with small_world.connect() as c:
+        last = c.exec_driver_sql("select max(date) from fixtures where home_goals is not null").scalar()
+        day = date.fromisoformat(str(last)[:10])
+        later = json.loads(archive_questions.Archive(c, date(day.year, day.month, day.day) - timedelta(days=1)).answer(
+            "sql", {"query": f"select home_goals from fixtures where date = '{last}'"}))
+        assert later["rows"] and all(r[0] is None for r in later["rows"])
+        assert c.exec_driver_sql(f"select count(*) from fixtures where date = '{last}' and home_goals is not null").scalar() > 0  # the views are gone
 
 
 def test_after_the_last_question_the_writer_is_told_to_write(app, monkeypatch):

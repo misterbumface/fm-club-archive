@@ -321,6 +321,8 @@ def test_the_followed_clubs_every_game_gets_a_report_and_a_preview_for_its_own_p
         "Chelsea 1-0 Arsenal (English Premier Division)", "Liverpool 0-1 Chelsea (English Premier Division)"]
     league_game, friendly = reports[0], reports[-1]
     assert league_game.beats == {"home"} and league_game.facts["goals"] == ["Sam Scorer 10' (Chelsea)"] and "home_place_now" in league_game.facts
+    season = league_game.facts["home_league_season"]  # the whole record, so a report cannot invent a defeat (6 Feb 2064)
+    assert season.startswith("Chelsea in this league this season, up to and with this game: played") and "The defeats:" in season
     assert friendly.facts["treatment"] == "a brief: this was a friendly" and friendly.score < league_game.score
     previews = sorted(found["club_preview"], key=lambda x: x.facts["date"])
     assert [p.headline for p in previews] == ["Next up: Chelsea v Tottenham, 2063-09-07 (English Premier Division)",
