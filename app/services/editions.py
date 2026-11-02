@@ -52,7 +52,8 @@ SECTIONS = {"title": "Champions", "giant_killing": "Upsets", "big_win": "Results
             "stat_watch": "Numbers", "performance": "Results", "sending_off": "Results", "smash_and_grab": "Results",
             "system_change": "Tactics", "position_change": "Tactics", "partnership": "Tactics", "tactical_trend": "Tactics",
             "dropped": "Selection", "breakthrough": "Next generation", "unsettled": "Dressing room", "dressing_room": "Dressing room",
-            "settled": "Dressing room", "expected_points": "Numbers", "continental_round": "Europe",
+            "settled": "Dressing room", "expected_points": "Numbers", "continental_round": "Europe", "tie_report": "Europe", "tie_preview": "Europe",
+            "knockout_round": "Europe", "knockout_preview": "Coming up",
             "european_nights": "Europe", "international_round": "International", "national_team": "International",
             "promised_report": "Results", "transfer_interest": "Transfers", "transfer_bid": "Transfers",
             "tournament_report": "Tournament", "tournament_preview": "Tournament", "tournament_round_up": "Tournament",
@@ -198,7 +199,7 @@ KIND_LIMITS = {"scouting": 3, "legend_profile": 1, "career_end": 1, "milestone":
                "league_round": 2, "run": 2, "derby": 2, "giant_killing": 2, "preview": 2, "injury_blow": 2, "underperformer": 1, "overperformer": 1,
                "expectations": 1, "check_in": 1, "stat_watch": 1, "system_change": 1, "position_change": 1, "dropped": 2, "breakthrough": 1,
                "partnership": 1, "tactical_trend": 1, "big_win": 2, "unsettled": 2, "dressing_room": 1, "settled": 1, "expected_points": 1, "continental_round": 2,
-               "european_nights": 1, "international_round": 2, "national_team": 1, "promised_report": 4, "transfer_interest": 2, "transfer_bid": 2,
+               "tie_report": 2, "tie_preview": 2, "knockout_round": 2, "knockout_preview": 2, "european_nights": 1, "international_round": 2, "national_team": 1, "promised_report": 4, "transfer_interest": 2, "transfer_bid": 2,
                "tournament_report": 6, "tournament_preview": 4, "tournament_round_up": 1, "our_players_at_tournament": 1, "player_of_the_tournament": 1,
                "club_report": 8, "club_preview": 8, "scouting_follow_up": 3, "kings_wage": 1, "contract_running_down": 2, "manager_out": 2,
                "travel_log": 1, "interview": 1, "war_of_words": 1,
@@ -210,7 +211,7 @@ NOSTALGIA = {"legend", "legend_profile", "where_now", "anniversary", "all_time",
 SEASON_NEWS = {"league_round", "misfiring", "clinical", "tired_legs", "run", "derby", "preview", "injury_blow", "underperformer", "overperformer", "expectations", "check_in",
                "stat_watch", "title", "giant_killing", "big_win", "performance", "sending_off", "smash_and_grab", "system_change",
                "position_change", "dropped", "breakthrough", "partnership", "unsettled", "dressing_room", "settled", "expected_points",
-               "continental_round", "european_nights", "international_round", "national_team", "promised_report", "transfer_interest", "transfer_bid",
+               "continental_round", "tie_report", "tie_preview", "knockout_round", "knockout_preview", "european_nights", "international_round", "national_team", "promised_report", "transfer_interest", "transfer_bid",
                "tournament_report", "tournament_preview", "tournament_round_up", "our_players_at_tournament", "player_of_the_tournament",
                "club_report", "club_preview", "contract_running_down", "manager_out", "war_of_words",
                "under_pressure", "vacancy", "transfer_rumour", "loan_offer"}
@@ -239,7 +240,7 @@ HOME_MINIMUM = {"club_report": 99, "club_preview": 99}
 # short cycle (three pages for four days) does not push it out. The Away Days column found no page on 1 Dec 2063.
 COLUMN_KINDS = ("travel_log",)
 # Kinds with a length of their own wherever they are printed: the column, and the match-day article that covers a round.
-LONG_KINDS = {"travel_log": "column", "league_round": "matchday"}
+LONG_KINDS = {"travel_log": "column", "league_round": "matchday", "knockout_round": "matchday", "knockout_preview": "matchday"}
 HOME_OTHER_NEWS = 2
 
 
@@ -518,8 +519,19 @@ def _write_all(jobs: list[tuple[Outlet, Lead, str, dict, dict, list, list]], pub
     return done
 
 
+REGIONAL = {"continental_round", "european_nights", "tie_report", "tie_preview", "knockout_round"}
+
+
+def section_of(lead: Lead) -> str:
+    """The paper section of a lead: by its kind, and a continental story by its part of the world (the Copa Libertadores
+    was printed under "Europe", 2 Nov 2026): Europe, or South America, Asia, Africa, North America, the world."""
+    if lead.kind in REGIONAL and (lead.facts or {}).get("region") not in (None, "Europe"):
+        return lead.facts["region"]
+    return SECTIONS.get(lead.kind, "News")
+
+
 def _add_article(issue: WorldSoccerIssue, lead: Lead, prominence: str, draft: dict, order: int) -> WorldSoccerArticle:
-    article = WorldSoccerArticle(issue=issue, section=SECTIONS.get(lead.kind, "News"), article_type=ARTICLE_TYPE[prominence],
+    article = WorldSoccerArticle(issue=issue, section=section_of(lead), article_type=ARTICLE_TYPE[prominence],
                                  headline=draft["headline"][:300], standfirst=draft["standfirst"] or None, body=draft["body"],
                                  byline=draft["byline"], prominence=ISSUE_PROMINENCE[prominence], sort_order=order,
                                  lead_key=lead.key, lead=article_writer.lead_to_dict(lead) | ({"verdict": draft["verdict"]} if draft.get("verdict") else {})

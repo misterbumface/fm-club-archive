@@ -25,6 +25,7 @@ SITE_NAME = "World Sport"
 SECTIONS = OrderedDict([
     ("coming-up", ("Coming up", {"Coming up"})),
     ("europe", ("Europe", {"Europe", "Champions League"})),
+    ("world", ("World", {"World", "South America", "Asia", "Africa", "North America"})),  # the other continents' cups (2 Nov 2026)
     ("results", ("Results", {"Results", "The round", "Upsets", "Derbies", "Champions", "Form", "Rising", "Fallen", "Check-in", "Finalists", "Third Place"})),
     ("international", ("International", {"International", "Tournament", "Tournament Stories", "Tournament Briefing", "Knockout Briefs"})),
     ("transfers", ("Transfers", {"Transfers", "Appointments"})),

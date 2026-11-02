@@ -182,9 +182,10 @@ def _result_line(w, f: dict) -> str:
     return f"{f['date']}: {home} {_score_text(f)} {away}, {outcome}"
 
 
-def _league_record(w, team: int, league: int, day: str) -> str | None:
+def _league_record(w, team: int, league: int, day: str, until_words: str = "up to and with this game") -> str | None:
     """A club's league season up to and with one game day: the record, every defeat and draw, and the run since the last
-    defeat. A report once gave Chelsea a defeat at Manchester City they had won 4-0 (6 Feb 2064)."""
+    defeat. A report once gave Chelsea a defeat at Manchester City they had won 4-0 (6 Feb 2064); a preview said they had
+    "not lost all season bar one draw" (3 Feb 2064)."""
     start, _ = _window(w, league)
     games = w.rows("select * from fixtures where competition_uid = :l and (home_uid = :t or away_uid = :t) and home_goals is not null "
                    "and date >= :s and date <= :d order by date", l=league, t=team, s=start, d=day[:10])
@@ -196,12 +197,21 @@ def _league_record(w, team: int, league: int, day: str) -> str | None:
         (won if mine > theirs else drawn if mine == theirs else lost).append(f)
     since = next((i for i in range(len(games) - 1, -1, -1) if games[i] in lost), None)
     run = len(games) if since is None else len(games) - 1 - since
-    words = (f"{w.name(team)} in this league this season, up to and with this game: played {len(games)}, won {len(won)}, drawn {len(drawn)}, "
+    words = (f"{w.name(team)} in this league this season, {until_words}: played {len(games)}, won {len(won)}, drawn {len(drawn)}, "
              f"lost {len(lost)}. The defeats: {'; '.join(_result_line(w, f) for f in lost) or 'none'}. "
              f"The draws: {'; '.join(_result_line(w, f) for f in drawn) or 'none'}. ")
     words += (f"Unbeaten in all {run} league games this season." if since is None
               else f"{run} league games unbeaten since the last defeat." if run else "This game was a defeat.")
     return words + " These are all of their league results that are not wins: never tell another."
+
+
+def _next_in_competition(w, f: dict) -> bool:
+    """Whether a game is both clubs' next one in its competition: a preview tells the next game, with the form and the
+    table as they will stand on the day (3 Feb 2064 previewed Chelsea v Aston Villa of 13 Feb, a Newcastle league game in
+    between). Games in other competitions may come first."""
+    return not w.rows("select 1 from fixtures where competition_uid = :c and (home_uid in (:h, :a) or away_uid in (:h, :a)) "
+                      "and date > :u and date < :d and id != :f limit 1", c=f["competition_uid"], h=f["home_uid"], a=f["away_uid"],
+                      u=str(w.until), d=str(f["date"]), f=f["id"])
 
 
 def _manager(w, team: int) -> str | None:
@@ -702,7 +712,7 @@ def previews(w) -> list:
     internationals = [u for u, c in w.competitions.items() if c.get("scope") == "national_teams"]
     covered = {w.comp(league).get("nation_uid") for league in tables} - {None}
     comps = ",".join(str(u) for u in list(tables) + continental + cups + internationals) or "0"
-    leads = []
+    leads, knockout_ties = [], defaultdict(list)
     for f in w.rows(f"select * from fixtures where competition_uid in ({comps}) and home_goals is null and date > :u and date <= :e "
                     f"order by date", u=str(w.until), e=str(w.until + timedelta(days=PREVIEW_DAYS))):
         home, away, league = f["home_uid"], f["away_uid"], f["competition_uid"]
@@ -714,7 +724,11 @@ def previews(w) -> list:
         european = league in continental and (big >= EURO_BIG or both >= EURO_BOTH)
         national = league in internationals and w.team(home).get("age_limit") is None and (
             {w.team(home).get("nation_uid"), w.team(away).get("nation_uid")} & covered or both >= INTERNATIONAL_BOTH)
-        if not (w.followed(home, away) or derby >= DERBY_LEVEL or top or bottom or european or national or (league in cups and both >= CUP_BOTH)):
+        knockout = _tie(w, f)
+        if not (w.followed(home, away) or derby >= DERBY_LEVEL or top or bottom or european or national or knockout
+                or (league in cups and both >= CUP_BOTH)):
+            continue
+        if not _next_in_competition(w, f):
             continue
         facts = {"competition": _comp_name(w, league), "date": str(f["date"]), "home": w.name(home), "away": w.name(away),
                  "derby": derby >= DERBY_LEVEL or None, "league_rules": _league_rules(w, league) if league in tables else None,
@@ -722,6 +736,8 @@ def previews(w) -> list:
         for side, team in (("home", home), ("away", away)):
             if team in place:
                 facts[f"{side}_place"] = _place_words(w, league, table, place, team)
+            if league in tables:
+                facts[f"{side}_league_season"] = _league_record(w, team, league, str(w.until), "so far")
             standing = next((t for t in xg_table(w, league) if t["team_uid"] == team), None) if league in tables else None
             if standing and standing["games"] >= LUCK_GAMES:
                 facts[f"{side}_expected_goals_and_points"] = expected.words(standing)
@@ -733,12 +749,22 @@ def previews(w) -> list:
         if meetings:
             facts["last_meetings"] = [_result_line(w, m) for m in meetings]
         size = PREVIEW_BASE + (0.25 if derby >= DERBY_LEVEL else 0) + (0.15 if top else 0) + (0.2 if league in continental else 0)
+        if knockout:  # every knockout game of a big cup, the later rounds bigger
+            facts.update(knockout)
+            size += 0.3 * KNOCKOUT_SIZE.get(knockout["round"].split(", ")[1], 1.0)
         bonus, drama = _drama(w, f, table, place)
         size += bonus
         if (date.fromisoformat(str(f["date"])[:10]) - w.until).days > NEAR_DAYS:
             size *= FAR_GAME  # the next cycle previews it closer to the day
         facts.update(drama)
-        leads.append(Lead("preview", f"Coming up: {w.name(home)} v {w.name(away)}, {f['date']} ({_comp_name(w, league)})",
+        if knockout and knockout["round"].split(", ")[1] not in SOLO_ROUNDS:  # the round's ties in one piece (knockout_round_preview)
+            near = (date.fromisoformat(str(f["date"])[:10]) - w.until).days <= NEAR_DAYS  # later ties: the next edition's piece
+            if near and not w.followed(home, away):  # the followed club's tie has its own club preview too
+                knockout_ties[league].append((f, {k: v for k, v in facts.items() if v is not None}, w.weight(league) * 10 * size))
+            continue
+        if knockout:
+            facts["region"] = region_of(_comp_name(w, league))
+        leads.append(Lead("tie_preview" if knockout else "preview", f"Coming up: {w.name(home)} v {w.name(away)}, {f['date']} ({_comp_name(w, league)})",
                           w.until, w.weight(league) * 10 * size, {k: v for k, v in facts.items() if v is not None},
                           [f"match:{f['date']}:{home}:{away}", f"club:{home}", f"club:{away}"],
                           w.beats_for(home, away, competition_uid=league)))
@@ -798,6 +824,14 @@ def previews(w) -> list:
                     lead.facts[f"{side}_record_with_their_{elevens[side]['shape']}"] = tactics.record_words(used)
                 if faced and faced["games"] >= RECORD_GAMES:
                     lead.facts[f"{side}_record_against_a_{elevens[other]['shape']}"] = tactics.record_words(faced)
+    for league, games in knockout_ties.items():  # one preview of each big cup's coming knockout games, a paragraph each
+        name = _comp_name(w, league)
+        stage = games[0][1]["round"].split(", ")[1]
+        facts = {"competition": name, "region": region_of(name), "round": stage,
+                 "ties": [{k: v for k, v in game.items() if k not in ("competition", "league_rules")} for _, game, _ in games]}
+        leads.append(Lead("knockout_preview", f"{name}, {stage}: the ties to come", w.until, max(score for _, _, score in games) * 1.2, facts,
+                          [f"competition:{league}"] + [f"match:{f['date']}:{f['home_uid']}:{f['away_uid']}" for f, _, _ in games],
+                          {"world"}, slug=f"{league}:{w.until}"))
     return leads
 
 
@@ -834,6 +868,97 @@ def _group_lines(w, uid: int, teams: set[int]) -> list[str] | None:
     return lines or None
 
 
+# -- knockout ties of the big continental cups (2 Nov 2026) -------------------------------------------------------------------
+KNOCKOUT_COMP_WEIGHT = 4.2  # the cups whose every knockout game is covered: the Champions League, the Libertadores, the Europa League
+SOLO_ROUNDS = ("Semi-finals", "Final")  # a tie of these has its own preview and report; earlier rounds share one piece
+KNOCKOUT_SIZE = {"Play-off round": 1.0, "Last 64": 0.9, "Last 32": 1.0, "Last 16": 1.2, "Quarter-finals": 1.4, "Semi-finals": 1.7, "Final": 2.2}
+_REGIONS = (("South America", ("libertadores", "sudamericana", "south american", "conmebol")), ("Europe", ("uefa", "europa", "european")),
+            ("Asia", ("asian", "afc")), ("Africa", ("african", "caf")), ("North America", ("north american", "concacaf")))
+
+
+def region_of(name: str | None) -> str:
+    """The part of the world a continental competition belongs to, from its name: Europe for UEFA's, South America for the
+    Libertadores and the Sudamericana, "World" when the name does not tell."""
+    low = (name or "").lower()
+    return next((region for region, words in _REGIONS if any(word in low for word in words)), "World")
+
+
+def _knockout_rounds(w, uid: int) -> list[dict]:
+    """This season's knockout rounds of a continental cup, after its league phase or groups, in order, each named as the
+    last finished edition named its round in that place (counting back from a final not yet drawn would call the play-off
+    round the last 16)."""
+    cache = w.__dict__.setdefault("_knockout_rounds", {})
+    if uid in cache:
+        return cache[uid]
+    stages: dict[int, list[dict]] = defaultdict(list)
+    for f in w.rows("select * from fixtures where competition_uid = :c and date >= :s order by date, id", c=uid, s=f"{w.season}-06-01"):
+        stages[f["stage"]].append(f)
+    rounds = q.round_names(sorted(stages.values(), key=lambda games: str(games[0]["date"])))
+    grouped = [i for i, r in enumerate(rounds) if r["name"].startswith("Group") or r["name"] == "League phase"]
+    knockout = [r for r in rounds[grouped[-1] + 1:]] if grouped else []
+    names: list[str] = []
+    done = q._rows(w.c, "select max(year) y from competition_editions where competition_uid = :c and decided_on is not null "
+                        "and decided_on < :d", c=uid, d=f"{w.season}-07-01")
+    if knockout and done and done[0]["y"]:
+        last = q.edition(w.c, uid, done[0]["y"])
+        if last:
+            past = [i for i, r in enumerate(last["rounds"]) if r["name"].startswith("Group") or r["name"] == "League phase"]
+            names = [r["name"] for r in last["rounds"][past[-1] + 1:]] if past else []
+    order = list(q.KNOCKOUT_ROUNDS)
+    for i, r in enumerate(knockout):
+        r["name"] = names[i] if i < len(names) else r["name"]
+        r["next"] = (names[i + 1] if i + 1 < len(names) else  # else the fixed order: the semi-finals lead to the final
+                     order[order.index(r["name"]) + 1] if r["name"] in order[:-1] else None)
+    cache[uid] = knockout
+    return knockout
+
+
+def _tie(w, f: dict) -> dict | None:
+    """A knockout game of a big continental cup in its tie: the round and leg, the first leg's score, the aggregate as it
+    stands on the day (after this game when it is played by then), who goes through and what the winner reaches. None for
+    any other game. A league-phase game keeps its own stage words."""
+    uid = f["competition_uid"]
+    if w.comp(uid).get("scope") != "continental" or w.weight(uid) < KNOCKOUT_COMP_WEIGHT:
+        return None
+    r = next((r for r in _knockout_rounds(w, uid) if any(g["id"] == f["id"] for g in r["games"])), None)
+    if r is None:
+        return None
+    pair = {f["home_uid"], f["away_uid"]}
+    legs = sorted((g for g in r["games"] if {g["home_uid"], g["away_uid"]} == pair), key=lambda g: (str(g["date"]), g["id"]))
+    day = min(str(w.until), str(f["date"])[:10]) if f["home_goals"] is not None else str(w.until)
+    played = [g for g in legs if g["home_goals"] is not None and str(g["date"])[:10] <= day]
+    comp, number = _comp_name(w, uid), next(i for i, g in enumerate(legs, 1) if g["id"] == f["id"])
+    a, b = legs[0]["home_uid"], legs[0]["away_uid"]
+    goals = {a: 0, b: 0}
+    for g in played:
+        home, away = q._goals_of(g)
+        goals[g["home_uid"]] += home
+        goals[g["away_uid"]] += away
+    words = {"round": f"{comp}, {r['name']}" + (f", leg {number} of {len(legs)}" if len(legs) > 1 else ", one game"),
+             "what_the_winner_reaches": f"the {r['next'].lower()}" if r["next"] else ("the trophy" if r["name"] == "Final" else None)}
+    if len(legs) > 1 and number == 1:
+        second = legs[1]
+        words["the_tie"] = f"the first of two legs; the second is at {w.name(second['home_uid'])} on {str(second['date'])[:10]}"
+    if len(legs) > 1 and number == 2 and legs[0]["home_goals"] is not None:
+        words["first_leg"] = _result_line(w, legs[0])
+    if len(played) == len(legs) and played:
+        last = played[-1]
+        if goals[a] != goals[b]:
+            winner = a if goals[a] > goals[b] else b
+            how = "on aggregate" if len(legs) > 1 else ("after extra time" if last["home_goals_after_extra_time"] is not None else "")
+        elif last["home_penalties"] is not None:
+            winner = last["home_uid"] if last["home_penalties"] > last["away_penalties"] else last["away_uid"]
+            how = f"on penalties ({max(last['home_penalties'], last['away_penalties'])}-{min(last['home_penalties'], last['away_penalties'])})"
+        else:
+            winner, how = None, ""
+        total = f"{w.name(a)} {goals[a]}-{goals[b]} {w.name(b)}" + (" on aggregate" if len(legs) > 1 else "")
+        words["the_tie"] = total + (f": {w.name(winner)} go through {how}".rstrip() if winner else "")
+    elif len(legs) > 1 and number == 2:
+        words["the_tie"] = (f"after the first leg: {w.name(a)} {goals[a]}-{goals[b]} {w.name(b)}; the second leg decides it"
+                            if played else "the second of two legs")
+    return {k: v for k, v in words.items() if v}
+
+
 def continental_rounds(w) -> list:
     """Each European competition's games of the cycle: the results (the biggest clubs' first) and the groups or the league
     phase as they stand. For World Soccer; each country's clubs get their own story (european_nights)."""
@@ -844,19 +969,56 @@ def continental_rounds(w) -> list:
         by_comp[f["competition_uid"]].append(f)
     leads = []
     for uid, games in by_comp.items():
-        if len(games) < MIN_ROUND_GAMES:
+        ties = {f["id"]: tie for f in games if (tie := _tie(w, f))}
+        if len(games) < MIN_ROUND_GAMES and not ties:  # a big cup's knockout games are news however few
             continue
         games.sort(key=lambda f: -((w.rep(f["home_uid"]) or 0) + (w.rep(f["away_uid"]) or 0)))
         teams = {t for f in games for t in (f["home_uid"], f["away_uid"])}
         name = _comp_name(w, uid)
-        facts = {"competition": name, "games_this_cycle": len(games), "results": [_result_line(w, f) for f in games[:EURO_RESULTS]],
-                 "groups_now": _group_lines(w, uid, teams)}
+        facts = {"competition": name, "region": region_of(name), "games_this_cycle": len(games),
+                 "results": [_result_line(w, f) + (f" ({ties[f['id']]['round'].split(', ', 1)[1]}; {ties[f['id']]['the_tie']})"
+                                                   if f["id"] in ties and ties[f["id"]].get("the_tie") else "") for f in games[:EURO_RESULTS]],
+                 "groups_now": None if ties else _group_lines(w, uid, teams)}
         followed = [_result_line(w, f) for f in games if w.followed(f["home_uid"], f["away_uid"])]
         if followed:
             facts["the_followed_clubs"] = followed
         beats = {"world", "home"} if followed else {"world"}
-        leads.append(Lead("continental_round", f"{name}: the cycle's {len(games)} games", w.until, w.weight(uid) * 10 * ROUND_SIZE,
+        size = ROUND_SIZE * max((KNOCKOUT_SIZE.get(t["round"].split(", ")[1], 1.0) for t in ties.values()), default=1.0)
+        if ties:  # the knockout games, each in full: a paragraph each in one long piece
+            facts.pop("results")
+            facts["games"] = [{"result": _result_line(w, f), **{k: v for k, v in _game_in_full(w, f, {}).items() if k not in ("result", "places_now")},
+                               **ties[f["id"]]} if f["id"] in ties else {"result": _result_line(w, f)} for f in games]
+            leads.append(Lead("knockout_round", f"{name}, {next(iter(ties.values()))['round'].split(', ')[1]}: {len(games)} games",
+                              w.until, w.weight(uid) * 10 * size, {k: v for k, v in facts.items() if v is not None},
+                              [f"competition:{uid}"] + [f"match:{f['date']}:{f['home_uid']}:{f['away_uid']}" for f in games], beats,
+                              slug=f"{uid}:{w.until}"))
+            continue
+        leads.append(Lead("continental_round", f"{name}: the cycle's {len(games)} games", w.until, w.weight(uid) * 10 * size,
                           {k: v for k, v in facts.items() if v is not None}, [f"competition:{uid}"], beats, slug=f"{uid}:{w.until}"))
+    return leads
+
+
+def knockout_reports(w) -> list:
+    """A report of every knockout game of a big continental cup played in the cycle, for World Soccer: the game in full and
+    the tie (the round, the leg, the aggregate, who goes through). The followed clubs' games have their own club reports."""
+    from app.services.story_leads import Lead
+
+    leads = []
+    for f in _european_games(w):
+        tie = _tie(w, f)
+        if not tie or w.followed(f["home_uid"], f["away_uid"]) or tie["round"].split(", ")[1] not in SOLO_ROUNDS:
+            continue  # the earlier rounds are told game by game in the knockout round piece
+        uid = f["competition_uid"]
+        name = _comp_name(w, uid)
+        facts = {"competition": name, "region": region_of(name), "date": str(f["date"]), "home": w.name(f["home_uid"]),
+                 "away": w.name(f["away_uid"]), **_game_in_full(w, f, {}), **tie,
+                 **_own_league_facts(w, uid, (("home", f["home_uid"]), ("away", f["away_uid"])))}
+        facts.pop("places_now", None)  # a knockout game has no table
+        size = 0.9 * KNOCKOUT_SIZE.get(tie["round"].split(", ")[1], 1.0)
+        leads.append(Lead("tie_report", f"{name}, {tie['round'].split(', ', 1)[1]}: {_result_line(w, f).split(': ', 1)[1]}",
+                          date.fromisoformat(str(f["date"])[:10]), w.weight(uid) * 10 * size, facts,
+                          [f"match:{f['date']}:{f['home_uid']}:{f['away_uid']}", f"competition:{uid}", f"club:{f['home_uid']}", f"club:{f['away_uid']}"],
+                          {"world"} | w.beats_for(f["home_uid"], f["away_uid"], competition_uid=uid)))
     return leads
 
 
@@ -890,8 +1052,11 @@ def european_nights(w) -> list:
         if groups:
             facts["groups_now"] = groups
         weight = max(w.weight(f["competition_uid"]) for f, _ in games)
+        biggest = max((f for f, _ in games), key=lambda f: w.weight(f["competition_uid"]))
+        facts["region"] = region_of(_comp_name(w, biggest["competition_uid"]))
         beats = {f"nation:{nation}"} | ({"home"} if any(w.followed(team) for team in clubs) else set())
-        leads.append(Lead("european_nights", f"{country}'s clubs in Europe: {facts['record']}", w.until, weight * 10 * 1.1,
+        where = "Europe" if facts["region"] == "Europe" else "continental competition"
+        leads.append(Lead("european_nights", f"{country}'s clubs in {where}: {facts['record']}", w.until, weight * 10 * 1.1,
                           facts, [f"nation:{nation}"] + [f"club:{team}" for team in sorted(clubs, key=lambda t: -(w.rep(t) or 0))[:4]],
                           beats, slug=f"{nation}:{w.until}"))
     return leads
@@ -1406,7 +1571,8 @@ def promised_reports(w) -> list:
         said = {k: v for k, v in (article.lead or {}).get("facts", {}).items() if k in WHAT_WE_SAID}
         facts = {"competition": comp["name"], "date": str(f["date"]), "home": w.name(f["home_uid"]), "away": w.name(f["away_uid"]),
                  "score": _score_text(f), **_own_league_facts(w, f["competition_uid"], (("home", f["home_uid"]), ("away", f["away_uid"]))),
-                 "stage": _stage_words(phase) if (phase := _phase_table(w, f["competition_uid"], {})[0]) else None,
+                 "stage": _stage_words(phase) if not _tie(w, f) and (phase := _phase_table(w, f["competition_uid"], {})[0]) else None,
+                 **(_tie(w, f) or {}),
                  "goals": [f"{('own goal by ' if g['kind'] == 1 else '') + (g['name'] or 'unknown')} {g['minute']}{'+' + str(g['added_time']) if g['added_time'] else ''}'{' (pen)' if g['kind'] == 2 else ''} "
                            f"({w.name(f['home_uid'] if g['side'] == 0 else f['away_uid'])})" for g in goals] or None,
                  "how_the_goals_went_in": _how_goals_went_in(w, f),
@@ -1471,7 +1637,10 @@ def followed_games(w) -> list:
                  "treatment": "a brief: this was a friendly" if friendly else None,
                  **_own_league_facts(w, league, (("home", home), ("away", away)))}
         table, place, _ = _phase_table(w, league, tables)
-        if w.comp(league).get("scope") == "continental" and table:
+        knockout = _tie(w, f)
+        if knockout:
+            facts.update(knockout)
+        elif w.comp(league).get("scope") == "continental" and table:
             facts["stage"] = _stage_words(table)
         for side, team in (("home", home), ("away", away)):
             if team in place:
@@ -1490,15 +1659,19 @@ def followed_games(w) -> list:
                     f"and date > :u and date <= :e order by date", u=str(w.until), e=str(w.until + timedelta(days=PREVIEW_DAYS))):
         home, away, league = f["home_uid"], f["away_uid"], f["competition_uid"]
         friendly = _is_friendly(w, league)
+        if not friendly and not _next_in_competition(w, f):
+            continue
         table, place, _ = _phase_table(w, league, tables)
         continental = w.comp(league).get("scope") == "continental"
         facts = {"competition": _comp_name(w, league), "date": str(f["date"]), "home": w.name(home), "away": w.name(away),
                  "treatment": "a brief: this is a friendly" if friendly else None, "league_rules": _league_rules(w, league) if place else None,
                  **_own_league_facts(w, league, (("home", home), ("away", away))),
-                 "stage": _stage_words(table) if continental and table else None}
+                 "stage": _stage_words(table) if continental and table and not _tie(w, f) else None, **(_tie(w, f) or {})}
         for side, team in (("home", home), ("away", away)):
             if team in place:
                 facts[f"{side}_place"] = _place_words(w, league, table, place, team)
+            if league in tables:
+                facts[f"{side}_league_season"] = _league_record(w, team, league, str(w.until), "so far")
             if continental:
                 facts[f"{side}_seasons_in_european_competition"] = _european_seasons(w, team)
             injured = _injured_regulars(w, team)
@@ -1971,6 +2144,6 @@ def tired_legs(w) -> list:
     return sorted(leads, key=lambda lead: -lead.score)[:6]
 
 
-FINDERS = (round_ups, finishing, tired_legs, derbies, runs, expectations, check_ins, form_players, stat_watch, injury_blows, previews, promised_reports, expected_points,
+FINDERS = (round_ups, knockout_reports, finishing, tired_legs, derbies, runs, expectations, check_ins, form_players, stat_watch, injury_blows, previews, promised_reports, expected_points,
            continental_rounds, european_nights, international_rounds, national_teams, transfer_market, tournament_leads.tournament_coverage,
            followed_games, scouting_follow_ups, kings_wages, contracts_running_down, managers_out, features.travel_log, features.interviews, wars_of_words, under_pressure, vacancies, transfer_rumours)

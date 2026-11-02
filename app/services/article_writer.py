@@ -123,8 +123,9 @@ KIND_NOTES = {
                        "was missing, what each side needed) against what happened, in a sentence or two, without quoting it at "
                        "length; refer to it as our preview, never mock it. Choose the length: a full report when the facts carry "
                        "a story (goals, cards, an upset, a run), about 250 words when the game was ordinary.",
-    "preview": "This is a preview of a game still to be played: why it matters (the table, the form, a derby), who is missing "
-               "and how the last meetings went. Never give the result or write as if it has been played; you may say what "
+    "preview": "This is a preview of a game still to be played, both sides' next game in its competition: why it matters (the "
+               "table, the form, a derby), who is missing and how the last meetings went. The piece is about this game; later "
+               "games may be named only as what lies ahead. Never give the result or write as if it has been played; you may say what "
                "each side needs. The expected line-ups are each side's usual system and usual players without the injured: "
                "a 'system on the tactics screen' fact is that side's actual set-up (shape, style, mentality, each role) and "
                "may be used as fact. "
@@ -184,12 +185,30 @@ KIND_NOTES = {
                      "not a public row: do not invent statements, a revolt, a transfer request or the manager's answer.",
     "settled": "This is about a player's concern that has ended: what it was and how long it lasted. The save does not say "
                "what ended it: do not invent a talk with the manager, a new contract or a promise.",
-    "continental_round": "This is the round-up of a European competition's games since the last editions: the results, the "
-                         "biggest clubs' first, and the groups or the league phase as they stand. Lead with the biggest story "
+    "tie_report": "This is the report of one knockout game of a big continental cup: the round and the leg, the score and "
+                  "the goals in order, then the tie: the first leg, the aggregate, who goes through and how, and what they "
+                  "reach. Say only what the tie facts give: no draw for the next round, no opponent they do not name.",
+    "knockout_round": "This is the knockout round piece: one long article on a big continental cup's knockout games since the "
+                      "last editions, every game in it. Open with the biggest story (a giant out, a comeback, a rout), then "
+                      "give each game its own paragraph, in the games' order: the score, the goals in order and how they went "
+                      "in, and the tie (the first leg, the aggregate, who goes through and how). Say only what each game's "
+                      "facts give: no draw for the next round, no opponent they do not name.",
+    "knockout_preview": "This is the preview of a big continental cup's coming knockout games, all in one piece: open with the "
+                        "tie that matters most, then give each tie its own paragraph: the round and the leg, the tie as it "
+                        "stands, the form, who is missing, the last meetings. Never give a result or write as if a game has "
+                        "been played. ",
+    "tie_preview": "This is the preview of one knockout game of a big continental cup: the round and the leg, the tie as it "
+                   "stands (the first leg, the aggregate), what the winner reaches, the form, who is missing, the last "
+                   "meetings. Never give the result or write as if it has been played. The piece is about this game. ",
+    "continental_round": "This is the round-up of a continental competition's games since the last editions (the region fact "
+                         "says which part of the world: never call a South American cup European): the results, the "
+                         "biggest clubs' first, and the groups or the league phase as they stand; in the knockout rounds, "
+                         "each tie as the results give it. Lead with the biggest story "
                          "of the round (a giant beaten, a club through or out, a rout), then the rest; say what the table means "
                          "for the next matchday. Report only the results and tables given.",
-    "european_nights": "This is about one country's clubs in Europe since the last editions: every result in every European "
-                       "competition and where they stand in their groups. Write it for that country's readers: how their "
+    "european_nights": "This is about one country's clubs in continental competition since the last editions (the region fact "
+                       "says where: Europe, or South America for the Libertadores; never call it Europe otherwise): every "
+                       "result in every continental competition and where they stand in their groups. Write it for that country's readers: how their "
                        "clubs fared, who flew the flag and who let it down, and what comes next. Report only the results given.",
     "travel_log": "This is the Away Days column: a first-person travel log of one trip to one game, in the year the notebook gives. "
                   "It is a long piece with meat on it, never shorter than 1,100 words whatever the notebook holds (the town and the "
@@ -252,8 +271,10 @@ KIND_NOTES = {
                    "against what happened in a sentence or two, as our preview, never mocked. Choose the length: a full "
                    "report when the facts carry a story, about 250 words when the game was ordinary, and a brief (60-120 words) "
                    "when the treatment says so (a friendly). Report only what is given.",
-    "club_preview": "This is the preview of the next game of the club this paper follows, for its readers: why it matters, "
-                    "the table, the form, who is missing, the last meetings, and what the drama facts say. Never give the "
+    "club_preview": "This is the preview of the next game in its competition of the club this paper follows, for its readers: "
+                    "why it matters, the table, the form (the league_season facts are the whole record: no other defeat or draw), "
+                    "who is missing, the last meetings, and what the drama facts say. The piece is about this game; later games "
+                    "may be named only as what lies ahead. Never give the "
                     "result or write as if it has been played. A brief (60-120 words) when the treatment says so (a friendly).",
     "tournament_report": "This is the report of one game of a major international tournament (the World Cup, a continental "
                          "championship): the round, the score, the goals, the player of the match, what it means in the group or "

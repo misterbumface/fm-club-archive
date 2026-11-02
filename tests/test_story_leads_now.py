@@ -752,3 +752,75 @@ def test_a_leagues_places_come_from_its_past_seasons(small_world):
         assert q.zone_of(zones, table[:3], 3) is None  # another size of league: the past says nothing
         assert q.league_zones(c, LEAGUE, 2061) is None  # two seasons only: not known
         assert "name no promotion, play-off or relegation places" in q.zone_words(None)
+
+
+def test_a_preview_is_of_each_clubs_next_game_in_its_competition(small_world):
+    """3 Feb 2064 previewed Chelsea v Aston Villa of 13 Feb with a Newcastle league game in between, and said Chelsea had
+    not lost all season bar one draw: a preview is of the next game in its competition, with the whole league record."""
+    _season(small_world)
+    with small_world.begin() as c:
+        c.execute(world.WorldFixture.__table__.insert(), [_fixture("2063-09-07", CHELSEA, SPURS, None, LEAGUE, 162),
+                                                          _fixture("2063-09-14", ARSENAL, CHELSEA, None, LEAGUE, 162),
+                                                          _fixture("2063-09-09", LIVERPOOL, CHELSEA, None, FA_CUP, 1)])
+    found = _found(small_world)
+    games = {(lead.facts["home"], lead.facts["away"]) for lead in found["club_preview"]}
+    assert ("Chelsea", "Tottenham") in games and ("Arsenal", "Chelsea") not in games  # the Spurs game comes first
+    assert ("Liverpool", "Chelsea") in games  # a cup game: the next in its own competition, whatever the league does
+    spurs = next(lead for lead in found["club_preview"] if lead.facts["away"] == "Tottenham")
+    assert spurs.facts["home_league_season"].startswith("Chelsea in this league this season, so far: played 4, won 4")
+
+
+CUP = 900
+
+
+def _big_cup(small_world, second_leg):
+    """A big continental cup this season: a group stage, then two-legged semi-finals (Chelsea v Liverpool, Arsenal v Spurs)."""
+    group = ((CHELSEA, ARSENAL), (ARSENAL, CHELSEA), (LIVERPOOL, SPURS), (SPURS, LIVERPOOL))  # the semi-final pairs did not meet
+    games = [_fixture(f"2063-07-{10 + i:02d}", h, a, (1, 0), CUP, 1) for i, (h, a) in enumerate(group)]
+    games += [_fixture("2063-08-20", CHELSEA, LIVERPOOL, (2, 1), CUP, 2), _fixture("2063-08-20", ARSENAL, SPURS, (0, 0), CUP, 2),
+              _fixture("2063-09-02", LIVERPOOL, CHELSEA, second_leg, CUP, 3), _fixture("2063-09-02", SPURS, ARSENAL, None, CUP, 3)]
+    with small_world.begin() as c:
+        c.execute(world.WorldCompetition.__table__.insert(), [{"fm_uid": CUP, "name": "UEFA Champions League", "short_name": "Champions League",
+                                                               "abbreviation": "UCL", "scope": "continental", "reputation": 200}])
+        c.execute(world.WorldFixture.__table__.insert(), games)
+
+
+def _tie_of(small_world, home, day):
+    with small_world.connect() as c:
+        w = _World(c, SINCE, UNTIL, (CHELSEA,))
+        f = dict(c.exec_driver_sql("select * from fixtures where competition_uid = ? and home_uid = ? and date like ?",
+                                   (CUP, home, f"{day}%")).mappings().one())
+        return now._tie(w, f)
+
+
+def test_a_big_cups_knockout_game_is_told_in_its_tie(small_world):
+    """Salzburg 2-2 Lyon, a Champions League play-off first leg (12 Feb 2064), had no word of its round or its tie."""
+    _season(small_world)
+    _big_cup(small_world, (1, 1))
+    first = _tie_of(small_world, CHELSEA, "2063-08-20")
+    assert first["round"] == "UEFA Champions League, Semi-finals, leg 1 of 2" and first["what_the_winner_reaches"] == "the final"
+    assert first["the_tie"] == "the first of two legs; the second is at Liverpool on 2063-09-02"
+    second = _tie_of(small_world, LIVERPOOL, "2063-09-02")
+    assert second["first_leg"] == "2063-08-20: Chelsea 2-1 Liverpool, Chelsea won"
+    assert second["the_tie"] == "Chelsea 3-2 Liverpool on aggregate: Chelsea go through on aggregate"
+    assert _tie_of(small_world, SPURS, "2063-09-02")["the_tie"] == "after the first leg: Arsenal 0-0 Tottenham; the second leg decides it"
+    assert _tie_of(small_world, CHELSEA, "2063-07-10") is None  # a group game keeps its own stage words
+    found = _found(small_world)
+    report = next(lead for lead in found["club_report"] if lead.facts["competition"] == "UEFA Champions League")
+    assert report.facts["the_tie"].endswith("Chelsea go through on aggregate") and "stage" not in report.facts
+    (round_up,) = [lead for lead in found["knockout_round"] if lead.facts["competition"] == "UEFA Champions League"]
+    (game,) = round_up.facts["games"]  # one game is enough, each game in full: a paragraph each
+    assert game["the_tie"] == "Chelsea 3-2 Liverpool on aggregate: Chelsea go through on aggregate" and game["first_leg"]
+    assert round_up.facts["region"] == "Europe" and "continental_round" not in found
+
+
+def test_a_continental_story_goes_to_its_part_of_the_world():
+    from app.services import editions
+    from app.services.story_leads import Lead
+
+    assert [now.region_of(n) for n in ("Copa Libertadores", "UEFA Europa League", "Asian Champions League", "Some Cup")] == \
+        ["South America", "Europe", "Asia", "World"]
+    lead = lambda kind, region: Lead(kind, "h", UNTIL, 1.0, {"region": region}, [], {"world"})  # noqa: E731
+    assert editions.section_of(lead("continental_round", "South America")) == "South America"
+    assert editions.section_of(lead("tie_report", "Europe")) == "Europe"
+    assert editions.section_of(lead("league_round", "South America")) == "The round"
