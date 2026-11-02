@@ -19,7 +19,7 @@ from flask import current_app
 from app.services import world_queries as q
 
 KINDS = ("result", "record", "form", "place", "fixture", "player_game", "goal_kind", "player_season", "player_age", "player_club",
-         "meetings", "other")
+         "meetings", "title_run", "other")
 GAME_STATS = ("goals", "assists", "shots", "shots_on_target", "passes", "passes_completed", "key_passes", "tackles", "tackles_won",
               "interceptions", "headers_won", "dribbles", "fouls", "yellow_cards", "minutes", "conceded")
 RECORD_FIELDS = ("played", "won", "drawn", "lost", "points", "unbeaten_run", "winning_run")
@@ -54,6 +54,8 @@ PROMPT = (
     '- "player_club": a player\'s whole career at a club, over all his seasons there. player, club, appearances, goals.\n'
     '- "meetings": the last games between two teams. team, opponent, last (how many meetings), won (how many of them team won), '
     "drawn, lost.\n"
+    '- "title_run": league titles won in a row. team, won_in_a_row (the titles already won one after another up to now; '
+    '"on course for a 42nd title in a row" is 41).\n'
     '- "other": any other hard fact. in_notebook: true when the notebook gives this fact, false when it does not.\n'
     "List each fact once. When the article has no hard fact, answer {\"claims\": []}."
 )
@@ -305,6 +307,23 @@ class Checker:
             return "right", ""
         return "wrong", (f"the last {int(last)} games between {self.w.name(team)} and {self.w.name(other)}: "
                          + "; ".join(self._line(f) for f in games) + ". Wrong: " + ", ".join(wrong))
+
+    def _title_run(self, claim):
+        team = self._team(claim.get("team"))
+        told = claim.get("won_in_a_row")
+        league = self._league(team) if team else None
+        if not league or not isinstance(told, (int, float)):
+            return "unknown", ""
+        winners = q._rows(self.c, "select year, team_uid from edition_places where competition_uid = :c and place = 1 and year <= :y "
+                                  "order by year desc", c=league, y=self.until.year)
+        run = 0
+        for row in winners:
+            if row["team_uid"] != team:
+                break
+            run += 1
+        if not winners or run == int(told):
+            return ("right" if winners else "unknown"), ""
+        return "wrong", f"{self.w.name(team)} have won {run} league title{'s' if run != 1 else ''} in a row (the archive's champions, latest first)"
 
     def _other(self, claim):
         return ("unsupported", "") if claim.get("in_notebook") is False else ("unknown", "")

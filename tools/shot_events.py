@@ -40,7 +40,7 @@ _read_shots, fs._match_shots = fs._match_shots, _shots_with_ticks
 def events(stream: bytes, start: int, end: int):
     for m in EVENT.finditer(stream, start, end):
         tick, minute = struct.unpack("<H", m.group(4))[0], m.group(5)[0]
-        if 1 <= minute <= 125 and abs(tick / 248 - minute) <= 2.5:
+        if 1 <= minute <= 125 and abs(tick / 248 - minute) <= 8:
             yield m.start(), m.group(1)[0], m.group(2)[0], m.group(3)[0], tick, minute
 
 

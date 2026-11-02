@@ -23,7 +23,7 @@ same tick (+-4), which links an event to its shot exactly (836 goal events in th
 | bit `0x04` = volley | Broadfoot 65' `05`, Ghiocel 48' `85`, Rodrigo 23' `05` "thunderous volley" | likely (3) |
 | bit `0x80` | in drives `a1` (Ángel, Sheminant, Valera: no error told), volley `85` (Ghiocel, after an error), finish `81` (Ondo, after an error); only in the box | unknown: not "after an error" alone |
 | bit `0x20` = drive (low, hard) | `a1`: Ángel 43' "low drive" (h 0.46), Sheminant 74' "rifled drive which kept low" (1.00), Valera 15' "skidding drive" (0.00); `21`: Uranga 17' "skidding drive" (0.19). So the type is bits: `01` foot, `02` head, `04` volley, `20` drive, `80` unknown (never outside the box) | likely (4) |
-| type `01` = finish | Jones 8' "deftly executed finish", Odogwu 54' "accurate finish", Formicola 33' "accurate finish", Javier 81' "tidy finish", Brugué 18' "placed shot"; also Diarra 53' (free kick: marked elsewhere) | 5 labels |
+| type `01` = finish | Jones 8' "deftly executed finish", Odogwu 54' "accurate finish", Formicola 33' "accurate finish", Javier 81' "tidy finish", Brugué 18' "placed shot", Ferrer 22' "placed shot", Messi 25' "curling effort", Francois 72' "deftly executed finish"; also Diarra 53' (free kick: marked elsewhere) | 5 labels |
 | byte +15 `88` = free kick | Diarra 53' (the others: `10` or `40`) | guess (1) |
 | the value at +10 | rises with distance (headers lowest), but 48 of 82 outside-the-box goals are under 16 500 (inside: median 8 700, outside: median 15 200); Javier's "finish from 12 metres" is 8 769, Etxaniz's "close range header" 12 834 | NOT the distance (the game's text knows the distance: it is stored elsewhere or computed) |
 | code 47 | at minutes with no goal (Chelsea v Shamrock 13', 24', 33', 42') | unknown, not "goal" |
@@ -74,6 +74,11 @@ Source: the game's match report text or the user watching the goal. Bytes from t
 | | Rodrigão 82' | "strike"; user watched it: his shot was deflected back to him and he headed it into the corner | no shot event | goal 0.40, 2.16; his blocked shot (1.46, 1.60) in the same second, 81:08 |
 | Manchester City 0-2 Everton, FA Cup (9 Feb 2064) | Rodrigo 23' | "a thunderous volley" | 12 372, `05`, `10 08 00 00 04 40 00 02 01` | 1.14, 0.95 |
 | | Manuel Ondo 33' | after an error by Calamaro, "a close range finish into the bottom right corner" | 3 783, `81`, `40 00 00 01 00 44 00 08 09` | 0.55, -0.15 (central: the game's "corner" is loose, as Brugué's "post") |
+| Chelsea 4-1 Aston Villa, Premier Division (13 Feb 2064; save of 2 Nov 2026, 22:48) | Pablo Ferrer 22' | after an error by Phil Richards, "a placed shot into the bottom corner" | 10 563, `01`, `10 08 00 02 00 21 08 04 18` | 0.27, -2.22 |
+| | Lionel Messi 25' | "a curling effort which beat the keeper with the aid of a deflection" (the first deflection) | 9 222, `01`, `02 42 00 04 40 44 00 88 00` | 1.31, -3.38; no blocked shot before it: a deflected goal is one goal shot |
+| | Pablo Ferrer 35' | "a close range finish into the bottom left corner" | 13 424, `81`, `40 40 00 02 80 40 00 08 10` | 0.37, 2.21 |
+| | Jesse Francois 72' | "a deftly executed finish from close range" | 12 312, `01`, `50 48 00 01 80 40 00 04 10` | 0.53, 2.36 (his event's clock was 2.9 minutes off its minute: the reader's check was loosened to 8) |
+| | Roberto Baggio 91' | "a placed shot into the bottom corner" | no shot event | 0.56, -3.05 |
 | Chelsea 3-1 Shamrock Rovers, Champions League (30 Jan 2064) | Francisco Pardal 59' | user: header from close in, edge of the six-yard box near the post | 4 397, `03`, `40 40 00 01 00 21 08 41 01` | 1.00, -2.68 |
 | | Jake Marks 90+2' | user: shot from outside the box, left of the D (about 22-25 m) | no shot event | 1.96, 3.56 |
 | | Ken Myers 90+3' | user: shot from outside the box, right of the D (about 22-25 m) | no shot event | 0.15, -2.76 |
@@ -107,8 +112,9 @@ so award goals help only from those.
 
 A rebound: a goal in the same second as (or a few seconds after) the same player's blocked or saved shot. Rodrigão 81:08
 (Rotherham v Middlesbrough, 9 Feb 2064): blocked, then the goal, both at 81:08, as the user saw. This needs no event code.
-Open: the game also says "deflected shot". A deflected goal may look the same (blocked, then the goal) or be one goal shot;
-one labelled "deflected shot" will tell. Not a clue: a shot entry's part count. An entry groups one player's shots that share
+A deflected goal is one goal shot, not a blocked shot and then a goal: Messi 25' (Chelsea v Villa, 13 Feb 2064) "with the aid
+of a deflection" has no other shot near it. Which byte marks the deflection needs more labels (his bytes after the type:
+`02 42 00 04 40 44 00 88 00`). Not a clue: a shot entry's part count. An entry groups one player's shots that share
 the zone flags, minutes apart (Sheminant 23:01 blocked and 73:54 goal are one entry), so its parts are not stages of a shot.
 
 ## Wanted

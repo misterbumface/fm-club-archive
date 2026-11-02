@@ -3815,7 +3815,7 @@ def _with_shot_kinds(stream: bytes, report: MatchReport, end: int) -> MatchRepor
     for m in _EVENT.finditer(stream, report.position, end):
         tick, minute = struct.unpack("<H", m.group(3))[0], m.group(4)[0]
         kind = shot_kind(stream[m.start() + 14]) if m.start() + 14 < len(stream) else None
-        if kind and 1 <= minute <= 125 and abs(tick / 248 - minute) <= 2.5:
+        if kind and 1 <= minute <= 125 and abs(tick / 248 - minute) <= 8:
             kinds.setdefault((m.group(1)[0], m.group(2)[0]), []).append((tick, kind))
     if not kinds:
         return report

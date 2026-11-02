@@ -124,3 +124,17 @@ def test_the_checker_knows_a_header_from_a_shot(small_world):
         assert wrong.verdict == "wrong" and wrong.truth == "Sam Scorer's goal in this game: a header"
         assert checker.check({**claim, "shot": "shot"}).verdict == "wrong"  # a header is no strike with the foot
         assert fact_check.Checker(c, UNTIL, {"id": 9}).check({**claim, "shot": "volley"}).verdict == "unknown"  # no shot records
+
+
+def test_a_title_run_is_counted_from_the_archives_champions(small_world):
+    """The game said Chelsea were "on course to win their 42nd Premier Division title in a row"; the editor had cut it from
+    a report as a fact it could not check (2 Nov 2026)."""
+    from app.models import world
+
+    _season(small_world)
+    with small_world.begin() as c:  # the test world has Chelsea as 2063's champions; add 2062 and Liverpool in 2061
+        c.execute(world.WorldEditionPlace.__table__.insert(), [{"competition_uid": 11, "year": 2062, "place": 1, "team_uid": CHELSEA},
+                                                               {"competition_uid": 11, "year": 2061, "place": 1, "team_uid": LIVERPOOL}])
+    assert _check(small_world, {"kind": "title_run", "team": "Chelsea", "won_in_a_row": 2}).verdict == "right"
+    wrong = _check(small_world, {"kind": "title_run", "team": "Chelsea", "won_in_a_row": 41})
+    assert wrong.verdict == "wrong" and wrong.truth.startswith("Chelsea have won 2 league titles in a row")
