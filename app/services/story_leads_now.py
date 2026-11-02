@@ -1294,7 +1294,7 @@ def transfer_market(w) -> list:
         leads.append(Lead("loan_offer", f"{b['bidder']} ask to borrow {b['name']} ({w.name(owner)})", date.fromisoformat(str(b["offered_on"])),
                           (w.rep(owner) or 3000) / 1000 * TRANSFER_SCALE, {k: v for k, v in facts.items() if v},
                           [f"person:{b['person_uid']}", f"club:{bidder}"] + ([f"club:{owner}"] if owner else []),
-                          w.beats_for(bidder, owner) | {"transfers"}, slug=f"{b['person_uid']}:{bidder}:{b['offered_on']}:{status}"))
+                          w.beats_for(bidder, owner) | {"transfers"}, slug=f"{b['person_uid']}:{bidder}:{b['offered_on']}:{b['status']}"))
     return leads
 
 

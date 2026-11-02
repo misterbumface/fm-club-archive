@@ -252,6 +252,18 @@ def test_a_counter_proposal_is_told_with_its_bid_never_as_a_bid(small_world):
     assert walked.headline == "Arsenal bid £43.0m for Sam Scorer (withdrawn)" and walked.facts["his_club_asked_for_pounds"] == 90_000_000
 
 
+def test_a_loan_offer_alone_is_news_and_keeps_its_own_status(small_world):
+    """A week with a loan offer and no bid stopped the news cycle: the loan's key read the bid loop's status (2 Nov 2026)."""
+    _season(small_world)
+    with small_world.begin() as c:
+        c.execute(world.WorldTransferOffer.__table__.insert(), [
+            {"team_uid": ARSENAL, "person_uid": SCORER, "squad_uid": ARSENAL, "fee": 0, "loan": 1, "status": "made",
+             "offered_on": UNTIL, "until": None, "completes_on": date(2064, 6, 30), "as_of": AS_OF}])
+    found = _found(small_world)
+    (loan,) = found["loan_offer"]
+    assert "transfer_bid" not in found and loan.slug.endswith(":made")
+
+
 def test_a_world_cup_in_play_gets_reports_previews_a_round_up_and_our_players(small_world):
     from app.services import tournament_leads
     from tests.test_world_pages import ENGLAND
