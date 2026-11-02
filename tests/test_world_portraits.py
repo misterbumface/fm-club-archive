@@ -60,6 +60,19 @@ def test_the_game_face_comes_before_an_old_portrait(tmp_path):
     assert wp.picture_of(6, {}, {}) is None
 
 
+def test_the_users_own_face_wins_over_the_archives_as_in_the_game(tmp_path):
+    """Chiriță had a face in a Sochaux club pack and one made here: the game showed the pack's, the app its own (2 Nov 2026)."""
+    ours, pack = tmp_path / wp.GENERATED_FOLDER, tmp_path / "99_Country" / "00_Clubs" / "Ligue 1" / "FCSM"
+    for folder in (ours, pack):
+        folder.mkdir(parents=True)
+    (ours / "2002593895.png").write_bytes(b"png")
+    wp.write_face_config(ours)
+    (pack / "Alexandru Chiriţă.png").write_bytes(b"png")
+    (pack / "config.xml").write_text('<record><list id="maps"><record from="Alexandru Chiriţă" '
+                                     'to="graphics/pictures/person/r-2002593895/portrait" /></list></record>', encoding="utf-8")
+    assert wp.face_pack_index(tmp_path) == {2002593895: pack / "Alexandru Chiriţă.png"}
+
+
 def test_a_team_season_lists_its_players_without_pictures(monkeypatch):
     import sqlite3
 
@@ -155,6 +168,37 @@ def test_the_archive_keeps_the_photograph_and_the_game_gets_the_cut_out(tmp_path
     own = faces / "My own faces" / "2002329.png"
     own.write_bytes(_png(cut))
     assert wp.picture_of(2002329, {2002329: own}, {}) == own  # the user's own face comes first
+
+
+def test_a_new_picture_of_a_face_pack_player_goes_over_the_packs_picture_with_a_backup(tmp_path, monkeypatch):
+    """Chiriță's new picture never reached the game, which showed his face from a Sochaux club pack (2 Nov 2026): the new
+    picture now goes over the pack's, whose original is kept once; no second claim stays in our folder."""
+    from PIL import Image
+
+    monkeypatch.setattr(wp, "ARCHIVE_FACES", tmp_path / "archive")
+    monkeypatch.setattr(wp, "FACE_PACK_BACKUPS", tmp_path / "backups")
+    monkeypatch.setattr(wp, "FACES_DIR", tmp_path / "faces")
+    monkeypatch.setattr(wp, "cut_out", lambda png: _png(Image.new("RGBA", (64, 64), (0, 0, 0, 0))))
+    faces, uid = tmp_path / "faces", 2002593895
+    pack, ours = faces / "99_Country" / "FCSM", faces / wp.GENERATED_FOLDER
+    pack.mkdir(parents=True)
+    ours.mkdir()
+    original = _png(Image.new("RGBA", (32, 32), (200, 0, 0, 255)))
+    (pack / "Alexandru Chiriţă.png").write_bytes(original)
+    (pack / "config.xml").write_text(f'<record><list id="maps"><record from="Alexandru Chiriţă" to="graphics/pictures/person/r-{uid}/portrait" />'
+                                     '</list></record>', encoding="utf-8")
+    (ours / f"{uid}.png").write_bytes(original)  # an older picture of ours, which the game ignored
+    wp.write_face_config(ours)
+
+    archive_copy = wp.save_portrait(uid, _png(Image.new("RGB", (64, 64), (30, 90, 160))), faces_dir=faces)
+
+    face = pack / "Alexandru Chiriţă.png"
+    assert Image.open(face).size == (wp.GAME_SIZE, wp.GAME_SIZE)  # the new picture, in the pack's place
+    assert (tmp_path / "backups" / "99_Country" / "FCSM" / "Alexandru Chiriţă.png").read_bytes() == original
+    assert not (ours / f"{uid}.png").exists() and str(uid) not in (ours / "config.xml").read_text()
+    assert wp.picture_of(uid, wp.face_pack_index(faces), {}) == archive_copy  # the app shows the new photograph
+    wp.save_portrait(uid, _png(Image.new("RGB", (64, 64), (90, 30, 160))), faces_dir=faces)
+    assert (tmp_path / "backups" / "99_Country" / "FCSM" / "Alexandru Chiriţă.png").read_bytes() == original  # the first backup stays
 
 
 def _png(image) -> bytes:

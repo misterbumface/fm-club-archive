@@ -19,6 +19,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import sqlite3
 import urllib.request
 from collections.abc import Callable
@@ -49,6 +50,7 @@ EDIT_STEPS = int(os.environ.get("DRAW_THINGS_EDIT_STEPS", "20"))
 # Club crests and makers' logos appear on kit even when the prompt forbids them; models that use a negative prompt avoid them.
 NEGATIVE_PROMPT = "logo, crest, club badge, emblem, sponsor, brand mark, text, lettering, watermark"
 ARCHIVE_SIZE, GAME_SIZE = 512, 250
+FACE_PACK_BACKUPS = ARCHIVE_DIR / "backups" / "face pack"  # the face pack's own pictures, as they were before a new one
 _FACE_MAP = re.compile(r'<record from="([^"]+)" to="graphics/pictures/person/(?:r-)?(\d+)/portrait"')
 
 _ETHNICITY_WORDS = {
@@ -99,11 +101,13 @@ class PortraitFacts:
 
 # -- finding pictures ------------------------------------------------------------------------------
 def face_pack_index(faces_dir: Path = FACES_DIR) -> dict[int, Path]:
-    """FM uid -> image, from every config.xml of the face pack (the user's faces and ours)."""
+    """FM uid -> image, from every config.xml of the face pack (the user's faces and ours). The user's own faces win over
+    this archive's folder, as in the game: Chiriță's face in a Sochaux club pack showed in the game while the archive
+    showed its own, read first by the disk's order, and made him new ones the game never used (2 Nov 2026)."""
     found: dict[int, Path] = {}
     if not faces_dir.is_dir():
         return found
-    for config in faces_dir.rglob("config.xml"):
+    for config in sorted(faces_dir.rglob("config.xml"), key=lambda c: (c.parent.name == GENERATED_FOLDER, str(c))):
         for name, uid in _FACE_MAP.findall(config.read_text(encoding="utf-8", errors="replace")):
             for extension in (".png", ".jpg"):
                 image = config.parent / f"{name}{extension}"
@@ -157,12 +161,21 @@ def picture_of(uid: int, faces: dict[int, Path], old: dict[int, Path]) -> Path |
     game's cut-out of it (both kept by save_portrait)."""
     generated = ARCHIVE_FACES / f"{uid}.png"
     face = faces.get(uid)
-    if face is not None and face.parent.name == GENERATED_FOLDER and generated.is_file():
+    ours = face is not None and (face.parent.name == GENERATED_FOLDER or _overwritten(face))
+    if ours and generated.is_file():
         face = generated
     for candidate in (face, old.get(uid), generated):
         if candidate is not None and candidate.is_file():
             return candidate
     return None
+
+
+def _overwritten(face: Path) -> bool:
+    """A face pack picture the archive wrote over (its original is in the backups)."""
+    try:
+        return face_backup_path(face).exists()
+    except ValueError:  # not under the face pack
+        return False
 
 
 # -- the prompt ------------------------------------------------------------------------------------
@@ -598,12 +611,40 @@ def save_portrait(uid: int, png: bytes, faces_dir: Path = FACES_DIR) -> Path:
     archive_copy = ARCHIVE_FACES / f"{uid}.png"
     photo.resize((ARCHIVE_SIZE, ARCHIVE_SIZE), Image.LANCZOS).save(archive_copy, optimize=True)
     if faces_dir.is_dir():
-        cut = Image.open(io.BytesIO(cut_out(png))).convert("RGBA")
+        cut = Image.open(io.BytesIO(cut_out(png))).convert("RGBA").resize((GAME_SIZE, GAME_SIZE), Image.LANCZOS)
         game_folder = faces_dir / GENERATED_FOLDER
-        game_folder.mkdir(exist_ok=True)
-        cut.resize((GAME_SIZE, GAME_SIZE), Image.LANCZOS).save(game_folder / f"{uid}.png", optimize=True)
-        write_face_config(game_folder)
+        theirs = face_pack_index(faces_dir).get(uid)
+        if theirs is not None and theirs.parent.name != GENERATED_FOLDER:
+            # his face is in the user's own face pack: the game shows that one, so the new picture goes over it (Chiriță's
+            # new picture never reached the game, 2 Nov 2026), its original kept once in the archive's backups
+            back_up_face(theirs, faces_dir)
+            if theirs.suffix.lower() in (".jpg", ".jpeg"):
+                photo.resize((GAME_SIZE, GAME_SIZE), Image.LANCZOS).save(theirs, format="JPEG", quality=92)
+            else:
+                cut.save(theirs, format="PNG", optimize=True)
+            ours = game_folder / f"{uid}.png"
+            if ours.is_file():  # one picture of him for the game: no second claim from our folder
+                ours.unlink()
+                write_face_config(game_folder)
+        else:
+            game_folder.mkdir(exist_ok=True)
+            cut.save(game_folder / f"{uid}.png", optimize=True)
+            write_face_config(game_folder)
     return archive_copy
+
+
+def face_backup_path(face: Path, faces_dir: Path | None = None) -> Path:
+    return FACE_PACK_BACKUPS / face.relative_to(faces_dir or FACES_DIR)
+
+
+def back_up_face(face: Path, faces_dir: Path | None = None) -> Path:
+    """The face pack's own picture, copied once before the archive writes over it; a later picture keeps the first backup,
+    the pack's original."""
+    backup = face_backup_path(face, faces_dir)
+    if not backup.exists():
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(face, backup)
+    return backup
 
 
 def write_face_config(game_folder: Path) -> None:
