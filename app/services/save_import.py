@@ -577,7 +577,7 @@ class _SaveReader:
                     shot_rows.append({"fixture_id": fixture_id, "side": side_number, "seq": seq, "person_uid": self.person_uid.get(player.person),
                                       "minute": shot.minute, "second": shot.second, "outcome": fm_save.SHOT_OUTCOMES[shot.outcome],
                                       "across": shot.across, "height": shot.height, "outside_box": _outside_box(shot, player),
-                                      "as_of": self.game_date})
+                                      "kind": shot.kind, "as_of": self.game_date})
                 for seq, player in enumerate(side.players):
                     row = {name: getattr(player, name) for name in world.MATCH_PLAYER_FIGURES}
                     row.update(fixture_id=fixture_id, side=side_number, seq=seq, person_uid=self.person_uid.get(player.person),

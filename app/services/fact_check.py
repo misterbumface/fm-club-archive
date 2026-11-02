@@ -18,7 +18,8 @@ from flask import current_app
 
 from app.services import world_queries as q
 
-KINDS = ("result", "record", "form", "place", "fixture", "player_game", "player_season", "player_age", "player_club", "meetings", "other")
+KINDS = ("result", "record", "form", "place", "fixture", "player_game", "goal_kind", "player_season", "player_age", "player_club",
+         "meetings", "other")
 GAME_STATS = ("goals", "assists", "shots", "shots_on_target", "passes", "passes_completed", "key_passes", "tackles", "tackles_won",
               "interceptions", "headers_won", "dribbles", "fouls", "yellow_cards", "minutes", "conceded")
 RECORD_FIELDS = ("played", "won", "drawn", "lost", "points", "unbeaten_run", "winning_run")
@@ -45,6 +46,8 @@ PROMPT = (
     "negative when behind).\n"
     '- "player_game": a player\'s numbers in the game the article reports. player, team, stat (one of '
     + ", ".join(GAME_STATS) + "), value. \"X made Y's goal\" or \"from X's pass\" is X with assists, value 1.\n"
+    '- "goal_kind": how a goal in the game the article reports was scored. player, team, shot ("header", "volley", "drive" for '
+    'a low hard strike, "shot" for any other strike with the foot). "Headed in" is a header.\n'
     '- "player_season": a player\'s numbers this season. player, team, competition ("league" or "all"), appearances, goals, '
     'assists. "His second league goal this season" is goals 2, competition "league".\n'
     '- "player_age": player, team, age.\n'
@@ -201,6 +204,25 @@ class Checker:
         name = q._rows(self.c, "select name from people where fm_uid = :p", p=person)[0]["name"]
         return "wrong", f"{name}'s {stat.replace('_', ' ')} in this game: {real}" + (
             " (he made no goal)" if stat == "assists" and not real else "") + self._assisters(stat)
+
+    def _goal_kind(self, claim):
+        told = str(claim.get("shot") or "").lower()
+        if not self.game or told not in ("header", "volley", "drive", "shot"):
+            return "unknown", ""
+        person = self.archive.person(str(claim.get("player") or ""), claim.get("team"))
+        if not person:
+            return "unknown", ""
+        kinds = [r["kind"] for r in q._rows(self.c, "select kind from match_shots where fixture_id = :f and person_uid = :p and outcome = 'goal'",
+                                             f=self.game["id"], p=person)]
+        if not kinds or not all(kinds):
+            return "unknown", ""  # a goal the game kept no event for
+        # a header and a volley are told apart from any other strike; "drive" and "shot" both fit a strike with the foot
+        fits = {"header": ("header",), "volley": ("volley",), "drive": ("drive", "finish"), "shot": ("drive", "finish", "volley")}[told]
+        if any(kind in fits for kind in kinds):
+            return "right", ""
+        name = q._rows(self.c, "select name from people where fm_uid = :p", p=person)[0]["name"]
+        return "wrong", f"{name}'s goal{'s' if len(kinds) > 1 else ''} in this game: " + ", ".join(
+            {"finish": "a shot with the foot", "drive": "a drive", "header": "a header", "volley": "a volley"}[k] for k in kinds)
 
     def _player_season(self, claim):
         person = self.archive.person(str(claim.get("player") or ""), claim.get("team"))

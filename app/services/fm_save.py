@@ -3598,6 +3598,8 @@ class Shot:
     outcome: int
     across: float
     height: float
+    tick: int = 0  # the match clock the highlight events use (about 4 a second)
+    kind: str | None = None  # SHOT_KINDS, from the match's highlight events; None when the game kept no event for it
 
 
 SHOT_GOAL, SHOT_OFF_TARGET, SHOT_WOODWORK, SHOT_SAVED, SHOT_BLOCKED = 1, 2, 3, 4, 5
@@ -3616,7 +3618,8 @@ def _match_shots(buffer: bytes, at: int) -> tuple[Shot, ...]:
                 return tuple(shots)
             across, height = struct.unpack_from("<ff", buffer, part)
             if buffer[part + 8] in SHOT_OUTCOMES and math.isfinite(across) and math.isfinite(height):
-                shots.append(Shot(buffer[part + 9], buffer[part + 10], buffer[part + 8], round(across, 2), round(height, 2)))
+                shots.append(Shot(buffer[part + 9], buffer[part + 10], buffer[part + 8], round(across, 2), round(height, 2),
+                                  struct.unpack_from("<H", buffer, part + 11)[0]))
         end += _MP_SHOT_HEAD + _MP_SHOT_PART * parts
     return tuple(sorted(shots, key=lambda shot: (shot.minute, shot.second)))
 
@@ -3781,7 +3784,53 @@ def read_match_reports(match_stats_cfg: bytes) -> list[MatchReport]:
             referee_name = " ".join(name for name in (first, last) if name) or None
         reports.append(MatchReport(match.start(), fixture_id, head[at + 4:].decode("utf-8", "replace"), referee,
                                    referee_name, pom, minutes or 90, home_side, away[0]))
-    return reports
+    ends = [r.position for r in reports[1:]] + [len(stream)]
+    return [_with_shot_kinds(stream, report, end) for report, end in zip(reports, ends)]
+
+
+# -- the highlight events of a match report (2 Nov 2026, docs/goal-labels.md) ------------------------------------------------
+# After the player records, a report keeps some moments of the match as events: `02 <side> <slot> <code> <tick u16> 00 00
+# <minute> 00`, the slot being the player's place in his side's records (836 of 836 goals linked) and the tick the clock of
+# the shot records (bytes 11-12 of a shot part), which links a shot event (code 1) to its shot. Byte 10 after the event's
+# start is a type: bits 01 foot, 02 head, 04 volley, 20 drive, 80 not known. Checked against the game's own words for
+# 25 goals (header 6 of 6, finish 5 of 5, drive 4 of 4, volley 3 of 3); a header never comes from outside the box (0 of 82).
+# Only some shots have an event (Marks and Myers, 30 Jan 2064, have none); the value before the type is not the distance.
+_EVENT = re.compile(rb"(?=\x02([\x00\x01])(.)\x01(..)\x00\x00(.)\x00)", re.DOTALL)
+SHOT_KINDS = ("header", "volley", "drive", "finish")
+
+
+def shot_kind(code: int) -> str | None:
+    """The kind of shot from an event's type byte (a volley struck hard is a volley)."""
+    if code & 0x02:
+        return "header"
+    if code & 0x04:
+        return "volley"
+    if code & 0x20:
+        return "drive"
+    return "finish" if code & 0x01 else None
+
+
+def _with_shot_kinds(stream: bytes, report: MatchReport, end: int) -> MatchReport:
+    kinds: dict[tuple[int, int], list[tuple[int, str]]] = {}
+    for m in _EVENT.finditer(stream, report.position, end):
+        tick, minute = struct.unpack("<H", m.group(3))[0], m.group(4)[0]
+        kind = shot_kind(stream[m.start() + 14]) if m.start() + 14 < len(stream) else None
+        if kind and 1 <= minute <= 125 and abs(tick / 248 - minute) <= 2.5:
+            kinds.setdefault((m.group(1)[0], m.group(2)[0]), []).append((tick, kind))
+    if not kinds:
+        return report
+
+    def side(number: int, team: MatchSide) -> MatchSide:
+        players = []
+        for slot, player in enumerate(team.players):
+            mine = kinds.get((number, slot))
+            if mine:
+                player = replace(player, shot_list=tuple(
+                    replace(shot, kind=next((kind for tick, kind in mine if abs(tick - shot.tick) <= 4), None)) for shot in player.shot_list))
+            players.append(player)
+        return replace(team, players=tuple(players))
+
+    return replace(report, home=side(0, report.home), away=side(1, report.away))
 
 
 def _read_string_at(buffer: bytes, at: int, longest: int = 80) -> tuple[str | None, int]:

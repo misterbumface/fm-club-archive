@@ -286,6 +286,36 @@ def matchdays(games: list[dict]) -> list[list[dict]]:
     return rounds
 
 
+REBOUND_SECONDS = 5  # a goal this soon after the same player's blocked or saved shot is the rebound (Rodrigão, 9 Feb 2064)
+
+
+def _how_goals_went_in(w, f: dict) -> list[str] | None:
+    """Each goal's kind of shot and where it went in, from the match's shot records (docs/goal-labels.md): the kind from
+    the game's highlight events (header, volley, drive, finish), the height and line from where the ball crossed the line,
+    a rebound from the scorer's own blocked or saved shot just before. None for a match without shot records."""
+    shots = w.rows("select s.person_uid, s.minute, s.second, s.outcome, s.across, s.height, s.kind, s.side, p.name from match_shots s "
+                   "left join people p on p.fm_uid = s.person_uid where s.fixture_id = :f order by s.minute, s.second, s.seq", f=f["id"])
+    lines = []
+    for shot in (s for s in shots if s["outcome"] == "goal"):
+        at = shot["minute"] * 60 + shot["second"]
+        rebound = any(o["person_uid"] == shot["person_uid"] and o["outcome"] in ("blocked", "saved")
+                      and 0 <= at - (o["minute"] * 60 + o["second"]) <= REBOUND_SECONDS for o in shots)
+        height, across = shot["height"], abs(shot["across"])
+        where = ("along the ground" if height < 0.25 else "low" if height < 0.8 else "at mid height" if height < 1.6
+                 else "high, just under the bar" if height >= 2.1 else "high")
+        where += ", through the middle" if across < 1.2 else ", near a post" if across >= 3.0 else ""
+        kind = {"header": "a header", "volley": "a volley", "drive": "a drive (struck low and hard)", "finish": "a shot with the foot"}.get(
+            shot["kind"] or "", "the kind of shot is not recorded")
+        team = w.name(f["home_uid"] if shot["side"] == 0 else f["away_uid"])
+        lines.append(f"{shot['name'] or 'unknown'} ({team}), {shot['minute'] + 1}' on the match clock: {kind}, {where}"
+                     + ("; from the rebound of his own blocked or saved shot" if rebound else ""))
+    if not lines:
+        return None
+    return lines + ["From the match's shot records: say only these about how a goal went in (the kind of shot, its height, "
+                    "the middle or a post). The distance of a shot and the build-up (a cross, a free kick) are not recorded: "
+                    "never tell them."]
+
+
 def _game_in_full(w, f: dict, place: dict[int, int]) -> dict:
     goals = w.rows("select g.minute, g.added_time, g.side, g.kind, p.name from goals g left join people p on p.fm_uid = g.scorer_uid "
                    "where g.fixture_id = :f and g.kind in (0, 1, 2) order by g.minute, g.seq", f=f["id"])
@@ -294,6 +324,7 @@ def _game_in_full(w, f: dict, place: dict[int, int]) -> dict:
             "goals": [f"{('own goal by ' if g['kind'] == 1 else '') + (g['name'] or 'unknown')} {g['minute']}"
                       f"{'+' + str(g['added_time']) if g['added_time'] else ''}'{' (pen)' if g['kind'] == 2 else ''} "
                       f"({w.name(f['home_uid'] if g['side'] == 0 else f['away_uid'])})" for g in goals] or None,
+            "how_the_goals_went_in": _how_goals_went_in(w, f),
             "player_of_the_match": best[0]["name"] if best else None, "attendance": f["attendance"] or None,
             "places_now": f"{w.name(f['home_uid'])} {place.get(f['home_uid'], '?')}, {w.name(f['away_uid'])} {place.get(f['away_uid'], '?')}"}
     return {k: v for k, v in game.items() if v is not None}
@@ -364,6 +395,7 @@ def derbies(w) -> list:
                  "score": _score_text(f), "rivalry": f"{rivalry.get('level', f['rivalry'])}/100" + (f", {rivalry['reason'].lower()}" if rivalry.get("reason") else ""),
                  "goals": [f"{('own goal by ' if g['kind'] == 1 else '') + (g['name'] or 'unknown')} {g['minute']}{'+' + str(g['added_time']) if g['added_time'] else ''}'{' (pen)' if g['kind'] == 2 else ''} "
                            f"({w.name(f['home_uid'] if g['side'] == 0 else f['away_uid'])})" for g in goals] or None,
+                 "how_the_goals_went_in": _how_goals_went_in(w, f),
                  "earlier_meetings": [_result_line(w, m) for m in meetings] or None}
         # the rivalry's level, the bigger club's standing (Liverpool v Everton over a lower-league derby) and an upset
         # (the away side or the smaller club wins): Liverpool 1-3 Everton (15 Dec 2063) scored 55 and lost to a hat-trick
@@ -1377,6 +1409,7 @@ def promised_reports(w) -> list:
                  "stage": _stage_words(phase) if (phase := _phase_table(w, f["competition_uid"], {})[0]) else None,
                  "goals": [f"{('own goal by ' if g['kind'] == 1 else '') + (g['name'] or 'unknown')} {g['minute']}{'+' + str(g['added_time']) if g['added_time'] else ''}'{' (pen)' if g['kind'] == 2 else ''} "
                            f"({w.name(f['home_uid'] if g['side'] == 0 else f['away_uid'])})" for g in goals] or None,
+                 "how_the_goals_went_in": _how_goals_went_in(w, f),
                  "player_of_the_match": best[0]["name"] if best else None,
                  "what_we_said": {"headline": article.headline, "standfirst": article.standfirst, "published": str(article.issue.publication_date), **said}}
         leads.append(Lead("promised_report", f"As previewed: {w.name(f['home_uid'])} {_score_text(f)} {w.name(f['away_uid'])} ({comp['name']})",
@@ -1433,6 +1466,7 @@ def followed_games(w) -> list:
         facts = {"competition": _comp_name(w, league), "date": str(f["date"]), "home": w.name(home), "away": w.name(away), "score": _score_text(f),
                  "goals": [f"{('own goal by ' if g['kind'] == 1 else '') + (g['name'] or 'unknown')} {g['minute']}{'+' + str(g['added_time']) if g['added_time'] else ''}'{' (pen)' if g['kind'] == 2 else ''} "
                            f"({w.name(home if g['side'] == 0 else away)})" for g in goals] or None,
+                 "how_the_goals_went_in": _how_goals_went_in(w, f),
                  "player_of_the_match": best[0]["name"] if best else None,
                  "treatment": "a brief: this was a friendly" if friendly else None,
                  **_own_league_facts(w, league, (("home", home), ("away", away)))}

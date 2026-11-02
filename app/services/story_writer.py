@@ -62,6 +62,10 @@ ARTICLE_RULES = (
     "Promotion, play-off and relegation places, the drop zone or safety, exist only as the notebook's league_rules give "
     "them; then use the plain words a paper uses. With no league_rules, or when they say it is not known, name no such "
     "place. "
+    "When the notebook gives how_the_goals_went_in, a goal's kind of shot (a header, a volley, a drive, a shot with the "
+    "foot), its height and whether it went through the middle or near a post come from it alone, in a paper's words ('headed "
+    "in from close range' only when it is a header); never call a header a shot or a shot a header, never give a distance "
+    "in yards or metres, and never invent the build-up (a cross, a free kick, a corner) it does not give. "
     "Morale, happiness, fitness and character are told in words, the way a club or a newspaper would put them; never as a "
     "score or a scale (no 'seven out of twenty'), which belongs to the game's screens, not to the world. "
 ) + _CRAFT

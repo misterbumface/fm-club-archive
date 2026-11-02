@@ -4,8 +4,8 @@ from datetime import date
 
 from app.services import article_writer, fact_check, outlets
 from tests.test_outlets import _lead, fake_ai  # noqa: F401
-from tests.test_story_leads_now import _season
-from tests.test_world_pages import AS_OF, app, small_world  # noqa: F401
+from tests.test_story_leads_now import SCORER, _season
+from tests.test_world_pages import AS_OF, CHELSEA, LIVERPOOL, app, small_world  # noqa: F401
 
 UNTIL = date(2063, 9, 3)  # Chelsea have won all four league games; they won 1-0 at Liverpool on 31 August
 
@@ -79,3 +79,48 @@ def test_a_cut_leaves_tidy_paragraphs():
     finding = fact_check.Finding("Wrong here.", {}, "wrong")
     article = {"headline": "H", "standfirst": "S.", "body": "One. Wrong here.\nWrong here. Two.\n\nThree."}
     assert fact_check.cut(article, [finding])["body"] == "One.\nTwo.\n\nThree."
+
+
+def _shots(small_world, rows):
+    from app.models import world
+
+    with small_world.begin() as c:
+        c.execute(world.WorldMatchShot.__table__.insert(), [
+            {"fixture_id": 15, "side": 1, "person_uid": SCORER, "across": 0.5, "height": 0.1, "outside_box": None, "as_of": AS_OF, **r}
+            for r in rows])
+
+
+def test_the_kind_of_shot_is_read_from_the_events_type_bits():
+    """Checked against the game's words for 25 goals (docs/goal-labels.md)."""
+    from app.services.fm_save import shot_kind
+
+    assert [shot_kind(code) for code in (0x03, 0x05, 0x85, 0xa1, 0x21, 0x01, 0x81, 0x00)] == \
+        ["header", "volley", "volley", "drive", "drive", "finish", "finish", None]
+
+
+def test_how_the_goals_went_in_tells_the_kind_the_height_and_a_rebound(small_world):
+    """Rodrigão's shot was blocked and he headed the rebound in, in the same second (9 Feb 2064)."""
+    from app.services import story_leads_now as now
+    from app.services.story_leads import _World
+
+    _season(small_world)
+    _shots(small_world, [{"seq": 0, "minute": 80, "second": 8, "outcome": "blocked", "kind": None, "height": 1.4},
+                         {"seq": 1, "minute": 80, "second": 9, "outcome": "goal", "kind": "header", "height": 0.4, "across": 3.2}])
+    with small_world.connect() as c:
+        w = _World(c, UNTIL, UNTIL, (CHELSEA,))
+        lines = now._how_goals_went_in(w, {"id": 15, "home_uid": LIVERPOOL, "away_uid": CHELSEA})
+    assert lines[0] == "Sam Scorer (Chelsea), 81' on the match clock: a header, low, near a post; from the rebound of his own blocked or saved shot"
+    assert "never tell them" in lines[-1]
+
+
+def test_the_checker_knows_a_header_from_a_shot(small_world):
+    _season(small_world)
+    _shots(small_world, [{"seq": 0, "minute": 50, "second": 0, "outcome": "goal", "kind": "header"}])
+    with small_world.connect() as c:
+        checker = fact_check.Checker(c, UNTIL, {"id": 15})
+        claim = {"sentence": "S.", "kind": "goal_kind", "player": "Sam Scorer"}
+        assert checker.check({**claim, "shot": "header"}).verdict == "right"
+        wrong = checker.check({**claim, "shot": "volley"})
+        assert wrong.verdict == "wrong" and wrong.truth == "Sam Scorer's goal in this game: a header"
+        assert checker.check({**claim, "shot": "shot"}).verdict == "wrong"  # a header is no strike with the foot
+        assert fact_check.Checker(c, UNTIL, {"id": 9}).check({**claim, "shot": "volley"}).verdict == "unknown"  # no shot records

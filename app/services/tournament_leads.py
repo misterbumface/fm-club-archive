@@ -161,6 +161,7 @@ def _scorers(w, t: dict, limit: int = 8) -> list[str]:
 def tournament_coverage(w) -> list:
     """Every lead of a major tournament in play this cycle."""
     from app.services.story_leads import Lead
+    from app.services.story_leads_now import _how_goals_went_in
 
     t = major_tournament(w)
     if t is None:
@@ -193,6 +194,7 @@ def tournament_coverage(w) -> list:
                  "score": _score(f),
                  "goals": [f"{('own goal by ' if g['kind'] == 1 else '') + (g['name'] or 'unknown')} {g['minute']}{'+' + str(g['added_time']) if g['added_time'] else ''}'{' (pen)' if g['kind'] == 2 else ''} "
                            f"({w.name(f['home_uid'] if g['side'] == 0 else f['away_uid'])})" for g in goals] or None,
+                 "how_the_goals_went_in": _how_goals_went_in(w, f),
                  "player_of_the_match": best[0]["name"] if best else None,
                  "our_players_in_it": [_player_words(p) for p in in_it] or None,
                  "groups_now": _group_lines(w, t, {f["home_uid"], f["away_uid"]}) if rounds.get(f["id"], "").startswith("Group") else None}
