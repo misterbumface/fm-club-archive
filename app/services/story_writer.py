@@ -49,10 +49,11 @@ ARTICLE_RULES = (
     "short quotes in character from the players or clubs in the story. The colour must add no new facts: no numbers, "
     "dates, results or events in it. A person's 'character' (a short fuse, a big-game player, a model professional) is what "
     "the club and the scouts know of him: let it shape what he says and does in the story and how others speak of him; "
-    "never list it, never name a trait, never give it a number. A person's how_he_plays (the game's player traits: cuts "
-    "inside from the left wing, plays one-twos, tries long range free kicks) are his habits on the ball: describe the "
-    "player with them in a paper's words ('a winger who loves to cut in from the left'), never as a list, and never as how "
-    "one goal or one move happened (a left-footer still scores with his right). The people in his life (people_in_his_life) and his frame "
+    "never list it, never name a trait, never give it a number. A person's how_he_plays (the game's player traits) is "
+    "background, like his character: let it colour a description lightly, at most one hint of it for a player in a "
+    "piece and only where it fits the story (a winger 'always looking to come inside', a forward 'who likes the ball to "
+    "feet'); never copy a trait's words, never list or stack them, never make it the point of a sentence, and never tell "
+    "it as how one goal or one move happened (a left-footer still scores with his right). The people in his life (people_in_his_life) and his frame "
     "of mind (frame_of_mind) are facts of the same kind: a friend, a manager he is close to, a man he dislikes, an open "
     "grievance may colour a quote or a line; no other relationship exists, and no number of them is given. What he said "
     "at press conferences (in_the_press) is given as the game's headlines and tones: use their spirit in your own words. "
@@ -318,6 +319,32 @@ def own_league_lead_faults(text: str, notebook: dict) -> list[str]:
     return list(dict.fromkeys(faults))
 
 
+def _plays(value, found: list[str]) -> list[str]:
+    """Every how_he_plays in a notebook, each trait once."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "how_he_plays" and isinstance(item, str):
+                found += [t.strip() for t in item.split(",") if t.strip()]
+            else:
+                _plays(item, found)
+    elif isinstance(value, list):
+        for item in value:
+            _plays(item, found)
+    return list(dict.fromkeys(found))
+
+
+_ARTICLES, _WORDS = re.compile(r"\b(?:the|a|an)\b\s*"), re.compile(r"\s+")
+
+
+def trait_copies(text: str, notebook: dict) -> list[str]:
+    """The game's player traits written out in its own words ("he likes to cut inside from the left wing and plays
+    one-twos"): the user wants a hint of a player's style, not the trait list read out (3 Nov 2026). Articles aside."""
+    flat = " " + _WORDS.sub(" ", _ARTICLES.sub("", re.sub(r"[^a-z' -]", " ", text.lower()))) + " "
+    return [f"{STYLE_FAULT} '{trait}' (a player trait in the game's own words): hint at his style in a few words of your "
+            "own, at most once, or leave it out" for trait in _plays(notebook, [])
+            if len(trait.split()) >= 2 and f" {_ARTICLES.sub('', trait)} " in flat]
+
+
 def text_faults(text: str, notebook: dict) -> list[str]:
     """Years and scores in the text that the notebook does not have, and copied background text."""
     facts = json.dumps(notebook, ensure_ascii=False, default=str)
@@ -340,6 +367,7 @@ def text_faults(text: str, notebook: dict) -> list[str]:
     if copied_text(text, notebook):
         faults.append("passages copied word for word from an older text: write it new, in your own words")
     faults += stock_phrases(text)
+    faults += trait_copies(text, notebook)
     return list(dict.fromkeys(faults))
 
 

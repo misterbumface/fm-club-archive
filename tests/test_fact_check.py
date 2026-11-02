@@ -138,3 +138,14 @@ def test_a_title_run_is_counted_from_the_archives_champions(small_world):
     assert _check(small_world, {"kind": "title_run", "team": "Chelsea", "won_in_a_row": 2}).verdict == "right"
     wrong = _check(small_world, {"kind": "title_run", "team": "Chelsea", "won_in_a_row": 41})
     assert wrong.verdict == "wrong" and wrong.truth.startswith("Chelsea have won 2 league titles in a row")
+
+
+def test_a_player_trait_is_hinted_at_never_read_out():
+    """The user: describe how players play, "gentle influence ... not HE LIKES TO CUT IN FROM THE LEFT AND HOLD UP PLAY"."""
+    from app.services.story_writer import STYLE_FAULT, hard_faults, trait_copies
+
+    notebook = {"people": [{"name": "Eric Geyer", "how_he_plays": "cuts inside from left wing, plays one-twos, comes deep to get ball"}]}
+    assert trait_copies("Geyer, always looking to come inside, found space again.", notebook) == []
+    copied = trait_copies("Geyer cuts inside from the left wing, plays one-twos and comes deep to get the ball.", notebook)
+    assert len(copied) == 3 and all(f.startswith(STYLE_FAULT) for f in copied)
+    assert hard_faults(copied) == []  # a style fault: the writer is asked again, the piece is not stopped
