@@ -30,6 +30,7 @@ def fake_ai(monkeypatch):
     monkeypatch.setattr(article_writer, "request_json", lambda model, key, messages, temperature=0.5: answers.pop(0))
     monkeypatch.setattr(article_writer, "request_with_questions",
                         lambda model, key, messages, tools, answer, most, temperature=0.5: (answers.pop(0), []))
+    monkeypatch.setattr(article_writer.fact_check, "claims", lambda model, key, text, notebook: [])  # no hard facts to check
     return answers
 
 

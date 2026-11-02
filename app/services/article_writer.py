@@ -15,6 +15,7 @@ import time
 from collections import Counter
 from datetime import date
 
+from flask import current_app
 from sqlalchemy.engine import Connection
 
 from app.extensions import db
@@ -22,7 +23,7 @@ from app.models import world as world_models
 from app.models.outlet import Outlet
 from app.services import moods, story_notebooks, world_queries as q
 from app.services.ai_settings import get_papers_model, resolve_ai_api_key
-from app.services import archive_questions
+from app.services import archive_questions, fact_check
 from app.services.story_leads import Lead
 from app.services.story_writer import ARTICLE_RULES, StoryError, hard_faults, request_json, request_with_questions, text_faults
 
@@ -794,6 +795,7 @@ def write_article(outlet: Outlet, lead: Lead, published: date, prominence: str =
         faults = hard_faults(text_faults(_all_text(article), notebook))
         if faults:
             raise StoryError("The AI model's second draft still had faults: " + "; ".join(faults[:5]))
+    article = _fact_checked(model, key, prompt, notebook, article, lead, published)
     if article.get("picture") and not picture_is_clean(article["picture"], notebook):
         article.pop("picture")  # the fixed scenes of its kind serve instead
     return {**article, "byline": writer["name"], "writer_id": writer.get("id"), "model": model, "notebook": notebook}
@@ -870,6 +872,46 @@ def _ask_with_questions(model: str, key: str, messages: list[dict], published: d
         return _article(answer)
     except StoryError:
         return _ask(model, key, messages)
+
+
+def _fact_checked(model: str, key: str, prompt: str, notebook: dict, article: dict, lead, published: date) -> dict:
+    """The article after the fact checker: its hard facts checked in the archive as of the article's day; the wrong and
+    the unsupported go back to the writer once, and what is still wrong after that is cut (2 Nov 2026)."""
+    as_of = _as_of(lead, published)
+    with db.engines[world_models.BIND].connect() as connection:
+        game = _game(connection, lead)
+        checker = fact_check.Checker(connection, as_of, game)
+        found = fact_check.problems([checker.check(c) for c in fact_check.claims(model, key, _all_text(article), notebook)])
+        if not found:
+            return article
+        for f in found:
+            current_app.logger.info("fact check: %s %r %s", f.verdict, f.sentence[:120], f.truth[:300])
+        messages = [{"role": "system", "content": prompt}, {"role": "user", "content": json.dumps(notebook, ensure_ascii=False, default=str)},
+                    {"role": "assistant", "content": json.dumps(article, ensure_ascii=False)},
+                    {"role": "user", "content": fact_check.fix_note(found)}]
+        fixed = _ask(model, key, messages)
+        if hard_faults(text_faults(_all_text(fixed), {**notebook, "fact_check": [f.truth for f in found]})):
+            fixed = article  # the fix brought new faults: the first draft, with the bad sentences cut
+        still = fact_check.problems([checker.check(c) for c in fact_check.claims(model, key, _all_text(fixed), notebook)])
+    if any(f.sentence and f.sentence in fixed["headline"] for f in still):
+        raise StoryError("The fact checker found a wrong headline twice: " + still[0].sentence[:120])
+    for f in still:
+        current_app.logger.info("fact check, cut: %s %r %s", f.verdict, f.sentence[:120], f.truth[:300])
+    return fact_check.cut(fixed, still) if still else fixed
+
+
+def _game(connection, lead) -> dict | None:
+    """The fixture a match report tells, from its first ref ("match:day:home:away")."""
+    ref = lead.refs[0] if lead.refs else ""
+    if not ref.startswith("match:"):
+        return None
+    try:
+        _, day, home, away = ref.split(":")[:4]
+        rows = connection.exec_driver_sql("select id from fixtures where date like ? and home_uid = ? and away_uid = ? limit 1",
+                                          (f"{day}%", int(home), int(away))).fetchall()
+    except ValueError:
+        return None
+    return {"id": rows[0][0]} if rows else None
 
 
 def _ask(model: str, key: str, messages: list[dict]) -> dict:
