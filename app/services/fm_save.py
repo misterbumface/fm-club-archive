@@ -544,6 +544,7 @@ class PlayerRecord:
     left_foot: int | None = None
     right_foot: int | None = None
     traits: dict[str, int] | None = None  # TRAIT_NAMES (1-20) and HIDDEN_ATTRIBUTE_OFFSETS' names
+    preferred_moves: tuple[str, ...] | None = None  # PREFERRED_MOVES, the editor's "Player Traits"
 
 
 # The hidden traits (verified: Howard Parkins edited in the in-game editor to 1, 2, 3, 20, 19, 18, 17, 16 and the save
@@ -553,6 +554,43 @@ class PlayerRecord:
 TRAIT_NAMES = ("Adaptability", "Ambition", "Loyalty", "Pressure", "Professionalism", "Sportsmanship", "Temperament", "Controversy")
 TRAITS_AFTER_BIRTH_DATE = 17
 HIDDEN_ATTRIBUTE_OFFSETS = {"Dirtiness": 39, "Consistency": 42, "Important Matches": 45, "Injury Proneness": 46, "Versatility": 47}
+
+
+# The preferred moves, the editor's "Player Traits" (2-3 Nov 2026, docs/player-traits.md): a u64, one bit per move, 27 bytes
+# before the birth date. Found with Exhibits 10-14: Geyer's "Cuts Inside From Left Wing" untouched in the editor changed only
+# bit 57; Byorn Eind given 3, then 12, then 12 other moves changed exactly those bits. The order is the editor's list read
+# row by row (left column even, right column odd); five bits have no move in the editor. About 1% of records read with many
+# bits (not aligned): more than MAX_PREFERRED_MOVES is no reading.
+PREFERRED_MOVES = (
+    "Runs With Ball Down Left", "Runs With Ball Down Right", "Runs With Ball Through Centre", "Gets Into Opposition Area",
+    "Moves Into Channels", "Gets Forward Whenever Possible", "Plays Short Simple Passes", "Tries Killer Balls Often",
+    "Shoots From Distance", "Shoots With Power", "Places Shots", "Curls Ball", "Likes To Round Keeper",
+    "Likes To Try To Beat Offside Trap", "Uses Outside Of Foot", "Marks Opponent Tightly", "Winds Up Opponents",
+    "Argues With Officials", "Plays With Back To Goal", "Comes Deep To Get Ball", "Plays One-Twos", "Likes To Lob Keeper",
+    "Dictates Tempo", "Attempts Overhead Kicks", "Looks For Pass Rather Than Attempting To Score", "Plays No Through Balls",
+    "Stops Play", "Knocks Ball Past Opponent", "Moves Ball To Right Foot Before Dribble Attempt",
+    "Moves Ball To Left Foot Before Dribble Attempt", "Dwells On Ball", "Arrives Late In Opponents' Area",
+    "Tries To Play Way Out Of Trouble", "Stays Back At All Times", "Avoids Using Weaker Foot", "Tries Tricks",
+    "Tries Long Range Free Kicks", "Dives Into Tackles", "Does Not Dive Into Tackles", "Cuts Inside From Both Wings", "Hugs Line",
+    "Gets Crowd Going", "Tries First Time Shots", "Tries Long Range Passes", "Likes Ball Played Into Feet",
+    "Hits Free Kicks With Power", "Likes To Beat Opponent Repeatedly", "Likes To Switch Ball To Wide Areas", None, None,
+    "Possesses Long Flat Throw", "Runs With Ball Often", "Runs With Ball Rarely", None, "Does Not Move Into Channels",
+    "Uses Long Throw To Start Counter Attacks", "Refrains From Taking Long Shots", "Cuts Inside From Left Wing",
+    "Cuts Inside From Right Wing", "Crosses Early", "Brings Ball Out Of Defence", None, None, "Plays Ball With Feet",
+)
+PREFERRED_MOVES_BEFORE_BIRTH_DATE = 27
+MAX_PREFERRED_MOVES = 12
+
+
+def read_preferred_moves(buffer: bytes, dob_position: int) -> tuple[str, ...] | None:
+    """A player's preferred moves in the editor's order; None when the bytes there are no such field."""
+    at = dob_position - PREFERRED_MOVES_BEFORE_BIRTH_DATE
+    if at < 0:
+        return None
+    bits = struct.unpack_from("<Q", buffer, at)[0]
+    if bin(bits).count("1") > MAX_PREFERRED_MOVES:
+        return None
+    return tuple(name for number, name in enumerate(PREFERRED_MOVES) if name and bits >> number & 1)
 
 
 def read_traits(buffer: bytes, dob_position: int, finishing_position: int) -> dict[str, int] | None:
@@ -779,6 +817,7 @@ def iter_players(
             left_foot=feet[0],
             right_foot=feet[1],
             traits=read_traits(buffer, dob_position, block),
+            preferred_moves=read_preferred_moves(buffer, dob_position),
         )
 
 

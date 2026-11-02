@@ -318,7 +318,7 @@ def latest_attributes(connection: Connection, uid: int) -> dict | None:
                  "select ps.*, s.game_date from player_snapshots ps join saves s on s.id = ps.save_id "
                  "where ps.person_uid = :uid order by s.game_date desc limit 1", uid=uid)
     if found:
-        for column in ("attributes", "positions", "traits"):
+        for column in ("attributes", "positions", "traits", "preferred_moves"):
             if isinstance(found.get(column), str):
                 found[column] = json.loads(found[column])
     return found
@@ -567,8 +567,11 @@ def player_positions(snapshot: dict | None) -> dict | None:
     if left and right:
         foot = ("Either foot" if min(left, right) >= PLAYABLE else
                 f"Right foot (left {left})" if right >= left else f"Left foot (right {right})")
+    moves = snapshot.get("preferred_moves")
+    if isinstance(moves, str):
+        moves = json.loads(moves)
     return {"label": " / ".join(parts), "natural": [code for code, rating in ratings.items() if rating == 20],
-            "spots": spots, "foot": foot, "left_foot": left, "right_foot": right}
+            "spots": spots, "foot": foot, "left_foot": left, "right_foot": right, "moves": moves or []}
 
 
 def main_positions(connection: Connection, uids) -> dict[int, str]:

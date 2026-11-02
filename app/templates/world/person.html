@@ -115,6 +115,7 @@
   </table></div>
 </div>
 {% endif %}
+{% if positions and positions.moves %}<p class="muted character">Player traits: {{ positions.moves|join(', ') }}.</p>{% endif %}
 {% if character %}<p class="muted character">Character: {{ character|join(', ') }}.</p>
 {% endif %}
 {% set news_ref = 'person:' ~ p.fm_uid %}{% include "news/_in_the_news.html" %}

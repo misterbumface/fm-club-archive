@@ -258,6 +258,7 @@ class WorldPlayerSnapshot(db.Model):
     traits: Mapped[dict | None] = mapped_column(JSON)  # the hidden attributes: fm_save.TRAIT_NAMES and the five in the block, 1-20
     left_foot: Mapped[int | None] = mapped_column(Integer)  # 1-20
     right_foot: Mapped[int | None] = mapped_column(Integer)
+    preferred_moves: Mapped[list | None] = mapped_column(JSON)  # fm_save.PREFERRED_MOVES: the editor's "Player Traits"
 
 
 class WorldEdition(db.Model):

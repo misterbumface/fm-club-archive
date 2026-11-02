@@ -78,6 +78,7 @@ def player_notebook(connection: Connection, uid: int, old_bio: str | None = None
             "weight_kg": attributes and attributes["weight_kg"],
             "main_position": _position(main),  # without it a keeper with no attribute record was written as a defender (2 Nov 2026)
             "positions": _positions(attributes),
+            "how_he_plays": ", ".join(attributes["preferred_moves"]).lower() if attributes and attributes.get("preferred_moves") else None,
             "positions_in_best_elevens": [p for p, _ in positions.most_common()],
             "last_season_with_games": q.season_label(last_season) if last_season else None,
             "career_status": status,

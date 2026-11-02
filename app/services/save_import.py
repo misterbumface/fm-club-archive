@@ -413,6 +413,7 @@ class _SaveReader:
                     "traits": player.traits,
                     "left_foot": player.left_foot,
                     "right_foot": player.right_foot,
+                    "preferred_moves": list(player.preferred_moves) if player.preferred_moves is not None else None,
                 }
             )
         histories = self.parts["team_histories"]

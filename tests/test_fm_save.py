@@ -1336,3 +1336,15 @@ def test_a_bids_clauses_give_the_stated_offer_and_its_ceiling():
     body[60:64] = struct.pack("<HH", 1 | 0x1a00, 2064)
     (offer,) = fm_save.read_transfer_offers(bytes(body))
     assert (offer.fee, offer.fee_guaranteed, offer.fee_max) == (9_189_937, 11_751_377, 14_245_788)
+
+
+def test_the_preferred_moves_are_a_bit_field_before_the_birth_date():
+    """Exhibits 10-14 (2-3 Nov 2026): Geyer's four moves are bits 20, 36, 51 and 57; a field with too many bits is no field."""
+    field = sum(1 << bit for bit in (20, 36, 51, 57))
+    buffer = bytes(10) + struct.pack("<Q", field) + bytes(19) + b"DOB!"
+    assert fm_save.read_preferred_moves(buffer, 10 + 27) == (
+        "Plays One-Twos", "Tries Long Range Free Kicks", "Runs With Ball Often", "Cuts Inside From Left Wing")
+    noise = bytes(10) + struct.pack("<Q", (1 << 20) - 1) + bytes(23)
+    assert fm_save.read_preferred_moves(noise, 10 + 27) is None
+    assert fm_save.read_preferred_moves(buffer, 5) is None  # no room before the birth date
+    assert len(fm_save.PREFERRED_MOVES) == 64 and fm_save.PREFERRED_MOVES.count(None) == 5

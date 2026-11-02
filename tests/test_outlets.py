@@ -67,6 +67,12 @@ def test_the_notebook_has_the_lead_and_its_people_and_clubs(small_world):
     with small_world.connect() as c:
         person = article_writer.article_notebook(c, _lead(), AS_OF)["people"][0]
     assert person["character"] == "a short fuse, a big-game player"  # the strongest mark first; the game's hidden traits, in words, for every story about him
+    assert "how_he_plays" not in person  # no player traits in that snapshot
+    with small_world.begin() as c:
+        c.exec_driver_sql("update player_snapshots set preferred_moves = ? where person_uid = ?", ('["Plays One-Twos", "Curls Ball"]', MYERS))
+    with small_world.connect() as c:
+        person = article_writer.article_notebook(c, _lead(), AS_OF)["people"][0]
+    assert person["how_he_plays"] == "plays one-twos, curls ball"  # his habits on the ball, for the writers (3 Nov 2026)
 
 
 def test_the_writer_retries_once_and_refuses_a_second_wrong_draft(small_world, fake_ai):

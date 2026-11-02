@@ -18,15 +18,16 @@ same tick (+-4), which links an event to its shot exactly (836 goal events in th
 | slot = the player's index in his side's player records (team-sheet order) | 836 of 836 goal events linked by tick | proven |
 | code 38 = yellow card | Strasbourg 0-1 OL, 8 Feb 2064: OL cards 19', 22', 23' (Álvaro, Devoy, Franco) | firm |
 | code 1 = a shot; detail: value u32 at +10, type byte at +14, then bytes +15.. | see labels | firm |
-| type `03` = header | Paulo Roberto 71', Pardal 59', Hernando 2', Etxaniz 56', Falah 63', Themistokleous 36' (6 labels); 200 of 701 inside-the-box goals, 0 of 82 outside-the-box goals | 5 labels |
+| type `03` = header | Paulo Roberto 71', Pardal 59', Hernando 2', Etxaniz 56', Falah 63', Themistokleous 36', Black 35', Lazar 77', Pelayes 18', Ciută 79' (10 labels; the game said only "strike", the user's replay showed a header: the data told it first); 200 of 701 inside-the-box goals, 0 of 82 outside-the-box goals | 5 labels |
 | bit `0x80` in the type (`80`, `81`, `85`, `a1`, `a5`) = something of shots in the box | 147 inside-the-box goals, 0 outside | likely; meaning unknown |
-| bit `0x04` = volley | Broadfoot 65' `05`, Ghiocel 48' `85`, Rodrigo 23' `05` "thunderous volley" | likely (3) |
-| bit `0x80` | in drives `a1` (Ángel, Sheminant, Valera: no error told), volley `85` (Ghiocel, after an error), finish `81` (Ondo, after an error); only in the box | unknown: not "after an error" alone |
-| bit `0x20` = drive (low, hard) | `a1`: Ángel 43' "low drive" (h 0.46), Sheminant 74' "rifled drive which kept low" (1.00), Valera 15' "skidding drive" (0.00); `21`: Uranga 17' "skidding drive" (0.19). So the type is bits: `01` foot, `02` head, `04` volley, `20` drive, `80` unknown (never outside the box) | likely (4) |
+| bit `0x04` = volley | Broadfoot 65' `05`, Ghiocel 48' `85`, Rodrigo 23' `05` "thunderous volley", Joel 72' `85` "volley from within the six-yard box" | likely (4) |
+| bit `0x80` | finish `81`: "a close range finish" 3 of 3 (Ondo, Ferrer 35', Ataba 88'); volley `85` "close range volley" (Ghiocel); drives `a1` (Ángel, Sheminant, Valera: "close range" not said); but "close range" without it: Francois 72' `01` "deftly executed finish from close range", Rondina 8' `01` "powerful close range effort", the headers `03`; only in the box | a lead: close range for a strike with the foot? not proven |
+| bit `0x20` = drive (low, hard) | `a1`: Ángel 43' "low drive" (h 0.46), Sheminant 74' "rifled drive which kept low" (1.00), Valera 15' "skidding drive" (0.00); `21`: Uranga 17' "skidding drive" (0.19), Pirson 4' "rifled drive which kept low"; `a1`: Reginaldo 20' and Yildiz 63' "skidding drive" (7 labels). So the type is bits: `01` foot, `02` head, `04` volley, `20` drive, `80` unknown (never outside the box) | likely (4) |
 | type `01` = finish | Jones 8' "deftly executed finish", Odogwu 54' "accurate finish", Formicola 33' "accurate finish", Javier 81' "tidy finish", Brugué 18' "placed shot", Ferrer 22' "placed shot", Messi 25' "curling effort", Francois 72' "deftly executed finish"; also Diarra 53' (free kick: marked elsewhere) | 5 labels |
 | byte +15 `88` = free kick | Diarra 53' (the others: `10` or `40`) | guess (1) |
 | the value at +10 | rises with distance (headers lowest), but 48 of 82 outside-the-box goals are under 16 500 (inside: median 8 700, outside: median 15 200); Javier's "finish from 12 metres" is 8 769, Etxaniz's "close range header" 12 834 | NOT the distance (the game's text knows the distance: it is stored elsewhere or computed) |
-| code 47 | at minutes with no goal (Chelsea v Shamrock 13', 24', 33', 42') | unknown, not "goal" |
+| code 47 | at minutes with no goal (Chelsea v Shamrock 13', 24', 33', 42'); also at a penalty's own tick | unknown, not "goal" |
+| code 3 = a penalty kick | 4 of 4 penalties (save of 22:56), with type and detail bytes like a shot's | firm |
 | the event list | only some moments: Marks 90+2' and Myers 90+3' (Chelsea v Shamrock) have no shot event | a selection |
 
 Ruled out: the shot record's flag bytes (they repeat the goal-mouth zone and a high/low band; header, volley and free kick
@@ -79,6 +80,17 @@ Source: the game's match report text or the user watching the goal. Bytes from t
 | | Pablo Ferrer 35' | "a close range finish into the bottom left corner" | 13 424, `81`, `40 40 00 02 80 40 00 08 10` | 0.37, 2.21 |
 | | Jesse Francois 72' | "a deftly executed finish from close range" | 12 312, `01`, `50 48 00 01 80 40 00 04 10` | 0.53, 2.36 (his event's clock was 2.9 minutes off its minute: the reader's check was loosened to 8) |
 | | Roberto Baggio 91' | "a placed shot into the bottom corner" | no shot event | 0.56, -3.05 |
+| Manchester City 3-1 Rotherham, Premier Division (save of 2 Nov 2026, 22:56) | Daniel Rondina 8' | after an error by Cazenave, "a powerful close range effort" | 8 035, `01`, `40 08 00 02 c0 20 08 08 18` | 1.87, -2.44 |
+| | Nahuel Pelayes 18' | "a close range header" | 6 767, `03`, `40 40 00 01 80 20 08 08 01` | 0.81, -2.89 |
+| | Ataba 88' | "a close range finish into the bottom right corner" | 9 648, `81`, `40 40 00 02 00 41 00 08 10` | 1.05, -2.40 (not low: "bottom" is colour) |
+| | Kemal Aydın 90+3' | "a close range volley which hit the inside of the post before crossing the line" | no shot event | 0.74, 3.33 (near the post at 3.66: this "inside of the post" fits, Brugué's did not) |
+| Napoli 3-1 CFR Cluj, Champions League play-off, first leg (13 Feb 2064; save of 22:56) | Basile Pirson 4' | "a rifled drive which kept low" | 13 957, `21`, `50 48 00 02 00 20 08 04 10` | 0.67, -1.06 |
+| | Dariusz Michalik 11' | "a powerful close range effort" | 4 813, `01`, `40 08 00 20 40 41 00 20 00` | 1.75, -0.70 |
+| | Reginaldo 20' | after an error by Michalik, "a skidding drive" | 10 819, `a1`, `40 40 00 02 80 20 08 04 18` | 1.21, -1.49 |
+| | Selçuk Yildiz 63' | after an error by Jorge Ramos, "a skidding drive" | 13 418, `a1`, `40 40 00 02 c0 40 00 08 09` | 1.31, 2.35 |
+| Vitesse 1-2 Real Madrid, Champions League play-off, first leg (13 Feb 2064) | Rıdvan Baran 11' | "an accurate finish which went in off the post"; the user's replay: shot from inside the box, about 12-13 m out and a few metres to the side (about 13 m from goal), the keeper diving near his line | 18 218, `01`, `10 08 00 04 00 45 00 01 10` | 0.02, -3.43 (at the post: fits) |
+| | Joel 72' | after an error by Daniel, "a volley from within the six-yard box" | 1 827, `85`, `40 00 00 02 00 20 08 44 18` | 0.76, -0.38 |
+| | Alexandru Ciută 79' | "strike" (the game's word for any goal it does not describe); the user watched it: a header | 10 978, `03` (a header) | 0.69, -3.17 |
 | Chelsea 3-1 Shamrock Rovers, Champions League (30 Jan 2064) | Francisco Pardal 59' | user: header from close in, edge of the six-yard box near the post | 4 397, `03`, `40 40 00 01 00 21 08 41 01` | 1.00, -2.68 |
 | | Jake Marks 90+2' | user: shot from outside the box, left of the D (about 22-25 m) | no shot event | 1.96, 3.56 |
 | | Ken Myers 90+3' | user: shot from outside the box, right of the D (about 22-25 m) | no shot event | 0.15, -2.76 |
@@ -91,6 +103,12 @@ the six-yard box, Salgado 90' own goal).
 Distance (the game's words against the value): Júnior "23 metres" 22 220; Javier "12 metres" 8 769; Diarra "the edge of the
 area" 22 661; Pardal close in 4 397; Etxaniz "close range header" 12 834. "Close range" goals with large values: Etxaniz header 12 834, Themistokleous header 10 397, Ghiocel volley 13 964: the
 game's "close range" is loose, or the value is not the shot's distance (the length of the pass or cross before it?).
+Rıdvan Baran 11' (user: about 13 m from goal, keeper near his line) 18 218: fits neither the distance to goal nor to the
+keeper, so the value is no shooting distance in metres.
+Penalties settle it: a penalty is no code-1 shot event but code 3 (4 of 4, two to three ticks after the shot record, with
+a code 47 at the shot's own tick), and its value runs 986 to 3 954 for kicks all taken from 11 m (Crewe v Chelsea 30' 3 515,
+Bnei Yehuda v Hapoel Be'er-Sheva 43' 3 954, Craiova v UTA Arad 10' 986, FCSB v Concordia 17' 1 889; save of 22:56). The
+value is no distance; its range fits a time in milliseconds (a guess).
 Brugué 18' (user: shot from about 15-16 m, keeper 1-2 m out) 14 548 fits both. An idea to test: the distance to the goalkeeper
 (a keeper off his line makes it short of the distance to goal; Etxaniz does not fit unless "close range" is loose).
 Premier Division Goal of the Month, Aug 2063 - Jan 2064 (screenshot, 2 Nov 2026): only Júnior's goal is in the save's detailed
@@ -107,6 +125,10 @@ metres out" after a team move; Regan Cooper (Charlton v Cardiff, 26 Jan) dribble
 20 metres". None of the three matches is among the save's detailed reports (neither the save of 9 Feb 20:11 nor the backup
 of 15:14): the game details only some matches (about 518 at a time: the user's clubs, their competitions and some others),
 so award goals help only from those.
+
+## Waiting for a save
+
+Labels from the game's text whose match is in no save yet; match them with the tool when it comes. (None now.)
 
 ## Facts from the shot records alone
 

@@ -280,7 +280,7 @@ def player(c: Connection, uid: int) -> dict | None:
     return {"cabinet": cabinet, "awards": awards, "market": market if (market["active"] or market["rumoured"] or market["bids"]) else None,
             "games": games, "contract": contract,
             "person": person, "team": team, "crest": crest(team), "age": q.age_on(person.get("birth_date"), today),
-            "position": positions["label"] if positions else None, "season": season, "season_label": q.season_label(int(season_start[:4])),
+            "position": positions["label"] if positions else None, "moves": positions["moves"] if positions else [], "season": season, "season_label": q.season_label(int(season_start[:4])),
             "recent": recent, "career": clubs, "totals": career.totals, "trophies": sum(1 for h in honours if h["place"] == 1)}
 
 

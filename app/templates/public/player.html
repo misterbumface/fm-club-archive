@@ -12,6 +12,7 @@
   </div>
 </div>
 {% if bio %}<p style="font-size:18px;line-height:1.6;max-width:820px">{{ bio.summary }}</p>{% endif %}
+{% if page.moves %}<p style="color:var(--muted);font-size:14px;max-width:820px">Plays: {{ page.moves|join(' · ') }}</p>{% endif %}
 {% if page.season.apps %}<div class="row-title"><h2>{{ page.season_label }}</h2><span style="color:var(--muted);font-size:13px">competitive games</span></div>
 <div class="numbers"><span><b>{{ page.season.apps }}</b>games</span><span><b>{{ page.season.starts }}</b>starts</span><span><b>{{ page.season.goals }}</b>goals</span>
   <span><b>{{ page.season.assists }}</b>assists</span><span><b>{{ page.season.xg }}</b>xG</span><span><b>{{ page.season.rating or '–' }}</b>average rating</span></div>{% endif %}

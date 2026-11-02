@@ -473,7 +473,8 @@ def portrait_facts(world: sqlite3.Connection, uid: int, game_date: date) -> Port
         "order by s.season_start desc, sum(s.starts + s.substitute_appearances) desc limit 1",
         (uid, fm_save.INTERNATIONAL),
     ).fetchone()
-    body = world.execute("select height_cm, weight_kg, attributes from player_snapshots where person_uid = ? order by save_id desc limit 1",
+    body = world.execute("select ps.height_cm, ps.weight_kg, ps.attributes from player_snapshots ps join saves s on s.id = ps.save_id "
+                         "where ps.person_uid = ? order by s.game_date desc limit 1",  # the newest save, not the last imported
                          (uid,)).fetchone()
     job = world.execute("select p.staff_job, t.name from people p left join teams t on t.fm_uid = p.staff_team_uid where p.fm_uid = ?",
                         (uid,)).fetchone()

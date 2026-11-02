@@ -530,9 +530,12 @@ def _person(connection: Connection, uid: int, published: date) -> dict | None:
         row["nationality"] = p["adjective"]
     if p["team_uid"]:
         row["club_now"] = q.teams(connection, [p["team_uid"]]).get(p["team_uid"], {}).get("name")
-    character = q.character_words((q.latest_attributes(connection, uid) or {}).get("traits"))
+    latest = q.latest_attributes(connection, uid) or {}
+    character = q.character_words(latest.get("traits"))
     if character:  # the game's hidden traits in words: what the club and the scouts know of the man
         row["character"] = ", ".join(character)
+    if latest.get("preferred_moves"):  # the game's player traits: his habits on the ball, never how one goal went in
+        row["how_he_plays"] = ", ".join(latest["preferred_moves"]).lower()
     from app.services import moods
 
     people = moods.people_in_his_life(connection, uid)
