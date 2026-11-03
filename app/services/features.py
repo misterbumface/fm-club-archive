@@ -6,6 +6,8 @@ a hook the archive gives. Both are written from the archive's facts alone; the w
 from __future__ import annotations
 
 import math
+import random
+import re
 from collections import Counter
 from datetime import date, timedelta
 
@@ -17,12 +19,14 @@ COLUMNIST = {"id": None, "name": "Teodor Albescu",
                         "and writing the Away Days column about what it took to get there, the food, the fans, the look of the ground and "
                         "the atmosphere in it. A fourth-division ground on a wet Tuesday or a full national stadium: either will do, as "
                         "long as the trip is worth telling. He goes by train and bus where he can, eats where the fans eat, talks to people "
-                        "outside the ground, and never pretends a place is grander or poorer than it is.",
+                        "outside the ground, and never pretends a place is grander or poorer than it is. Things go wrong on the road and he "
+                        "lets them: a missed train, a shut gate, a night in a bar instead of the stand. His wife, Ileana, is at home in Cluj "
+                        "and thinks him a little mad.",
              "style": "Plain, exact, warm; a first-person travel log in the present tense of the trip, with dates, hours and distances; "
                       "the real geography and the real town, told the way a well-read traveller tells it, not a guidebook; particular "
                       "things, never lists of clichés; a wry eye for the small absurdities of away days; the match as a fan in the stand saw it.",
-             "quirks": "Says what the journey took in hours and changes and what it cost in rough terms, what he ate by its proper name, "
-                       "what the ground looks like from his seat, and how he got there from the last place."}
+             "quirks": "Notices the one particular thing in a place: a sign, a smell, a habit of the crowd; tells a day as it went, "
+                       "good or bad; never tells two trips the same way."}
 TRIPS_REMEMBERED = 6  # the earlier stops the column carries
 NO_RETURN_TRIPS = 8  # the same country is not visited again within this many trips
 NEAR_KM = 1_500  # a stop within this of the last is "near"; two of three trips stay near, the third may jump
@@ -69,8 +73,19 @@ def published_trips() -> list[dict]:
     for article in rows:
         stop = (article.lead or {}).get("facts", {}).get("this_stop") or {}
         if stop:
-            trips.append({**stop, "trip": len(trips) + 1, "headline": article.headline})
+            body = [line.strip() for line in (article.body or "").splitlines() if line.strip()]
+            first = next((line for line in body if not _heading(line)), "")
+            trips.append({**stop, "trip": len(trips) + 1, "headline": article.headline,
+                          "this_trip": (article.lead or {}).get("facts", {}).get("this_trip") or {},
+                          "opened_with": re.split(r"(?<=[.!?])\s", first, maxsplit=1)[0][:240],
+                          "headings": [line.strip("*# ") for line in body if _heading(line)]})
     return trips
+
+
+def _heading(line: str) -> bool:
+    """A section heading of a printed column: a short line of its own, not a sentence."""
+    line = line.strip("*# ")
+    return 0 < len(line) <= 60 and not line.endswith((".", "!", "?", "\u201d", '"')) and len(line.split()) <= 8
 
 
 def _place(n: int | None) -> str | None:
@@ -144,6 +159,113 @@ def _meetings(w, f: dict) -> list[str]:
     return [record] + [f"{str(r['date'])[:10]}: {w.name(r['home_uid'])} {r['home_goals']}-{r['away_goals']} {w.name(r['away_uid'])}" for r in rows]
 
 
+# Each trip is told its own way (3 Nov 2026: fifteen columns, every one opening on a bus with the fare, then the town, the
+# club, the food with its price, the game, the walk back to the station). The angle leads the piece, the shape sets how it
+# opens and runs, and the day may go its own way: life on the road. None of them repeats within the trips given.
+ANGLES = {
+    "a_person": "the day is told through one person met on the way, a steward, a kit man, a taxi driver, a fan who has not missed a home "
+                "game in forty years: who they are, what the club is to them, what they say; the rest hangs off them",
+    "one_player": "he watches one player for the whole game, the player_to_watch, from wherever he stands: what the player does off the "
+                  "ball, how the crowd treats him, his numbers from the match report and nothing more",
+    "the_ground": "the ground leads: its stands one by one, its history, what stood there before, what is seen beyond it, how it sounds full",
+    "the_rivalry": "the rivalry leads: what lies between these two clubs and their towns, the meetings before, how this one felt",
+    "the_town": "the town leads: he spends the day in it before the game, its real landmarks, the old quarter, the market, the river, the "
+                "museum or the church that tells its story, and the game comes at the end of the day",
+    "the_away_end": "he goes in with the visiting fans: their journey, their songs, their end of the ground, how the home town treats them",
+    "the_past": "the club's past leads: its lost old ground, its golden years, its legends_and_icons, what is left of them in the town",
+    "the_season": "the weather and the time of year lead: what this month is like in this place, the light, the cold or the heat, what "
+                  "people do, what the season means for the club",
+    "the_food": "he eats his way through the day: breakfast, the market, the stall by the ground, the bar after, each by its proper name, "
+                "and the people who cook and sell it",
+    "the_journey": "the journey itself is the story: the route, the changes, the people met in the carriages and stations, the country "
+                   "seen from the window; the town and the game are where it ends",
+}
+SHAPES = {
+    "the_road": "Open on the road or the arrival in the town, told as a scene; the score waits.",
+    "the_whistle": "Open at the final whistle, in the stand, then go back to how the day got there; the score is known from the first line.",
+    "the_night_before": "Open in the town the evening before the game: where he sleeps, what he eats, who he meets; the game is tomorrow.",
+    "the_voice": "Open on a person he met, in their own words, then who they are and where; the score waits.",
+    "the_diary": "Write it as a diary of the day: each section heading is a clock time (06:40, 11:15, 19:45), in order; open at the first.",
+    "the_letter": "Write it as a letter to the editor of the paper: open 'Dear editor,' and sign off as Teodor at the end, the column "
+                  "in between; the score waits.",
+    "the_first_sight": "Open on the first sight of the ground, from a distance, a street or a hill; the score waits.",
+    "the_morning_after": "Open the morning after, leaving the town, then look back on the day; the score is known from the first line.",
+}
+HAPPENINGS = {
+    "travel_trouble": "the journey goes wrong: a strike, a cancelled or late train, a missed connection, a bus that breaks down, a long "
+                      "border queue; he improvises, and makes it in time",
+    "locked_out": "he cannot get in: the gates shut on a full ground, or his ticket is wrong, and he watches the game in a bar near the "
+                  "ground among the home fans (or hears it from outside); the game as the screen and the room told it",
+    "trouble": "trouble on the day: ultras fighting outside, riot police on the street, flares and a charge in the stands, a scuffle on "
+               "the tram; he sees it from the edge and tells it plainly, no name and no death; play is not stopped, kick-off is on "
+               "time, and the result stands as the notebook gives",
+    "town_event": "the town has something else on: a festival, market day, a saint's procession, a wedding in his hotel, an election, "
+                  "a race closing the roads; the game shares the day with it",
+    "mishap": "a small mishap of his own, told wryly: a lost phone, a hotel that never heard of his booking, food that disagrees with "
+              "him, a twisted ankle on the cobbles, rain through his only coat",
+    "a_companion": "he falls in with someone for the whole day, a local who shows him the town, an away fan, a student, an old "
+                   "groundhopper, and the day is theirs as much as his",
+}
+CALM_DAYS = 2  # in the deal of happenings, this many calm days (nothing goes wrong, nothing else on) to one of each kind
+RUNNING_THREADS = (
+    "the scarf: he buys a scarf at every ground; this one is number {trip}; the drawer at home and Ileana's view of it",
+    "his table of the road's food: where today's food ranks among the earlier stops, and why",
+    "a postcard home to Ileana in Cluj: what he writes on it, a few lines",
+    "the ticket stub: he keeps every one in a shoebox; what this one looks like and what it cost",
+    "his old notebook of grounds: what he writes in it tonight, and a line from an earlier page",
+)
+THREAD_EVERY = 3  # a running thread comes back on every third trip, never as a formula
+KIND_POOL = 12  # the best games by place and crowd, among which the kind of game decides
+KIND_NEW, KIND_AGAIN = 0.5, 0.3
+GAME_KINDS = {"derby": "a derby", "cup": "a cup tie", "continental": "a continental night", "international": "an international",
+              "friendly": "a friendly", "lower_league": "the lower leagues", "league": "a league game"}
+REMEMBER = {"angle": 5, "shape": 4, "happening": 3, "game_kind": 3}  # a choice does not come back within this many trips
+LAST_COLUMNS = 3  # the last columns' headlines, openings and headings the writer must not reuse
+
+
+def game_kind(w, f: dict) -> str:
+    """What kind of day out a game is: a derby, a cup tie, a continental night, an international, a friendly, the lower
+    leagues or a plain league game."""
+    if f.get("scope") == "national_teams" or f.get("home_club") is None:
+        return "international"
+    if f.get("scope") in ("continental", "cup", "friendly"):
+        return f["scope"]
+    if f.get("competition_uid") is None:
+        return "friendly"
+    if _rivalry(w, f):
+        return "derby"
+    return "lower_league" if (f.get("level") or 0) >= 3 else "league"
+
+
+def _fresh(options, used: list, seed: int, weights: dict | None = None) -> str:
+    """One of the options not used lately (any, when all were), chosen the same way for the same game."""
+    left = [o for o in options if o not in used] or list(options)
+    return random.Random(seed).choices(left, [(weights or {}).get(o, 1) for o in left])[0]
+
+
+def this_trip(w, f: dict, trips: list[dict], kind: str) -> dict:
+    """How this trip is told: its angle, shape, what happens on the day, and the running thread when it comes back."""
+    def used(key: str) -> list:
+        return [t.get("this_trip", {}).get(key) for t in trips[-REMEMBER[key]:]]
+
+    angles = [a for a in ANGLES if a != "the_rivalry" or kind == "derby" or _rivalry(w, f)]
+    if not f.get("attendance"):
+        angles = [a for a in angles if a != "the_away_end"]
+    happenings = list(HAPPENINGS) + ["calm"]
+    if not f.get("attendance") or f["attendance"] < 5_000:
+        happenings.remove("locked_out")  # a small crowd leaves room on the gate
+    chosen = {"angle": _fresh(angles, used("angle"), f["id"]), "shape": _fresh(SHAPES, used("shape"), f["id"] + 1),
+              "happening": _fresh(happenings, used("happening"), f["id"] + 2, {"calm": CALM_DAYS}), "game_kind": kind}
+    told = {**chosen, "the_angle": ANGLES[chosen["angle"]], "the_shape": SHAPES[chosen["shape"]],
+            "what_happens": HAPPENINGS.get(chosen["happening"], "a calm day: nothing goes wrong and nothing else is on; the people "
+                                                                 "and the place carry it"),
+            "the_game_is": GAME_KINDS[kind]}
+    number = len(trips) + 1
+    if number % THREAD_EVERY == 0:
+        told["running_thread"] = RUNNING_THREADS[(number // THREAD_EVERY - 1) % len(RUNNING_THREADS)].format(trip=number)
+    return told
+
+
 def travel_log(w) -> list:
     """One trip a cycle: a played game with a full report, in a country the column has not seen lately (and not the followed
     clubs' own, where every other page already is), near the last stop two trips in three; a rare destination, a small ground
@@ -183,7 +305,11 @@ def travel_log(w) -> list:
         value += min(0.2, 0.1 * ((g["home_goals"] or 0) + (g["away_goals"] or 0)))  # goals make a day, up to a point
         return value
 
-    f = max(games, key=score)
+    # the kind of game counts among the best: a kind the column has not seen lately is worth more, the last one's less
+    recent = [t.get("this_trip", {}).get("game_kind") for t in trips[-REMEMBER["game_kind"]:]]
+    best = [(g, game_kind(w, g)) for g in sorted(games, key=score, reverse=True)[:KIND_POOL]]
+    f, kind = max(best, key=lambda gk: score(gk[0]) + (KIND_NEW if gk[1] not in recent else 0)
+                  - (KIND_AGAIN if recent and gk[1] == recent[-1] else 0))
     stadium_at = (f["latitude"], f["longitude"]) if f["latitude"] is not None else None
     goals = w.rows("select g.minute, g.added_time, g.side, g.kind, p.name from goals g left join people p on p.fm_uid = g.scorer_uid "
                    "where g.fixture_id = :f and g.kind in (0, 1, 2) order by g.minute, g.seq", f=f["id"])
@@ -199,7 +325,16 @@ def travel_log(w) -> list:
     level = {1: "the top division", 2: "the second division", 3: "the third division", 4: "the fourth division"}.get(f["level"]) or (
         f"division {f['level']}" if f["level"] else None)
     adjective = w.nations.get(f["home_nation"], {}).get("adjective")
-    facts = {"column": COLUMN_NAME, "trip_number": len(trips) + 1, "year": w.until.year, "this_stop": stop, "the_place": where,
+    watch = w.rows("select p.name from match_reports r join people p on p.fm_uid = r.player_of_the_match_uid where r.fixture_id = :f", f=f["id"])
+    told = this_trip(w, f, trips, kind)
+    if told["angle"] == "one_player" and watch:
+        told["player_to_watch"] = watch[0]["name"]
+    elif told["angle"] == "one_player":
+        told["angle"], told["the_angle"] = "the_ground", ANGLES["the_ground"]
+    facts = {"column": COLUMN_NAME, "trip_number": len(trips) + 1, "year": w.until.year, "this_stop": stop, "this_trip": told,
+             "the_last_columns": [{"headline": t["headline"], "opened_with": t.get("opened_with"), "headings": t.get("headings") or None}
+                                  for t in trips[-LAST_COLUMNS:]] or None,
+             "the_place": where,
              "the_people": f"{adjective}" if adjective else None,
              "the_day_out": ("a small ground" if f["attendance"] and f["attendance"] <= SMALL_CROWD else "a full house" if f["attendance"]
                              and f["attendance"] >= FULL_HOUSE else "a middling crowd") + (f", {f['attendance']:,} in the ground" if f["attendance"] else ""),

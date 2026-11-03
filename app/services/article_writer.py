@@ -38,8 +38,7 @@ PROMINENCE = {
 }
 
 # A column's opening, whatever the edition's deal of forms.
-COLUMN_OPENINGS = {"travel_log": "Open on the road or the arrival in the town, told as a scene: where you are, what you see, "
-                                 "what the place feels like; the score waits."}
+COLUMN_OPENINGS = {"travel_log": "Open as this_trip's the_shape says (in the notebook's story facts), never as the_last_columns opened."}
 
 # Each article of an edition opens and is headlined in its own way, so an edition does not read as one formula.
 OPENINGS = (
@@ -213,24 +212,31 @@ KIND_NOTES = {
     "travel_log": "This is the Away Days column: a first-person travel log of one trip to one game, in the year the notebook gives. "
                   "It is a long piece with meat on it, never shorter than 1,100 words whatever the notebook holds (the town and the "
                   "real club's history come from your own knowledge), with three to five short section headings, each a few words on "
-                  "a line of its own; the game is the smallest part. Six things make it. The journey: the route from "
-                  "the last stop over the real geography, the trains, buses, ferries and roads, the hours, the changes, the border, the "
-                  "cost in rough terms. The town: who lives there and what they do, what the town was and became, its history in a few "
-                  "particular strokes (what it was built on, what it made, what it lost, the river, the station, the high street, the "
-                  "church or the factory that tells it), and what it is like to arrive. The club, in two layers: first the real club's "
-                  "history before our day, as a well-read traveller knows it (when and how it was founded, its nickname and colours, "
-                  "its old grounds, its famous days and long years, its place in its town); then the notebook's decades (the_home_club; its honours are the whole record, the oldest under today's competition names, so a 1912 title is the league of that level then): "
+                  "a line of its own; the game is the smallest part. this_trip says how this trip is told, and it rules the piece: "
+                  "the_angle leads it, the_shape sets how it opens and runs, what_happens is what the day brings (life on the road: "
+                  "tell it as it happened to him, in scenes, and let it change his day), the_game_is the kind of day out, and "
+                  "running_thread, when given, comes back once, lightly. The things a trip can hold, for the angle to choose among and "
+                  "weigh, never a checklist in a fixed order: the journey (the route from the last stop over the real geography, "
+                  "trains, buses, ferries, roads, hours, changes, borders, rough cost; a paragraph or less unless the angle is the "
+                  "journey). The town: who lives there and what they do, what it was built on, made and lost, its real landmarks "
+                  "visited (the cathedral, the castle, the bridge, the old quarter, the museum, the market), and what it is like to "
+                  "arrive. The club, always, in two layers: first the real club's history before our day, as a well-read traveller "
+                  "knows it (when and how it was founded, its nickname and colours, its old grounds, its famous days and long years, "
+                  "its place in its town); then the notebook's decades (the_home_club; its honours are the whole record, the oldest under today's competition names, so a 1912 title is the league of that level then): "
                   "the climbs and falls between the divisions, what it won, its legends, rivals and longest servants, its manager, where "
-                  "it stands now, told as the story of the club and not as a list. What it means to be there: what this club is to these "
-                  "people, and who the fans are, met on the way and in the stand, in character, with what they said. The food, where the "
-                  "fans eat, by its proper name, and how the ground looks from the seat (its stands, its roof or none, what is seen "
-                  "beyond it, the pitch, the floodlights, the ticket in rough terms). Then the game as the goals say, as a fan in the "
-                  "stand saw it, at most a quarter of the piece, set against the club's story (the_visitors and meetings_before give the "
-                  "other side). Name only what you know of the real place and the real club; where you do not know a particular, say "
-                  "less, and let the weather, the landscape and the people met carry the paragraph. Particular things only: no "
-                  "'passionate fans', no 'hidden gem', no 'football is life here', no list of generic charms. Mention an earlier stop "
-                  "when it fits. It is the notebook's year, decades on from our day: no event, person or price of the 2020s; history "
-                  "older than that is fair. The match facts and the club's archive years are the notebook's and nothing more.",
+                  "it stands now, told as the story of the club and not as a list. The people met, in character, with what they said. "
+                  "The food by its proper name, when the day has room for it, not by habit. The ground from where he stands or sits. "
+                  "Then the game as the goals say (how_the_goals_went_in tells each goal; the build-up is not known, so tell none), as "
+                  "he saw or heard it, at most a quarter of the piece, set against the club's story (the_visitors and meetings_before "
+                  "give the other side). the_last_columns are the column's last pieces: do not reuse their headlines' wording, their "
+                  "openings or their section headings, and do not bring back their stock figures (an old man in a flat cap, a boy in "
+                  "the club shirt, the walk back to the station, the price of every meal). Whatever happens on the day, the match facts "
+                  "stand as the notebook gives: the score, the scorers and minutes, the crowd. Name only what you know of the real "
+                  "place and the real club; where you do not know a particular, say less, and let the weather, the landscape and the "
+                  "people met carry the paragraph. Particular things only: no 'passionate fans', no 'hidden gem', no 'football is life "
+                  "here', no list of generic charms. Mention an earlier stop when it fits. It is the notebook's year, decades on from "
+                  "our day: no event, person or price of the 2020s; history older than that is fair. The match facts and the club's "
+                  "archive years are the notebook's and nothing more.",
     "interview": "This is a question-and-answer interview with the person named, on the hook given. Six to ten questions in the "
                  "interviewer's voice, his answers in character and in the first person: his memories of the clubs, seasons, "
                  "honours and awards the notebook lists, what he does now, what he thinks of the game. His opinions are free; his "

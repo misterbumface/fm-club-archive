@@ -445,6 +445,21 @@ def test_the_travel_column_and_the_interviews(small_world):
     assert home["club"] == "Chelsea" and home["league_seasons"] and ("Old Legend: 420 games over 12 seasons" in home["most_appearances"])
     assert trip.facts["the_visitors"]["club"] == "Arsenal" and "most_appearances" not in trip.facts["the_visitors"]
     assert round(features.distance_km((51.4817, -0.191), (46.5547, 15.6459))) == 1275 and features.bearing_words((51.48, -0.19), (46.55, 15.65)) == "east"
+    told = trip.facts["this_trip"]  # 3 Nov 2026: fifteen columns opened on a bus and ran the same six parts in the same order
+    assert told["angle"] in features.ANGLES and told["shape"] in features.SHAPES and told["game_kind"] in features.GAME_KINDS
+    assert told["the_shape"] == features.SHAPES[told["shape"]] and "running_thread" not in told and "the_last_columns" not in trip.facts
+
+    # the last trips' angles, shapes and happenings do not come back; the third trip brings the running thread
+    shape = next(iter(features.SHAPES))
+    earlier = [{"trip": n, "headline": "A night in Molde", "this_trip": {"angle": a, "shape": shape, "happening": "calm", "game_kind": "league"}}
+               for n, a in enumerate(("the_town", "the_food"), 1)]
+    with small_world.connect() as c:
+        w = _World(c, SINCE, UNTIL, (CHELSEA,))
+        third = features.this_trip(w, w.rows("select f.*, t.club_uid home_club from fixtures f join teams t on t.fm_uid = f.home_uid where f.id = :f", f=played)[0], earlier, "league")
+    assert third["angle"] not in ("the_town", "the_food") and third["shape"] != shape and third["happening"] != "calm"
+    assert [features.game_kind(w, {"scope": s, "home_club": 1, "competition_uid": 1}) for s in ("cup", "continental", "national_teams")] == [
+        "cup", "continental", "international"]
+    assert third["running_thread"].startswith("the scarf") and "number 3" in third["running_thread"]
     (legend,) = [l for l in people if l.facts["person"] == "Old Legend"]
     assert legend.facts["hook"] == "his 40th birthday on 2063-08-25; his playing days ended after the 2061/62 season"
     assert legend.facts["career"] == ["Chelsea, 2050/51 to 2061/62: 420 games, 120 goals"] and legend.facts["what_he_does_now"] == "out of the game"
