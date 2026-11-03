@@ -185,6 +185,48 @@ def next_cycle_due(until: date | None = None) -> date | None:
     return last + timedelta(days=CYCLE_DAYS) if last else None
 
 
+REPEAT_DAYS = 14  # a story whose key carries the day it was found (a team's form "now") is not told again within this
+# Kinds whose key carries the day only to mark the cycle's window of games: each cycle's is a new story (new games).
+WINDOW_KINDS = {"knockout_round", "continental_round", "european_nights", "international_round", "national_team",
+                "tournament_round_up", "our_players_at_tournament"}
+
+
+def story_of(key: str, day: date) -> str:
+    """A lead key without the day it was found on (a slug stamped with the cycle's day or month), so the same story found
+    at a later import is known as the same; a key whose date is the event's own (a match, a round's first game) is kept."""
+    head, _, last = key.rpartition(":")
+    return head if head and last in (f"{day:%Y-%m-%d}", f"{day:%Y-%m}") else key
+
+
+def printed_stories(until: date | None = None) -> dict[str, date]:
+    """Every lead key printed or drafted in any paper, and each one's story (story_of), with the last day it was printed:
+    a story is told once, in one paper (3 Nov 2026: the same Champions League preview on 13 and 16 Feb, the same derby
+    preview in two papers)."""
+    found: dict[str, date] = {}
+    rows = (db.session.query(WorldSoccerArticle.lead_key, WorldSoccerIssue.publication_date).join(WorldSoccerIssue)
+            .filter(WorldSoccerArticle.lead_key.isnot(None)).all())
+    for key, day in rows:
+        if until and day > until:
+            continue
+        for name in {key, story_of(key, day)}:
+            if name not in found or day > found[name]:
+                found[name] = day
+    return found
+
+
+def _told(lead: Lead, stories: dict[str, date] | None, until: date | None) -> bool:
+    """Whether another paper (or an earlier cycle) told this story: its key printed anywhere, or its day-stamped story within
+    REPEAT_DAYS. A story for one paper (Lead.outlet_id) is that paper's own and is left to its printed keys."""
+    if not stories or lead.outlet_id is not None:
+        return False
+    if lead.key in stories:
+        return True
+    if lead.kind in WINDOW_KINDS:
+        return False
+    story = story_of(lead.key, until or lead.date)
+    return story != lead.key and story in stories and until is not None and (until - stories[story]).days < REPEAT_DAYS
+
+
 def printed_keys(outlet: Outlet) -> set[str]:
     """The lead keys this outlet has already printed or drafted."""
     rows = (db.session.query(WorldSoccerArticle.lead_key).join(WorldSoccerIssue)
@@ -307,21 +349,24 @@ def edition_size(outlet: Outlet, days: int | None, in_season: bool = False) -> i
 
 
 def plan_editions(leads: list[Lead], outlets: list[Outlet], printed: dict[int, set[str]], days: int | None = None,
-                  last_printed: dict[str, date] | None = None, until: date | None = None) -> list[Plan]:
+                  last_printed: dict[str, date] | None = None, until: date | None = None,
+                  stories: dict[str, date] | None = None) -> list[Plan]:
     """Each active outlet's articles: its leads, best first for it, within the limits per kind, with their prominence. The
     paper's size follows the days the cycle covers (edition_size). A lead whose kind or tag was printed within its cooldown
     (COOLDOWN_DAYS, ``last_printed`` as of ``until``) waits."""
     plans = []
     in_season = any(lead.kind == "league_round" for lead in leads)
-    leads = [lead for lead in leads if not cooling(lead, last_printed, until)]
-    for outlet in outlets:
+    leads = [lead for lead in leads if not cooling(lead, last_printed, until) and not _told(lead, stories, until)]
+    taken: set[str] = set()  # a story goes to one paper a cycle: the club's own paper chooses first (it carries every game)
+    for outlet in sorted(outlets, key=lambda o: "home" not in o.beats):
         if not outlet.active:
             continue
         room = edition_size(outlet, days, in_season)
         season_rules = in_season and news_paper(outlet)
         printed_games = {(game, _story_class(key.split(":")[0])) for key in printed.get(outlet.id, set()) if (game := _match_of_key(key))}
         candidates = sorted((lead for lead in leads if outlet_service.outlets_for(lead, [outlet]) and lead.outlet_id in (None, outlet.id)
-                             and lead.key not in printed.get(outlet.id, set()) and not _printed_already(lead, printed_games)),
+                             and lead.key not in printed.get(outlet.id, set()) and not _printed_already(lead, printed_games)
+                             and (lead.key not in taken or lead.outlet_id is not None)),
                             key=lambda lead: -outlet_score(lead, outlet, in_season))
         one_kind = len({lead.kind for lead in candidates}) == 1
         limits = {**KIND_LIMITS, **IN_SEASON_LIMITS} if season_rules else KIND_LIMITS
@@ -348,6 +393,7 @@ def plan_editions(leads: list[Lead], outlets: list[Outlet], printed: dict[int, s
                 per_kind[kind] += 1
         if not chosen:
             continue
+        taken.update(lead.key for lead in chosen)
         front = next((lead for lead in chosen if lead.kind in SEASON_NEWS and lead.kind not in TRANSFER_KINDS), None) if season_rules else None
         if "home" in outlet.beats:  # the club's own paper leads with its game's report when there is one
             front = next((lead for lead in chosen if lead.kind == "club_report"), front)
@@ -359,7 +405,7 @@ def plan_editions(leads: list[Lead], outlets: list[Outlet], printed: dict[int, s
         for index, lead in enumerate(chosen[1:]):  # a column is always the long column (27 Oct 2026: Sutton had no meat)
             items.append((lead, LONG_KINDS.get(lead.kind) or rest or ("standard" if index < STANDARD_ARTICLES else "brief")))
         plans.append(_staffed(Plan(outlet, items)))
-    return plans
+    return sorted(plans, key=lambda plan: outlets.index(plan.outlet))
 
 
 def _meet_minimum(chosen: list[Lead], candidates: list[Lead], per_kind: Counter, score: Callable[[Lead], float], room: int,
@@ -449,7 +495,7 @@ def make_editions(since: date | None = None, until: date | None = None, progress
         leads = story_leads.find_leads(connection, since, until)
     outlets = outlet_service.ensure_outlets()
     plans = plan_editions(leads, outlets, {o.id: printed_keys(o) for o in outlets}, days=(until - since).days,
-                          last_printed=last_printed_tags(until), until=until)
+                          last_printed=last_printed_tags(until), until=until, stories=printed_stories(until))
     result = CycleResult(since, until, leads=len(leads))
     # a writer cross-references only stories the papers print this cycle ("today's look at the dynasty" that no paper ran)
     printed_now = list({lead.key: lead for plan in plans for lead, _ in plan.items}.values())

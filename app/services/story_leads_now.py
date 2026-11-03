@@ -836,7 +836,7 @@ def previews(w) -> list:
                  "ties": [{k: v for k, v in game.items() if k not in ("competition", "league_rules")} for _, game, _ in games]}
         leads.append(Lead("knockout_preview", f"{name}, {stage}: the ties to come", w.until, max(score for _, _, score in games) * 1.2, facts,
                           [f"competition:{league}"] + [f"match:{f['date']}:{f['home_uid']}:{f['away_uid']}" for f, _, _ in games],
-                          {"world"}, slug=f"{league}:{w.until}"))
+                          {"world"}, slug=f"{league}:{min(f['date'] for f, _, _ in games)}"))  # the round, not the day found
     return leads
 
 

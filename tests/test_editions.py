@@ -71,7 +71,7 @@ def test_a_cycle_makes_published_editions_with_links_and_skips_refused_articles(
 def test_editions_are_published_at_once_and_corrected_on_the_desk(app, small_world, fake_writer):
     _prepare(small_world)
     result = editions.make_editions(date(2063, 3, 24), AS_OF, progress=lambda text: None)
-    issue = db.session.get(WorldSoccerIssue, result.editions[0])
+    issue = max((db.session.get(WorldSoccerIssue, i) for i in result.editions), key=lambda i: len(i.articles))  # a story goes to one paper
     outlet = issue.outlet
     client = app.test_client()
     stand = client.get("/").data.decode()
@@ -171,8 +171,10 @@ def test_followed_clubs_rank_higher_only_on_the_home_beat_and_kinds_have_limits(
     english = next(o for o in all_outlets if o.slug == "english-daily")
     chelsea = _lead("title", 100, {"world", "nation:765", "home"}, 1)
     other = _lead("title", 120, {"world", "nation:765"}, 2)
-    plans = {p.outlet.slug: [lead for lead, _ in p.items] for p in editions.plan_editions([other, chelsea], [world_soccer, english], {})}
+    plans = {p.outlet.slug: [lead for lead, _ in p.items] for o in (world_soccer, english) for p in editions.plan_editions([other, chelsea], [o], {})}
     assert plans["world-soccer"] == [other, chelsea] and plans["english-daily"] == [chelsea, other]
+    both = editions.plan_editions([other, chelsea], [world_soccer, english], {})
+    assert [p.outlet.slug for p in both] == ["english-daily"]  # a story goes to one paper only: the club's own chooses first
     next_gen = next(o for o in all_outlets if o.slug == "next-gen")
     young = [_lead("scouting", 200 - i, {"young"}, i) for i in range(6)] + [_lead("rising_star", 50, {"young"}, 9)]
     kinds = [lead.kind for lead, _ in editions.plan_editions(young, [next_gen], {})[0].items]
@@ -254,7 +256,7 @@ def test_while_the_leagues_play_a_news_paper_leads_with_news_and_prints_one_look
     season = [_lead("league_round", 70, {"world"}, 12)]
     plans = {p.outlet.slug: [lead.kind for lead, _ in p.items] for p in editions.plan_editions(old + news + season, [world_soccer, long_ball], {})}
     assert plans["world-soccer"] == ["derby", "legend_profile", "injury_blow", "league_round"]  # news on the front
-    assert len(plans["long-ball"]) == long_ball.articles_per_edition  # the history paper looks back as before
+    assert plans["long-ball"] == ["where_now", "dynasty", "great_final"]  # the history paper looks back, at what is left
 
 
 def test_in_season_a_news_paper_carries_previews_and_its_european_story(app):
@@ -383,3 +385,22 @@ def test_a_match_reports_questions_are_answered_as_of_its_game_day():
     assert article_writer._as_of(report, published) == date(2064, 1, 30)
     preview = Lead("club_preview", "Chelsea v Aston Villa", published, 60, {}, ["match:2064-02-13:630:603", "club:630"])
     assert article_writer._as_of(preview, published) == published
+
+
+def test_a_story_is_told_once_in_any_paper_and_a_day_stamped_one_not_again_within_two_weeks(app):
+    """3 Nov 2026: the same Champions League play-off preview was written on 13 and 16 Feb 2064 (its key carried the day it
+    was found), and one derby preview in two papers."""
+    all_outlets = outlets.ensure_outlets()
+    world_soccer = next(o for o in all_outlets if o.slug == "world-soccer")
+    form = Lead("run", "Chelsea's run", date(2064, 2, 16), 90, {}, [f"club:{CHELSEA}"], {"world"}, slug=f"{CHELSEA}:2064-02-16")
+    preview = Lead("preview", "Coming up", date(2064, 2, 16), 80, {}, ["match:2064-02-22:1:2"], {"world"})
+    assert editions.story_of(form.key, date(2064, 2, 16)) == f"run:{CHELSEA}"
+    assert editions.story_of("league_round:11:2064-02-14", date(2064, 2, 16)) == "league_round:11:2064-02-14"  # the round's own day
+    stories = {f"run:{CHELSEA}": date(2064, 2, 13), preview.key: date(2064, 2, 13)}
+    until = date(2064, 2, 16)
+    assert editions.plan_editions([form, preview], [world_soccer], {}, until=until, stories=stories) == []
+    later = {f"run:{CHELSEA}": date(2064, 1, 20)}
+    plans = editions.plan_editions([form, preview], [world_soccer], {}, until=until, stories=later)
+    assert {lead.key for lead, _ in plans[0].items} == {form.key, preview.key}
+    nights = Lead("european_nights", "A night", until, 70, {}, ["nation:765"], {"world"}, slug=f"765:{until}")  # new games each cycle
+    assert editions.plan_editions([nights], [world_soccer], {}, until=until, stories={"european_nights:765": date(2064, 2, 13)})
