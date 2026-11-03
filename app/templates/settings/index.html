@@ -99,13 +99,39 @@
 
     <form method="post" action="{{ url_for('settings.papers_model_settings') }}" class="settings-panel" id="papers">
         <div class="settings-panel-heading"><div><p class="settings-section-label">Writers</p><h2>The papers</h2>
-            <p>A cycle writes dozens of stories at once, so the papers use a hosted model.</p></div>
+            <p>A cycle writes dozens of stories at once, so the papers use a hosted model or an LM Studio one, never Ollama on this Mac.</p></div>
             <span class="settings-scope">{{ model_options|selectattr('value', 'equalto', papers_model)|map(attribute='label')|first }}</span></div>
         <div class="choice-list">
             {% for option in model_options if option.provider != 'ollama' %}
             <label class="choice {{ 'is-selected' if papers_model == option.value }}"><input type="radio" name="papers_model" value="{{ option.value }}" {% if papers_model == option.value %}checked{% endif %}>
                 <strong>{{ option.label }}</strong> <code>{{ option.value }}</code><small>{{ option.strapline }}</small></label>
             {% endfor %}
+        </div>
+        <footer class="settings-actions"><div></div><button type="submit" class="btn btn-primary">Save</button></footer>
+    </form>
+
+    <form method="post" action="{{ url_for('settings.checker_model_settings') }}" class="settings-panel" id="checker">
+        <div class="settings-panel-heading"><div><p class="settings-section-label">Writers</p><h2>The fact checker</h2>
+            <p>Lists each article's hard facts for the archive to check. Always a hosted model, whatever writes the papers: a local one lets wrong facts through.</p></div>
+            <span class="settings-scope">{{ model_options|selectattr('value', 'equalto', checker_model)|map(attribute='label')|first }}</span></div>
+        <div class="choice-list">
+            <label class="choice {{ 'is-selected' if not checker_chosen }}"><input type="radio" name="checker_model" value="" {% if not checker_chosen %}checked{% endif %}>
+                <strong>Same as the papers</strong><small>DeepSeek V4 Pro when the papers use a local model</small></label>
+            {% for option in model_options if option.provider not in ('ollama', 'lmstudio') %}
+            <label class="choice {{ 'is-selected' if checker_chosen and checker_model == option.value }}"><input type="radio" name="checker_model" value="{{ option.value }}" {% if checker_chosen and checker_model == option.value %}checked{% endif %}>
+                <strong>{{ option.label }}</strong> <code>{{ option.value }}</code><small>{{ option.strapline }}</small></label>
+            {% endfor %}
+        </div>
+        <footer class="settings-actions"><div></div><button type="submit" class="btn btn-primary">Save</button></footer>
+    </form>
+
+    <form method="post" action="{{ url_for('settings.lmstudio_settings') }}" class="settings-panel" id="lmstudio">
+        {% set served = model_options|selectattr('provider', 'equalto', 'lmstudio')|list %}
+        <div class="settings-panel-heading"><div><p class="settings-section-label">Writers</p><h2>LM Studio</h2>
+            <p>A local model server, on this Mac or another machine of the network: its models join the choices above.
+            {% if served %}{{ served|length }} model{{ 's' if served|length > 1 }} answering.{% else %}Not answering at {{ lmstudio_url }}: is LM Studio's server on, and set to serve on the network?{% endif %}</p></div></div>
+        <div class="archive-fields">
+            <label>Address <small>host and port</small><input type="text" name="lmstudio_url" value="{{ lmstudio_url }}" autocomplete="off" placeholder="http://127.0.0.1:1234"></label>
         </div>
         <footer class="settings-actions"><div></div><button type="submit" class="btn btn-primary">Save</button></footer>
     </form>

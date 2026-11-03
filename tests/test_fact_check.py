@@ -193,3 +193,21 @@ def test_through_or_out_is_checked_on_the_whole_tie(small_world):
     assert _check(small_world, {"kind": "tie", "team": "Liverpool", "outcome": "out", "competition": "Champions League"}).verdict == "right"
     assert _check(small_world, {"kind": "tie", "team": "Chelsea", "outcome": "through", "opponent": "Liverpool"}).verdict == "right"
     assert _check(small_world, {"kind": "tie", "team": "Arsenal", "outcome": "through"}).verdict == "unknown"  # the second leg is to come
+
+
+def test_a_goals_minute_and_a_games_weekday_are_checked(small_world):
+    """25 Feb 2064: Cluj's goal after 37 minutes put "in the second half", and Milan's Wednesday second leg on a Thursday."""
+    _season(small_world)  # Chelsea 1-0 Arsenal on Friday 24 August 2063, Sam Scorer after 10 minutes; Liverpool v Arsenal on Monday 10 September
+    goal = {"kind": "goal_minute", "team": "Chelsea", "opponent": "Arsenal"}
+    assert _check(small_world, {**goal, "player": "Sam Scorer", "minute": 10}).verdict == "right"
+    assert _check(small_world, {**goal, "half": "first"}).verdict == "right"
+    late = _check(small_world, {**goal, "half": "second"})
+    assert late.verdict == "wrong" and late.truth.endswith("Sam Scorer 10' (Chelsea)")
+    assert _check(small_world, {**goal, "minute": 10, "team": "Arsenal", "opponent": "Chelsea"}).verdict == "wrong"  # not theirs
+    assert _check(small_world, {"kind": "goal_minute", "team": "Chelsea", "minute": 10}).verdict == "unknown"  # which game?
+    day = {"kind": "game_day", "team": "Chelsea", "opponent": "Arsenal", "when": "past"}
+    assert _check(small_world, {**day, "weekday": "Friday"}).verdict == "right"
+    thursday = _check(small_world, {**day, "weekday": "Thursday"})
+    assert thursday.verdict == "wrong" and thursday.truth == "Chelsea's games of these days: Friday 24 August: Chelsea v Arsenal"
+    assert _check(small_world, {"kind": "game_day", "team": "Liverpool", "weekday": "Monday", "when": "future"}).verdict == "right"
+    assert _check(small_world, {"kind": "game_day", "team": "Liverpool", "weekday": "Sunday", "when": "future"}).verdict == "wrong"

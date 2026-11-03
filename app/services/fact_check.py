@@ -19,11 +19,13 @@ from flask import current_app
 from app.services import world_queries as q
 
 KINDS = ("result", "record", "form", "place", "fixture", "player_game", "goal_kind", "player_season", "player_age", "player_club",
-         "meetings", "title_run", "tie", "other")
+         "meetings", "title_run", "tie", "goal_minute", "game_day", "other")
 GAME_STATS = ("goals", "assists", "shots", "shots_on_target", "passes", "passes_completed", "key_passes", "tackles", "tackles_won",
               "interceptions", "headers_won", "dribbles", "fouls", "yellow_cards", "minutes", "conceded")
 TIE_DAYS = 45  # a "through" or "out" is about a tie of these last weeks
 OPEN = -1  # a tie not decided yet
+WEEKDAY_DAYS = 10  # "on Wednesday" is a game of these days, before or after the article's day
+WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 LEG_DAYS = 35  # the legs of one tie lie within this of each other (a league-phase meeting months before is not a leg)
 RECORD_FIELDS = ("played", "won", "drawn", "lost", "points", "unbeaten_run", "winning_run")
 
@@ -62,6 +64,11 @@ PROMPT = (
     '- "tie": a team through to the next round of a cup or out of it, over one game or two legs. team, outcome ("through" or '
     '"out", for team), opponent and competition when the sentence names them. "The curtain has fallen for X", "X are out", '
     '"X go through", "X reach the last 16" are ties.\n'
+    '- "goal_minute": when a goal was scored. team (that scored), opponent, player (the scorer) when named, and minute (a number: '
+    '"the 37th minute", "after 37 minutes" are 37) or half ("first" or "second": "before the break", "after the interval"). '
+    '"A late goal" without a minute is colour.\n'
+    '- "game_day": the day of the week of a game, played or to come. team, opponent when named, weekday ("Monday" to '
+    '"Sunday"), when ("past" or "future"). "On Wednesday, Napoli went to Cluj" is team Napoli, weekday Wednesday, past.\n'
     '- "title_run": league titles won in a row. team, won_in_a_row (the titles already won one after another up to now; '
     '"on course for a 42nd title in a row" is 41).\n'
     '- "other": any other hard fact. in_notebook: true when the notebook gives this fact, false when it does not.\n'
@@ -362,6 +369,70 @@ class Checker:
             return "wrong", (f"{self.w.name(winner)} went through against {self.w.name(rival if winner == team else team)}: "
                              + "; ".join(self._line(g) for g in self._legs(f)))
         return "unknown", ""
+
+    def _goal_minute(self, claim):
+        """A goal's minute or half (25 Feb 2064: Cluj's goal, scored after 37 minutes, put "in the second half")."""
+        team, other = self._team(claim.get("team")), self._team(claim.get("opponent"))
+        minute, half = claim.get("minute"), str(claim.get("half") or "").lower()
+        if not team or not (isinstance(minute, (int, float)) or half in ("first", "second")):
+            return "unknown", ""
+        f = self._recent_game(team, other)
+        if f is None:
+            return "unknown", ""
+        side = 0 if f["home_uid"] == team else 1
+        goals = q._rows(self.c, "select g.minute, g.added_time, g.side, g.scorer_uid, p.name from goals g left join people p on "
+                                "p.fm_uid = g.scorer_uid where g.fixture_id = :f and g.kind in (0, 1, 2) order by g.minute, g.seq", f=f["id"])
+        person = self.archive.person(str(claim["player"]), claim.get("team")) if claim.get("player") else None
+        mine = [g for g in goals if g["side"] == side and (person is None or g["scorer_uid"] == person)]
+        if not goals or claim.get("player") and person is None:
+            return "unknown", ""
+
+        def fits(g) -> bool:
+            at = g["minute"] + (g["added_time"] or 0)
+            if isinstance(minute, (int, float)) and not (abs(g["minute"] - minute) <= 1 or abs(at - minute) <= 1):
+                return False
+            return half not in ("first", "second") or (g["minute"] <= 45) == (half == "first")
+
+        if any(fits(g) for g in mine):
+            return "right", ""
+        return "wrong", f"the goals of {self._line(f)}: " + ", ".join(
+            f"{g['name'] or 'unknown'} {g['minute']}{'+' + str(g['added_time']) if g['added_time'] else ''}' "
+            f"({self.w.name(f['home_uid'] if g['side'] == 0 else f['away_uid'])})" for g in goals)
+
+    def _recent_game(self, team: int, other: int | None) -> dict | None:
+        """The game a sentence tells: the article's own game when the team played in it, else the team's last game against
+        the opponent in these weeks."""
+        if self.game and not other:
+            rows = self.w.rows("select * from fixtures where id = :f and (home_uid = :t or away_uid = :t)", f=self.game["id"], t=team)
+            return rows[0] if rows else None
+        if not other:
+            return None
+        rows = self.w.rows("select * from fixtures where ((home_uid = :t and away_uid = :o) or (home_uid = :o and away_uid = :t)) "
+                           "and home_goals is not null and date <= :d and date >= :s order by date desc limit 1",
+                           t=team, o=other, d=str(self.until), s=str(self.until - timedelta(days=TIE_DAYS)))
+        return rows[0] if rows else None
+
+    def _game_day(self, claim):
+        """The weekday of a game of these days, played or to come (25 Feb 2064: Milan's Wednesday second leg put on a Thursday)."""
+        team, other = self._team(claim.get("team")), self._team(claim.get("opponent"))
+        told = str(claim.get("weekday") or "").strip().capitalize()
+        when = str(claim.get("when") or "").lower()
+        if not team or told not in WEEKDAYS or when not in ("past", "future"):
+            return "unknown", ""
+        if when == "past":
+            games = self.w.rows("select * from fixtures where (home_uid = :t or away_uid = :t) and home_goals is not null and date <= :d "
+                                "and date >= :s order by date desc", t=team, d=str(self.until), s=str(self.until - timedelta(days=WEEKDAY_DAYS)))
+        else:
+            games = self.w.rows("select * from fixtures where (home_uid = :t or away_uid = :t) and date > :d and date <= :e order by date",
+                                t=team, d=str(self.until), e=str(self.until + timedelta(days=WEEKDAY_DAYS)))
+        if other:
+            games = [f for f in games if other in (f["home_uid"], f["away_uid"])][:1]
+        if not games:
+            return "unknown", ""
+        if any(date.fromisoformat(str(f["date"])[:10]).strftime("%A") == told for f in games):
+            return "right", ""  # without an opponent, any game of these days on that weekday
+        return "wrong", f"{self.w.name(team)}'s games of these days: " + "; ".join(
+            f"{date.fromisoformat(str(f['date'])[:10]):%A %-d %B}: {self.w.name(f['home_uid'])} v {self.w.name(f['away_uid'])}" for f in games)
 
     def _legs(self, f: dict) -> list[dict]:
         """The legs of the tie a cup game belongs to: the same two teams in the same competition within LEG_DAYS."""

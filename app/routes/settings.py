@@ -5,17 +5,23 @@ from __future__ import annotations
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 
 from app.extensions import db
+from app.models import AppSetting
 from app.services import auto_pilot, social_fans, social_feed, writing_voices
 from app.services import picture_makers, public_site, save_jobs, site_publish
 from app.services.ai_settings import (
+    CHECKER_MODEL_SETTING_KEY,
     OLLAMA_URL,
+    lmstudio_url,
+    set_lmstudio_url,
     ai_provider_label,
     deepseek_model_label,
     get_deepseek_model,
+    get_checker_model,
     get_papers_model,
     model_options,
     stored_key,
     set_deepseek_model,
+    set_checker_model,
     set_papers_model,
     set_stored_key,
 )
@@ -50,7 +56,7 @@ def index():
     return render_template(
         "settings/index.html",
         selected_model=get_deepseek_model(),
-        model_options=model_options(), ollama_url=OLLAMA_URL, selected_label=deepseek_model_label(get_deepseek_model()),
+        model_options=model_options(), ollama_url=OLLAMA_URL, lmstudio_url=lmstudio_url(), selected_label=deepseek_model_label(get_deepseek_model()),
         api_key_configured=bool(current_app.config.get("DEEPSEEK_API_KEY") or stored_key("DEEPSEEK_API_KEY")),
         openai_api_key_configured=bool(current_app.config.get("OPENAI_API_KEY") or stored_key("OPENAI_API_KEY")),
         wavespeed_key_configured=bool(stored_key("WAVESPEED_API_KEY")), picture_maker=picture_makers.maker(),
@@ -67,7 +73,8 @@ def index():
         automatic=auto_pilot.enabled(), automatic_last=auto_pilot.last(), automatic_minutes=auto_pilot.CHECK_SECONDS // 60,
         automatic_watch=auto_pilot.watching(),
         voices=writing_voices.VOICES, selected_voice=writing_voices.default_voice(), social_on=social_feed.enabled(),
-        slow_on=social_fans.slow_enabled(), papers_model=get_papers_model(),
+        slow_on=social_fans.slow_enabled(), papers_model=get_papers_model(), checker_model=get_checker_model(),
+        checker_chosen=bool(AppSetting.query.filter_by(key=CHECKER_MODEL_SETTING_KEY).first()),
         app_version=_app_version(), followed=_followed_rows(), tunnel=public_site.status(), site_offline=public_site.offline(),
         cloudflare_token_configured=bool(stored_key(site_publish.TOKEN_KEY)), publish_hostname=site_publish.setting(site_publish.HOSTNAME_SETTING) or "",
         publish_account=site_publish.setting(site_publish.ACCOUNT_SETTING) or "", last_publish=site_publish.last_publish(),
@@ -86,6 +93,28 @@ def papers_model_settings():
     else:
         flash(f"The papers are now written with {deepseek_model_label(get_papers_model())}.", "success")
     return redirect(url_for("settings.index", _anchor="papers"))
+
+
+@settings_bp.post("/checker-model")
+def checker_model_settings():
+    try:
+        set_checker_model((request.form.get("checker_model") or "").strip())
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "error")
+    else:
+        flash(f"The fact checker now reads with {deepseek_model_label(get_checker_model())}.", "success")
+    return redirect(url_for("settings.index", _anchor="checker"))
+
+
+@settings_bp.post("/lmstudio")
+def lmstudio_settings():
+    """The LM Studio server's address (this Mac or another machine of the network); its models join the choices."""
+    set_lmstudio_url(request.form.get("lmstudio_url"))
+    db.session.commit()
+    flash(f"LM Studio is looked for at {lmstudio_url()}.", "success")
+    return redirect(url_for("settings.index", _anchor="lmstudio"))
 
 
 @settings_bp.post("/voice")

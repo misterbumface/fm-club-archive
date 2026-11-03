@@ -22,7 +22,7 @@ from app.extensions import db
 from app.models import world as world_models
 from app.models.outlet import Outlet
 from app.services import moods, story_notebooks, world_queries as q
-from app.services.ai_settings import get_papers_model, resolve_ai_api_key
+from app.services.ai_settings import get_checker_model, get_papers_model, resolve_ai_api_key
 from app.services import archive_questions, fact_check
 from app.services.story_leads import Lead
 from app.services.story_writer import ARTICLE_RULES, StoryError, hard_faults, request_json, request_with_questions, text_faults
@@ -908,10 +908,15 @@ def _fact_checked(model: str, key: str, prompt: str, notebook: dict, article: di
     """The article after the fact checker: its hard facts checked in the archive as of the article's day; the wrong and
     the unsupported go back to the writer once, and what is still wrong after that is cut (2 Nov 2026)."""
     as_of = _as_of(lead, published)
+    # the claims are listed by the checker's own hosted model, whatever writes (3 Nov 2026: Gemma 4 on LM Studio listed too
+    # few and let three wrong weekdays through); without its key, the writer's model lists them
+    check_model = get_checker_model()
+    check_key = resolve_ai_api_key(None, model=check_model)
+    check_model, check_key = (check_model, check_key) if check_key else (model, key)
     with db.engines[world_models.BIND].connect() as connection:
         game = _game(connection, lead)
         checker = fact_check.Checker(connection, as_of, game)
-        found = fact_check.problems([checker.check(c) for c in fact_check.claims(model, key, _all_text(article), notebook)])
+        found = fact_check.problems([checker.check(c) for c in fact_check.claims(check_model, check_key, _all_text(article), notebook)])
         if not found:
             return article
         for f in found:
@@ -922,7 +927,7 @@ def _fact_checked(model: str, key: str, prompt: str, notebook: dict, article: di
         fixed = _ask(model, key, messages)
         if hard_faults(text_faults(_all_text(fixed), {**notebook, "fact_check": [f.truth for f in found]})):
             fixed = article  # the fix brought new faults: the first draft, with the bad sentences cut
-        still = fact_check.problems([checker.check(c) for c in fact_check.claims(model, key, _all_text(fixed), notebook)])
+        still = fact_check.problems([checker.check(c) for c in fact_check.claims(check_model, check_key, _all_text(fixed), notebook)])
     if any(f.sentence and f.sentence in fixed["headline"] for f in still):
         raise StoryError("The fact checker found a wrong headline twice: " + still[0].sentence[:120])
     for f in still:

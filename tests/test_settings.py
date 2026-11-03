@@ -106,7 +106,7 @@ def test_settings_page_rejects_unknown_model_without_changing_selection(settings
     )
 
     assert response.status_code == 200
-    assert b"Choose DeepSeek V4 Pro, DeepSeek V4.1 Flash, GPT-6 Luna or a local Ollama model" in response.data
+    assert b"Choose DeepSeek V4 Pro, DeepSeek V4.1 Flash, GPT-6 Luna or a local Ollama or LM Studio model" in response.data
     assert get_deepseek_model() == "deepseek-flash"
 
 
@@ -132,6 +132,42 @@ def test_a_local_ollama_model_needs_no_key_and_asks_ollama_itself(settings_app):
     assert ai_settings.chat_content({"message": {"content": '{"text": "x"}'}, "done_reason": "stop"}) == ('{"text": "x"}', "stop")
     assert ai_settings.chat_content({"choices": [{"message": {"content": "y"}, "finish_reason": "length"}]}) == ("y", "length")
     assert ai_settings.deepseek_model_label("ollama:qwen3:14b") == "Ollama · qwen3:14b"
+
+
+def test_an_lm_studio_model_on_another_machine_writes_archive_texts_and_papers(settings_app):
+    """3 Nov 2026: LM Studio on a machine of the home network, at the address Settings keeps (never in the code)."""
+    from app.services import ai_settings
+
+    client = settings_app.test_client()
+    assert ai_settings.lmstudio_url() == "http://127.0.0.1:1234"  # LM Studio's own default
+    client.post("/settings/lmstudio", data={"lmstudio_url": " studio.example.test:1235/v1/ "})
+    assert ai_settings.lmstudio_url() == "http://studio.example.test:1235"
+    client.post("/settings/", data={"deepseek_model": "lmstudio:qwen3-30b-a3b"})
+    assert get_deepseek_model() == "lmstudio:qwen3-30b-a3b" and ai_settings.ai_model_provider() == "lmstudio"
+    assert ai_settings.resolve_ai_api_key() == ai_settings.OLLAMA_KEY  # no key
+    url, headers, payload = ai_settings.ai_request_config(model="lmstudio:qwen3-30b-a3b", api_key="local", messages=[{"role": "user", "content": "hi"}],
+                                                          max_tokens=100, temperature=0.4, response_format={"type": "json_object"})
+    assert url == "http://studio.example.test:1235/v1/chat/completions" and "Authorization" not in headers
+    assert (payload["model"], payload["max_tokens"], payload["temperature"], payload["reasoning_effort"]) == ("qwen3-30b-a3b", 100, 0.4, "none")
+    assert payload["response_format"]["type"] == "json_schema"  # LM Studio takes no "json_object"
+    assert ai_settings.ai_timeout("lmstudio:qwen3-30b-a3b", 180) == ai_settings.OLLAMA_TIMEOUT_SECONDS
+    assert ai_settings.chat_content({"choices": [{"message": {"content": '<think>hm</think>\n```json\n{"text": "x"}\n```'}, "finish_reason": "stop"}]}) == (
+        '{"text": "x"}', "stop")
+    assert ai_settings.deepseek_model_label("lmstudio:qwen3-30b-a3b") == "LM Studio · qwen3-30b-a3b"
+    ai_settings.set_papers_model("lmstudio:qwen3-30b-a3b")  # the papers may use it too
+    assert ai_settings.get_papers_model() == "lmstudio:qwen3-30b-a3b"
+    assert ai_settings.get_checker_model() == "deepseek-v4-pro"  # but the fact checker stays hosted
+    client.post("/settings/checker-model", data={"checker_model": "gpt-6-luna"})
+    assert ai_settings.get_checker_model() == "gpt-6-luna"
+    client.post("/settings/checker-model", data={"checker_model": "lmstudio:qwen3-30b-a3b"})  # refused
+    assert ai_settings.get_checker_model() == "gpt-6-luna"
+    client.post("/settings/checker-model", data={"checker_model": ""})  # back to following the papers
+    ai_settings.set_papers_model("deepseek-flash")
+    assert ai_settings.get_checker_model() == "deepseek-flash"
+    ai_settings.set_papers_model("lmstudio:qwen3-30b-a3b")
+    client.post("/settings/lmstudio", data={"lmstudio_url": ""})
+    assert ai_settings.lmstudio_url() == "http://127.0.0.1:1234"
+    assert b"LM Studio" in client.get("/settings/").data
 
 
 def test_a_saved_older_openai_model_becomes_its_successor(app):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -86,6 +87,58 @@ OLLAMA_CHARS_PER_TOKEN = 2.4  # measured: 2.64 with Gemma 4 on a 19-season bio (
 OLLAMA_CONTEXT = OLLAMA_CONTEXT_MAX  # the most a request asks for
 OLLAMA_TIMEOUT_SECONDS = 1200  # a local model writes much more slowly than a hosted one
 OLLAMA_KEY = "local"  # stands for the key a local model does not need
+LOCAL_PROVIDERS = ("ollama", "lmstudio")
+
+
+# Local models through LM Studio (https://lmstudio.ai), on this Mac or another machine of the network (3 Nov 2026): its
+# OpenAI-compatible server at the address Settings keeps (the archive's own setting, never in the code). A model is chosen
+# as "lmstudio:<name>" from the models the server lists.
+LMSTUDIO_PREFIX = "lmstudio:"
+LMSTUDIO_URL_KEY = "lmstudio_url"
+DEFAULT_LMSTUDIO_URL = "http://127.0.0.1:1234"
+LMSTUDIO_JSON = {"type": "json_schema", "json_schema": {"name": "answer", "schema": {"type": "object"}}}  # it takes no "json_object"
+
+
+def lmstudio_url() -> str:
+    """The LM Studio server's address: the archive's setting, else LMSTUDIO_URL, else this Mac's default port."""
+    saved = None
+    if has_app_context():
+        setting = AppSetting.query.filter_by(key=LMSTUDIO_URL_KEY).first()
+        saved = setting.value if setting else None
+    return normal_url(saved or os.environ.get("LMSTUDIO_URL") or DEFAULT_LMSTUDIO_URL)
+
+
+def normal_url(value: str) -> str:
+    """An address as typed ("host:1234", "http://host:1234/v1/") made plain: "http://host:1234"."""
+    value = value.strip().rstrip("/")
+    value = value if "://" in value else f"http://{value}"
+    return value.removesuffix("/v1").rstrip("/")
+
+
+def set_lmstudio_url(value: str | None) -> None:
+    """Keep the LM Studio address (an empty value goes back to the default)."""
+    setting = AppSetting.query.filter_by(key=LMSTUDIO_URL_KEY).first()
+    value = normal_url(value) if value and value.strip() else None
+    if value is None:
+        if setting is not None:
+            db.session.delete(setting)
+    elif setting is None:
+        db.session.add(AppSetting(key=LMSTUDIO_URL_KEY, value=value))
+    else:
+        setting.value = value
+
+
+def lmstudio_models() -> list[dict[str, Any]]:
+    """The models the LM Studio server lists, or none when it does not answer (or in tests)."""
+    if has_app_context() and current_app.testing:
+        return []
+    try:
+        answer = requests.get(f"{lmstudio_url()}/v1/models", timeout=3)
+        answer.raise_for_status()
+        models = answer.json().get("data", [])
+    except (requests.RequestException, ValueError, AttributeError):
+        return []
+    return [{"name": m["id"]} for m in models if m.get("id") and "embed" not in m["id"]]
 
 
 def ollama_models() -> list[dict[str, Any]]:
@@ -116,11 +169,22 @@ def model_options() -> list[DeepSeekModelOption]:
         )
         for m in sorted(ollama_models(), key=lambda m: m["size_gb"])
     ]
-    return [*DEEPSEEK_MODEL_OPTIONS, *local]
+    served = [
+        DeepSeekModelOption(
+            value=LMSTUDIO_PREFIX + m["name"],
+            label=f"LM Studio · {m['name']}",
+            strapline=f"Local, on the LM Studio server at {lmstudio_url()}",
+            description="Free and private, no key. As fast as the machine it runs on.",
+            provider="lmstudio",
+        )
+        for m in lmstudio_models()
+    ]
+    return [*DEEPSEEK_MODEL_OPTIONS, *local, *served]
 
 
 def _known_model(model: str) -> bool:
-    return model in ALLOWED_DEEPSEEK_MODELS or (model.startswith(OLLAMA_PREFIX) and len(model) > len(OLLAMA_PREFIX))
+    return model in ALLOWED_DEEPSEEK_MODELS or any(model.startswith(prefix) and len(model) > len(prefix)
+                                                   for prefix in (OLLAMA_PREFIX, LMSTUDIO_PREFIX))
 
 
 def get_deepseek_model() -> str:
@@ -143,7 +207,7 @@ def set_deepseek_model(model: str) -> AppSetting:
     model = RENAMED_MODELS.get(model, model)
     if not _known_model(model):
         raise ValueError(
-            "Choose DeepSeek V4 Pro, DeepSeek V4.1 Flash, GPT-6 Luna or a local Ollama model."
+            "Choose DeepSeek V4 Pro, DeepSeek V4.1 Flash, GPT-6 Luna or a local Ollama or LM Studio model."
         )
     setting = AppSetting.query.filter_by(key=DEEPSEEK_MODEL_SETTING_KEY).first()
     if setting is None:
@@ -158,19 +222,23 @@ PAPERS_MODEL_SETTING_KEY = "papers_model"
 
 
 def get_papers_model() -> str:
-    """The hosted model the papers are written with (GPT-6 Luna unless Settings says otherwise). A news cycle writes
-    dozens of articles at once: a local model writes one answer at a time, slowly and less well, so it is not offered."""
+    """The model the papers are written with (GPT-6 Luna unless Settings says otherwise): a hosted one, or an LM Studio
+    model (3 Nov 2026). A news cycle writes dozens of articles at once, so Ollama on this Mac is not offered."""
     if not has_app_context():
         return DEFAULT_OPENAI_MODEL
     setting = AppSetting.query.filter_by(key=PAPERS_MODEL_SETTING_KEY).first()
     value = RENAMED_MODELS.get(setting.value, setting.value) if setting else DEFAULT_OPENAI_MODEL
-    return value if value in ALLOWED_DEEPSEEK_MODELS else DEFAULT_OPENAI_MODEL
+    return value if _papers_model(value) else DEFAULT_OPENAI_MODEL
+
+
+def _papers_model(model: str) -> bool:
+    return model in ALLOWED_DEEPSEEK_MODELS or (model.startswith(LMSTUDIO_PREFIX) and len(model) > len(LMSTUDIO_PREFIX))
 
 
 def set_papers_model(model: str) -> None:
     model = RENAMED_MODELS.get(model, model)
-    if model not in ALLOWED_DEEPSEEK_MODELS:
-        raise ValueError("Choose DeepSeek V4 Pro, DeepSeek V4.1 Flash or GPT-6 Luna for the papers.")
+    if not _papers_model(model):
+        raise ValueError("Choose DeepSeek V4 Pro, DeepSeek V4.1 Flash, GPT-6 Luna or an LM Studio model for the papers.")
     setting = AppSetting.query.filter_by(key=PAPERS_MODEL_SETTING_KEY).first()
     if setting is None:
         db.session.add(AppSetting(key=PAPERS_MODEL_SETTING_KEY, value=model))
@@ -178,9 +246,42 @@ def set_papers_model(model: str) -> None:
         setting.value = model
 
 
+CHECKER_MODEL_SETTING_KEY = "checker_model"
+
+
+def get_checker_model() -> str:
+    """The hosted model that lists an article's hard facts for the fact checker (3 Nov 2026): Settings' choice, else the
+    papers' model when it is hosted, else DeepSeek V4 Pro. A local model listed too few and let wrong facts through."""
+    papers = get_papers_model()
+    fallback = papers if papers in ALLOWED_DEEPSEEK_MODELS else DEFAULT_DEEPSEEK_MODEL
+    if not has_app_context():
+        return fallback
+    setting = AppSetting.query.filter_by(key=CHECKER_MODEL_SETTING_KEY).first()
+    value = RENAMED_MODELS.get(setting.value, setting.value) if setting else None
+    return value if value in ALLOWED_DEEPSEEK_MODELS else fallback
+
+
+def set_checker_model(model: str | None) -> None:
+    """Keep the fact checker's model; an empty choice follows the papers (or DeepSeek V4 Pro when they are local)."""
+    setting = AppSetting.query.filter_by(key=CHECKER_MODEL_SETTING_KEY).first()
+    model = RENAMED_MODELS.get(model or "", model or "")
+    if not model:
+        if setting is not None:
+            db.session.delete(setting)
+        return
+    if model not in ALLOWED_DEEPSEEK_MODELS:
+        raise ValueError("Choose DeepSeek V4 Pro, DeepSeek V4.1 Flash or GPT-6 Luna for the fact checker.")
+    if setting is None:
+        db.session.add(AppSetting(key=CHECKER_MODEL_SETTING_KEY, value=model))
+    else:
+        setting.value = model
+
+
 def deepseek_model_label(model: str) -> str:
     if model.startswith(OLLAMA_PREFIX):
         return f"Ollama · {model.removeprefix(OLLAMA_PREFIX)}"
+    if model.startswith(LMSTUDIO_PREFIX):
+        return f"LM Studio · {model.removeprefix(LMSTUDIO_PREFIX)}"
     if model in FORMER_LABELS:
         return FORMER_LABELS[model]
     return next(
@@ -198,6 +299,8 @@ def ai_model_provider(model: str | None = None) -> str:
     selected = model or get_deepseek_model()
     if selected.startswith(OLLAMA_PREFIX):
         return "ollama"
+    if selected.startswith(LMSTUDIO_PREFIX):
+        return "lmstudio"
     return next(
         (
             option.provider
@@ -209,7 +312,7 @@ def ai_model_provider(model: str | None = None) -> str:
 
 
 def ai_provider_label(model: str | None = None) -> str:
-    return {"openai": "OpenAI", "ollama": "Ollama"}.get(ai_model_provider(model), "DeepSeek")
+    return {"openai": "OpenAI", "ollama": "Ollama", "lmstudio": "LM Studio"}.get(ai_model_provider(model), "DeepSeek")
 
 
 def ai_model_supports_images(model: str | None = None) -> bool:
@@ -230,7 +333,7 @@ def resolve_ai_api_key(
 ) -> str | None:
     """Resolve the selected provider's key, honoring explicit test/caller keys. A local model needs none."""
     provider = ai_model_provider(model)
-    if provider == "ollama":
+    if provider in LOCAL_PROVIDERS:
         return OLLAMA_KEY
     if has_app_context():
         configured = current_app.config.get(
@@ -297,6 +400,15 @@ def ai_request_config(
         if response_format is not None:
             payload["format"] = "json"
         return f"{OLLAMA_URL}/api/chat", {"Content-Type": "application/json"}, payload
+    if provider == "lmstudio":
+        # thinking off, as for DeepSeek and Ollama: Gemma 4 spent 197 of 200 tokens thinking and wrote nothing (3 Nov 2026)
+        payload = {"model": model.removeprefix(LMSTUDIO_PREFIX), "messages": messages, "max_tokens": max_tokens, "stream": False,
+                   "reasoning_effort": "none"}
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if response_format is not None:
+            payload["response_format"] = LMSTUDIO_JSON
+        return f"{lmstudio_url()}/v1/chat/completions", {"Content-Type": "application/json"}, payload
     payload = {"model": model, "messages": messages}
     if provider == "openai":
         payload["reasoning_effort"] = DEFAULT_OPENAI_REASONING_EFFORT
@@ -332,15 +444,22 @@ def ai_request_config(
 
 def ai_timeout(model: str, hosted_seconds: int) -> int:
     """How long to wait for one answer: a local model is given much longer."""
-    return OLLAMA_TIMEOUT_SECONDS if ai_model_provider(model) == "ollama" else hosted_seconds
+    return OLLAMA_TIMEOUT_SECONDS if ai_model_provider(model) in LOCAL_PROVIDERS else hosted_seconds
 
 
 def chat_content(answer: dict) -> tuple[str, str | None]:
     """The text of a chat answer and why it stopped, from a hosted provider (OpenAI's form) or from Ollama."""
     if "choices" in answer:
         choice = answer["choices"][0]
-        return choice["message"]["content"] or "", choice.get("finish_reason")
+        return _without_thinking(choice["message"]["content"] or ""), choice.get("finish_reason")
     return answer["message"]["content"] or "", answer.get("done_reason")
+
+
+def _without_thinking(text: str) -> str:
+    """A local model's answer without its thinking ("<think>...</think>") or a code fence around its JSON."""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.S)
+    return fenced.group(1) if fenced else text
 
 
 def ollama_context(messages: list[dict[str, Any]], max_tokens: int) -> int:
