@@ -220,3 +220,19 @@ def test_a_game_on_the_papers_own_day_is_still_to_come(small_world):
         checker = fact_check.Checker(c, date(2063, 9, 10))
         assert checker.check({"sentence": "S.", "kind": "fixture", "team": "Liverpool", "opponent": "Arsenal", "venue": "home"}).verdict == "right"
         assert checker.check({"sentence": "S.", "kind": "game_day", "team": "Liverpool", "weekday": "Monday", "when": "future"}).verdict == "right"
+
+
+def test_a_place_in_another_countrys_league_is_wrong(small_world):
+    """26 Feb 2064: "In the English Premier Division, Ponferrada are ninth with 36 points": right place, Spain's league."""
+    from app.models import world
+
+    _season(small_world)
+    with small_world.begin() as c:
+        c.execute(world.WorldCompetition.__table__.insert(), [{"fm_uid": 12, "name": "Spanish First Division", "short_name": "First Division",
+                                                               "abbreviation": "SFD", "scope": "league", "nation_uid": 796, "level": 1}])
+    place = {"kind": "place", "team": "Chelsea", "position": 1, "points": 12}
+    wrong = _check(small_world, {**place, "league": "Spanish First Division"})
+    assert wrong.verdict == "wrong" and "they play in the English Premier Division" in wrong.truth
+    assert _check(small_world, {**place, "league": "English Premier Division"}).verdict == "right"
+    assert _check(small_world, {**place, "league": "the Premier League"}).verdict == "right"  # a common name passes
+    assert _check(small_world, place).verdict == "right"

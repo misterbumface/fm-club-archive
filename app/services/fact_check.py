@@ -47,7 +47,8 @@ PROMPT = (
     "(league games without defeat up to now), winning_run (league wins in a row up to now).\n"
     '- "form": a team\'s last league games. team, last (how many games), won, drawn, lost (how many of them).\n'
     '- "fixture": a game still to come. team, opponent, day ("YYYY-MM-DD"), venue ("home" or "away", for team), competition.\n'
-    '- "place": a team\'s league place now. team, position, points, and gap with other_team (points ahead of it, '
+    '- "place": a team\'s league place now. team, position, points, league (the league the sentence puts the team in, by '
+    'the words it uses), and gap with other_team (points ahead of it, '
     "negative when behind).\n"
     '- "player_game": a player\'s numbers in the game the article reports. player, team, stat (one of '
     + ", ".join(GAME_STATS) + "), value. \"X made Y's goal\" or \"from X's pass\" is X with assists, value 1.\n"
@@ -198,6 +199,13 @@ class Checker:
             wrong.append(f"place {claim['position']} (the archive: {mine['position']})")
         if isinstance(claim.get("points"), (int, float)) and int(claim["points"]) != mine["points"]:
             wrong.append(f"{claim['points']} points (the archive: {mine['points']})")
+        # the league named must be the team's own (26 Feb 2064: "In the English Premier Division, Ponferrada are ninth": the
+        # Spanish place and points were right): wrong only when the words name another league; a nickname ("La Liga") passes
+        named = str(claim.get("league") or "").strip().lower()
+        if named and not self._competition_fits(league, named) and any(
+                uid != league and c.get("scope") == "league" and str(c.get("name") or "").lower() in (named, named.removeprefix("the "))
+                for uid, c in self.w.competitions.items()):
+            wrong.append(f"the {claim['league']} (they play in the {self.w.comp(league).get('name')})")
         other = self._team(claim.get("other_team")) if claim.get("other_team") else None
         if other in rows and isinstance(claim.get("gap"), (int, float)):
             gap = mine["points"] - rows[other]["points"]
