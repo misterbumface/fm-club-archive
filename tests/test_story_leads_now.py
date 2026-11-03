@@ -426,6 +426,8 @@ def test_the_travel_column_and_the_interviews(small_world):
         c.exec_driver_sql("update clubs set nation_uid = 765 where fm_uid = %d" % CHELSEA)
         c.execute(world.WorldMatchReport.__table__.insert(), [{"fixture_id": played, "stadium": "Stamford Bridge", "minutes": 90, "as_of": AS_OF}])
         c.exec_driver_sql("update fixtures set attendance = 40123 where id = %d" % played)
+        c.execute(world.WorldMatchShot.__table__.insert(), [{"fixture_id": played, "side": 0, "seq": 0, "person_uid": SCORER, "minute": 68, "second": 56,
+                                                             "outcome": "goal", "kind": "header", "across": 0.5, "height": 1.2, "as_of": AS_OF}])
         c.execute(world.WorldPerson.__table__.insert(), [{"fm_uid": 777, "name": "Old Legend", "birth_date": date(2023, 8, 25), "as_of": AS_OF, "team_uid": None}])
         c.execute(world.WorldPlayerSeason.__table__.insert(), [
             {"person_uid": 777, "team_uid": CHELSEA, "season_start": y, "kind": 1, "seq": 0, "league_uid": LEAGUE, "starts": 35, "substitute_appearances": 0,
@@ -437,6 +439,7 @@ def test_the_travel_column_and_the_interviews(small_world):
         people = features.interviews(w)
     assert trip.headline == "Away Days, trip 1: Chelsea v Arsenal at Stamford Bridge, England" and trip.facts["this_stop"]["latitude"] == 51.4817
     assert trip.facts["the_game"]["attendance"] == 40123 and trip.facts["the_game"]["score"] == "1-0" and trip.facts["year"] == 2063
+    assert "a header" in trip.facts["the_game"]["how_the_goals_went_in"][0]  # 8 Feb 2064: a header told as "lashes it into the top corner"
     assert trip.facts.get("journey_from_the_last_stop") is None and "2063" in trip.facts["the_world_it_is"] and trip.slug == str(played)
     home = trip.facts["the_home_club"]  # who the club is (27 Oct 2026: the column reached Sutton and said nothing of Sutton)
     assert home["club"] == "Chelsea" and home["league_seasons"] and ("Old Legend: 420 games over 12 seasons" in home["most_appearances"])

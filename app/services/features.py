@@ -149,6 +149,7 @@ def travel_log(w) -> list:
     clubs' own, where every other page already is), near the last stop two trips in three; a rare destination, a small ground
     or a full house are each worth the journey."""
     from app.services.story_leads import Lead
+    from app.services.story_leads_now import _how_goals_went_in
 
     trips = published_trips()
     last = trips[-1] if trips else None
@@ -206,7 +207,8 @@ def travel_log(w) -> list:
                           "home": w.name(f["home_uid"]), "away": w.name(f["away_uid"]), "score": f"{f['home_goals']}-{f['away_goals']}",
                           "ground": f["stadium"], "attendance": f["attendance"] or None,
                           "goals": [f"{('own goal by ' if g['kind'] == 1 else '') + (g['name'] or 'unknown')} {g['minute']}{'+' + str(g['added_time']) if g['added_time'] else ''}'{' (pen)' if g['kind'] == 2 else ''} "
-                                    f"({w.name(f['home_uid'] if g['side'] == 0 else f['away_uid'])})" for g in goals] or None},
+                                    f"({w.name(f['home_uid'] if g['side'] == 0 else f['away_uid'])})" for g in goals] or None,
+                          "how_the_goals_went_in": _how_goals_went_in(w, f)},
              "the_home_club": club_story(w, f["home_uid"], f["home_club"]),
              "the_visitors": club_story(w, f["away_uid"], w.team(f["away_uid"]).get("club_uid"), brief=True),
              "their_rivalry": _rivalry(w, f),
