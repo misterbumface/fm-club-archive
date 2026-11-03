@@ -303,7 +303,7 @@ def _how_goals_went_in(w, f: dict) -> list[str] | None:
     """Each goal's kind of shot and where it went in, from the match's shot records (docs/goal-labels.md): the kind from
     the game's highlight events (header, volley, drive, finish), the height and line from where the ball crossed the line,
     a rebound from the scorer's own blocked or saved shot just before. None for a match without shot records."""
-    shots = w.rows("select s.person_uid, s.minute, s.second, s.outcome, s.across, s.height, s.kind, s.side, p.name from match_shots s "
+    shots = w.rows("select s.person_uid, s.minute, s.second, s.outcome, s.across, s.height, s.kind, s.range, s.outside_box, s.side, p.name from match_shots s "
                    "left join people p on p.fm_uid = s.person_uid where s.fixture_id = :f order by s.minute, s.second, s.seq", f=f["id"])
     lines = []
     for shot in (s for s in shots if s["outcome"] == "goal"):
@@ -316,14 +316,19 @@ def _how_goals_went_in(w, f: dict) -> list[str] | None:
         where += ", through the middle" if across < 1.2 else ", near a post" if across >= 3.0 else ""
         kind = {"header": "a header", "volley": "a volley", "drive": "a drive (struck low and hard)", "finish": "a shot with the foot"}.get(
             shot["kind"] or "", "the kind of shot is not recorded")
+        if shot["range"] == "close":
+            kind += " from close range"
+        elif shot["outside_box"] == 1:
+            kind += " from outside the box"
         team = w.name(f["home_uid"] if shot["side"] == 0 else f["away_uid"])
         lines.append(f"{shot['name'] or 'unknown'} ({team}), {shot['minute'] + 1}' on the match clock: {kind}, {where}"
                      + ("; from the rebound of his own blocked or saved shot" if rebound else ""))
     if not lines:
         return None
-    return lines + ["From the match's shot records: say only these about how a goal went in (the kind of shot, its height, "
-                    "the middle or a post). The distance of a shot and the build-up (a cross, a free kick) are not recorded: "
-                    "never tell them."]
+    return lines + ["From the match's shot records: say only these about how a goal went in (the kind of shot, close range or "
+                    "outside the box when given, its height, the middle or a post). No exact distance in metres or yards, and "
+                    "the build-up (a cross, a free kick) is not recorded: never tell them. A goal with no range given: say "
+                    "nothing of its range."]
 
 
 def _game_in_full(w, f: dict, place: dict[int, int]) -> dict:

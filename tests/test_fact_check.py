@@ -113,6 +113,39 @@ def test_how_the_goals_went_in_tells_the_kind_the_height_and_a_rebound(small_wor
     assert "never tell them" in lines[-1]
 
 
+def test_the_range_of_a_goal_is_read_from_the_byte_after_the_type():
+    """Measured on the game's analysis screen (3 Nov 2026): Pardal 5.8 m `40`, Messi 7.3 m `40`, Myers 12.3 m `10`,
+    Robertson about 16 m `10`, Hilgers 24.1 m `90`; Diarra's free kick `88`."""
+    from app.services.fm_save import shot_range
+
+    assert [shot_range(code) for code in (0x40, 0x50, 0x44, 0x10, 0x00, 0x90, 0x80, 0x88)] == \
+        ["close", "close", "close", None, None, "outside", "outside", "outside"]
+
+
+def test_the_goal_lines_and_the_checker_tell_the_range(small_world):
+    from app.services import story_leads_now as now
+    from app.services.story_leads import _World
+
+    _season(small_world)
+    _shots(small_world, [{"seq": 0, "minute": 7, "second": 0, "outcome": "goal", "kind": "header", "range": "close", "outside_box": 0},
+                         {"seq": 1, "minute": 42, "second": 0, "outcome": "goal", "kind": "drive", "range": "outside", "outside_box": 1}])
+    with small_world.connect() as c:
+        w = _World(c, UNTIL, UNTIL, (CHELSEA,))
+        lines = now._how_goals_went_in(w, {"id": 15, "home_uid": LIVERPOOL, "away_uid": CHELSEA})
+        assert lines[0].startswith("Sam Scorer (Chelsea), 8' on the match clock: a header from close range,")
+        assert lines[1].startswith("Sam Scorer (Chelsea), 43' on the match clock: a drive (struck low and hard) from outside the box,")
+        checker = fact_check.Checker(c, UNTIL, {"id": 15})
+        claim = {"sentence": "S.", "kind": "goal_kind", "player": "Sam Scorer"}
+        assert checker.check({**claim, "range": "close"}).verdict == "right"
+        assert checker.check({**claim, "range": "outside", "shot": "drive"}).verdict == "right"
+    with small_world.begin() as c:
+        c.exec_driver_sql("delete from match_shots")
+    _shots(small_world, [{"seq": 0, "minute": 7, "second": 0, "outcome": "goal", "kind": "finish", "range": "close", "outside_box": 0}])
+    with small_world.connect() as c:
+        wrong = fact_check.Checker(c, UNTIL, {"id": 15}).check({"sentence": "S.", "kind": "goal_kind", "player": "Sam Scorer", "range": "outside"})
+        assert wrong.verdict == "wrong" and wrong.truth == "Sam Scorer's goal in this game: from close range"
+
+
 def test_the_checker_knows_a_header_from_a_shot(small_world):
     _season(small_world)
     _shots(small_world, [{"seq": 0, "minute": 50, "second": 0, "outcome": "goal", "kind": "header"}])

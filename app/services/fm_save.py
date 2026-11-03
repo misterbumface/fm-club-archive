@@ -3639,6 +3639,7 @@ class Shot:
     height: float
     tick: int = 0  # the match clock the highlight events use (about 4 a second)
     kind: str | None = None  # SHOT_KINDS, from the match's highlight events; None when the game kept no event for it
+    range: str | None = None  # SHOT_RANGES: "close" or "outside" (the box), from the same event; None in between or unknown
 
 
 SHOT_GOAL, SHOT_OFF_TARGET, SHOT_WOODWORK, SHOT_SAVED, SHOT_BLOCKED = 1, 2, 3, 4, 5
@@ -3834,8 +3835,19 @@ def read_match_reports(match_stats_cfg: bytes) -> list[MatchReport]:
 # start is a type: bits 01 foot, 02 head, 04 volley, 20 drive, 80 not known. Checked against the game's own words for
 # 25 goals (header 6 of 6, finish 5 of 5, drive 4 of 4, volley 3 of 3); a header never comes from outside the box (0 of 82).
 # Only some shots have an event (Marks and Myers, 30 Jan 2064, have none); the value before the type is not the distance.
+# The byte after the type tells the range: bit 40 close range (up to about 7.5 m on the game's analysis screen), bit 80 from
+# outside the box; neither, between the two (on either side of the box line). Over a save: 510 goals with 40, all by scorers
+# whose goals were all inside the box; 28 with 80, all by scorers whose goals were all outside (3 Nov 2026).
 _EVENT = re.compile(rb"(?=\x02([\x00\x01])(.)\x01(..)\x00\x00(.)\x00)", re.DOTALL)
 SHOT_KINDS = ("header", "volley", "drive", "finish")
+SHOT_RANGES = ("close", "outside")
+
+
+def shot_range(code: int) -> str | None:
+    """The range of a shot from the byte after its event's type: close range, from outside the box, or not known."""
+    if code & 0x40:
+        return "close"
+    return "outside" if code & 0x80 else None
 
 
 def shot_kind(code: int) -> str | None:
@@ -3850,12 +3862,12 @@ def shot_kind(code: int) -> str | None:
 
 
 def _with_shot_kinds(stream: bytes, report: MatchReport, end: int) -> MatchReport:
-    kinds: dict[tuple[int, int], list[tuple[int, str]]] = {}
+    kinds: dict[tuple[int, int], list[tuple[int, str, str | None]]] = {}
     for m in _EVENT.finditer(stream, report.position, end):
         tick, minute = struct.unpack("<H", m.group(3))[0], m.group(4)[0]
-        kind = shot_kind(stream[m.start() + 14]) if m.start() + 14 < len(stream) else None
+        kind = shot_kind(stream[m.start() + 14]) if m.start() + 15 < len(stream) else None
         if kind and 1 <= minute <= 125 and abs(tick / 248 - minute) <= 8:
-            kinds.setdefault((m.group(1)[0], m.group(2)[0]), []).append((tick, kind))
+            kinds.setdefault((m.group(1)[0], m.group(2)[0]), []).append((tick, kind, shot_range(stream[m.start() + 15])))
     if not kinds:
         return report
 
@@ -3864,8 +3876,10 @@ def _with_shot_kinds(stream: bytes, report: MatchReport, end: int) -> MatchRepor
         for slot, player in enumerate(team.players):
             mine = kinds.get((number, slot))
             if mine:
+                def event(shot: Shot) -> tuple:
+                    return next(((kind, far) for tick, kind, far in mine if abs(tick - shot.tick) <= 4), (None, None))
                 player = replace(player, shot_list=tuple(
-                    replace(shot, kind=next((kind for tick, kind in mine if abs(tick - shot.tick) <= 4), None)) for shot in player.shot_list))
+                    replace(shot, kind=event(shot)[0], range=event(shot)[1]) for shot in player.shot_list))
             players.append(player)
         return replace(team, players=tuple(players))
 

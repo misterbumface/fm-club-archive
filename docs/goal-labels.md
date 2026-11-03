@@ -18,16 +18,21 @@ same tick (+-4), which links an event to its shot exactly (836 goal events in th
 | slot = the player's index in his side's player records (team-sheet order) | 836 of 836 goal events linked by tick | proven |
 | code 38 = yellow card | Strasbourg 0-1 OL, 8 Feb 2064: OL cards 19', 22', 23' (Álvaro, Devoy, Franco) | firm |
 | code 1 = a shot; detail: value u32 at +10, type byte at +14, then bytes +15.. | see labels | firm |
-| type `03` = header | Paulo Roberto 71', Pardal 59', Hernando 2', Etxaniz 56', Falah 63', Themistokleous 36', Black 35', Lazar 77', Pelayes 18', Ciută 79' (10 labels; the game said only "strike", the user's replay showed a header: the data told it first); 200 of 701 inside-the-box goals, 0 of 82 outside-the-box goals | 5 labels |
+| type `03` = header | Paulo Roberto 71', Pardal 59', Hernando 2', Etxaniz 56', Falah 63', Themistokleous 36', Black 35', Lazar 77', Pelayes 18', Ciută 79', Pardal 8' (11 labels; the game said only "strike", the user's replay showed a header: the data told it first); 200 of 701 inside-the-box goals, 0 of 82 outside-the-box goals | 5 labels |
 | bit `0x80` in the type (`80`, `81`, `85`, `a1`, `a5`) = something of shots in the box | 147 inside-the-box goals, 0 outside | likely; meaning unknown |
-| bit `0x04` = volley | Broadfoot 65' `05`, Ghiocel 48' `85`, Rodrigo 23' `05` "thunderous volley", Joel 72' `85` "volley from within the six-yard box" | likely (4) |
-| bit `0x80` | finish `81`: "a close range finish" 3 of 3 (Ondo, Ferrer 35', Ataba 88'); volley `85` "close range volley" (Ghiocel); drives `a1` (Ángel, Sheminant, Valera: "close range" not said); but "close range" without it: Francois 72' `01` "deftly executed finish from close range", Rondina 8' `01` "powerful close range effort", the headers `03`; only in the box | a lead: close range for a strike with the foot? not proven |
-| bit `0x20` = drive (low, hard) | `a1`: Ángel 43' "low drive" (h 0.46), Sheminant 74' "rifled drive which kept low" (1.00), Valera 15' "skidding drive" (0.00); `21`: Uranga 17' "skidding drive" (0.19), Pirson 4' "rifled drive which kept low"; `a1`: Reginaldo 20' and Yildiz 63' "skidding drive" (7 labels). So the type is bits: `01` foot, `02` head, `04` volley, `20` drive, `80` unknown (never outside the box) | likely (4) |
+| bit `0x04` = volley | Broadfoot 65' `05`, Ghiocel 48' `85`, Rodrigo 23' `05` "thunderous volley", Joel 72' `85` "volley from within the six-yard box", Formicola 56' `85` "volley from within the six-yard box", Óscar Pérez 74' `85` "volley from close in" | firm (6 of 6) |
+| bit `0x80` | finish `81`: "a close range finish" 3 of 3 (Ondo, Ferrer 35', Ataba 88'); volley `85` "close range volley" (Ghiocel); drives `a1` (Ángel, Sheminant, Valera: "close range" not said); but "close range" without it: Francois 72' `01` "deftly executed finish from close range", Rondina 8' `01` "powerful close range effort", the headers `03`; only in the box | weaker: Messi 13' `a1` "rifled drive" and Formicola 17' `a1` "deflected low drive" carry it, Pardal 8' `03` "from just inside the six-yard box" does not (3 Nov). Not close range. Never outside the box, never on a header (0 of 191 `03` goals); with 24 of 327 strikes, 82 of 178 drives, 26 of 85 volleys. The user watched (3 Nov): Messi 13' `a1` a first-time shot from a cut-back; Formicola 17' `a1` a first-time cut-back tap-in. New lead: a first-time shot with the foot from a low ball in the box. To test: Myers 69' `21`, Ferrer 22' `01` (no flag), Ferrer 35' `81` |
+| bit `0x20` = drive (low, hard) | `a1`: Ángel 43' "low drive" (h 0.46), Sheminant 74' "rifled drive which kept low" (1.00), Valera 15' "skidding drive" (0.00); `21`: Uranga 17' "skidding drive" (0.19), Pirson 4' "rifled drive which kept low"; `a1`: Reginaldo 20' and Yildiz 63' "skidding drive"; Luton game (3 Nov): Messi 13' `a1`, Formicola 17' `a1`, Hilgers 43' `21` (24 m: so not only in the box), Myers 69' `21`; López 74' `21`, Robertson 63' `21` (13 labels). So the type is bits: `01` foot, `02` head, `04` volley, `20` drive, `80` unknown (never outside the box) | likely (4) |
 | type `01` = finish | Jones 8' "deftly executed finish", Odogwu 54' "accurate finish", Formicola 33' "accurate finish", Javier 81' "tidy finish", Brugué 18' "placed shot", Ferrer 22' "placed shot", Messi 25' "curling effort", Francois 72' "deftly executed finish"; also Diarra 53' (free kick: marked elsewhere) | 5 labels |
+| byte +20 `44` = deflected | Messi 25' `02 42 00 04 40 44` and Formicola 17' `40 42 00 01 00 44` (both deflections said by the game, both also `42` at +16); 7 goals in the save of 3 Nov have `44`, one of them Ondo 33' "close range finish" (no deflection said) | broken: Robertson 63' "deflected low drive" has `40` (and `4a` at +16). 2 of 3 |
+| byte +15 = a distance band: `40` close range | every goal with the `0x80` type bit has `40` (141 of 141, save of 3 Nov). Labels with `40`: all the game's "close range" / six-yard goals but one (Paulo Roberto, Hernando, Etxaniz, Falah, Themistokleous, Ghiocel, Ondo, Ferrer 35', Rondina, Pelayes, Ataba, Michalik, Joel, Pardal 59' and 8', Formicola 17' and 56', Bautista, Pérez; Broadfoot "close range volley" from the penalty area); the user watched Messi 13' (`40`, closer in) and Myers 69' (`10`, near the penalty spot), both first-time shots from cut-backs. `10`: Myers (about 11 m), Brugué (15-16 m), Baran (about 13 m), Rodrigo; `90`: Júnior (23 m), Hilgers (24 m), López (edge of the area; the user watched it: from outside the area); `88` Diarra (free kick); penalties `20`/`30`. The one miss: Francois "from close range" `50` (`40` and `10` both: between bands?). `00` Javier (12 m) and Uranga: unknown | BUILT 3 Nov 2026 as two bits (`fm_save.shot_range`): over the whole save, 0x40 is set on 510 goals of scorers whose goals were all inside the box and on none of those all outside; 0x80 on 28 all-outside and no all-inside; `10`/`00` on both sides of the box line (162 inside, 48 outside), so they tell nothing. Goals only: match_shots.range, the goal lines, fact_check goal_kind range |
+| shot origins from the game's analysis screen (user's screenshots, 3 Nov; measured at 18.3 px a metre from the box lines) | Chelsea 6-0 Luton: Pardal 8' header 5.8 m (`40`); Messi 13' 7.3 m (`40`); Formicola 17' and 56' about 6.7 and 7.4 m, the same spot (`40`); Myers 69' 12.3 m (`10`); Hilgers 43' 24.1 m (`90`). Middlesbrough 0-2 Forest: Baldy 49' penalty 11.3 m (`30`); Robertson 63' about 16 m, 11 m to the side (`10`) | the band holds: `40` = up to about 7.5 m, `10` = about 11-16 m in the box, `90` = outside the box. The save's report bytes near the goal events hold no origin: the analysis points are kept somewhere not found yet |
+| type bit `0x80` = a first-time finish from close range? | only with byte +15 `40`, only with the foot; Messi 13' and Formicola 17' first-time from cut-backs; Myers 69' also first-time from a cut-back, but from the penalty spot (`10`), so no flag | a lead (2) |
 | byte +15 `88` = free kick | Diarra 53' (the others: `10` or `40`) | guess (1) |
 | the value at +10 | rises with distance (headers lowest), but 48 of 82 outside-the-box goals are under 16 500 (inside: median 8 700, outside: median 15 200); Javier's "finish from 12 metres" is 8 769, Etxaniz's "close range header" 12 834 | NOT the distance (the game's text knows the distance: it is stored elsewhere or computed) |
 | code 47 | at minutes with no goal (Chelsea v Shamrock 13', 24', 33', 42'); also at a penalty's own tick | unknown, not "goal" |
-| code 3 = a penalty kick | 4 of 4 penalties (save of 22:56), with type and detail bytes like a shot's | firm |
+| code 3 = a penalty kick | 4 of 4 penalties (save of 22:56), and Baldy, Marcelinho twice, Aureli (16 Feb 2064): 8 of 8; the side and height of each fit the game's "bottom corner" / "top corner"; Marcelinho's "powerful penalty" has the drive bit `21` | firm |
+| byte +15 `20`/`30` = a penalty | the four penalties of 16 Feb 2064 (`30 20 20 20`), no other goal has it | a lead (4); not needed: code 3 tells it |
 | the event list | only some moments: Marks 90+2' and Myers 90+3' (Chelsea v Shamrock) have no shot event | a selection |
 
 Ruled out: the shot record's flag bytes (they repeat the goal-mouth zone and a high/low band; header, volley and free kick
@@ -94,6 +99,22 @@ Source: the game's match report text or the user watching the goal. Bytes from t
 | Chelsea 3-1 Shamrock Rovers, Champions League (30 Jan 2064) | Francisco Pardal 59' | user: header from close in, edge of the six-yard box near the post | 4 397, `03`, `40 40 00 01 00 21 08 41 01` | 1.00, -2.68 |
 | | Jake Marks 90+2' | user: shot from outside the box, left of the D (about 22-25 m) | no shot event | 1.96, 3.56 |
 | | Ken Myers 90+3' | user: shot from outside the box, right of the D (about 22-25 m) | no shot event | 0.15, -2.76 |
+| Chelsea 6-0 Luton, Premier Division (16 Feb 2064; save of 3 Nov 2026, 09:16) | Francisco Pardal 8' | "a good header from just inside the six-yard box" | 2 987, `03`, `40 40 00 02 80 40 00 22 01` | 0.98, -1.19 |
+| | Lionel Messi 13' | "a rifled drive which kept low" | 10 628, `a1`, `40 40 00 02 80 40 00 08 01` | 0.66, -2.77 |
+| | Marcelo Formicola 17' | "a deflected low drive" (the second deflection) | 5 807, `a1`, `40 42 00 01 00 44 00 08 10` | 0.01, -0.95 |
+| | Bruce Hilgers 43' | "a low drive from 24 metres out" | 22 769, `21`, `90 08 00 00 08 41 00 01 10` | 0.18, 3.50 |
+| | Marcelo Formicola 56' | "a volley from within the six-yard box" | 4 026, `85`, `40 40 00 01 80 20 08 40 00` | 0.19, 2.41 |
+| | Ken Myers 69' | "a well struck drive which stayed low and went in via the post" | 10 677, `21`, `10 48 00 02 00 45 00 04 10` | 0.48, -2.48 (1.2 m from the post at 3.66: "via the post" does not fit well) |
+| Middlesbrough 0-2 Nottingham Forest, Premier Division (16 Feb 2064; save of 3 Nov 2026, 09:20) | Leighton Baldy 49' | "a penalty placed into the bottom right corner" | code 3: 3 480, `01`, `30 00 00 02 00 41 00 00 00` | 0.46, 3.31 (fits) |
+| | Murray Robertson 63' | "a deflected low drive" (the third deflection) | 9 775, `21`, `10 4a 00 04 80 40 00 04 10` | 1.87, 3.56 (not low: high at the post; the record may keep the ball after the deflection) |
+| Arsenal 2-2 Newcastle, Premier Division (16 Feb 2064) | Kilian Bautista 45' | "a powerful close range effort" | 15 200, `01`, `40 48 00 02 c0 40 00 02 01` | 2.11, -1.28 |
+| | Marcelinho 48' | "a penalty into the bottom corner" | code 3: 3 543, `01`, `20 00 00 02 00 41 00 00 00` | 0.53, 3.28 (fits) |
+| | Marcelinho 55' | "a powerful penalty into the bottom corner" | code 3: 3 822, `21`, `20 08 00 02 80 40 00 00 00` | 0.50, -3.25 (fits; "powerful" = the drive bit `20`) |
+| | Mattéo Blanc 91' | after Rafael's error, "a deflected low drive"; the user watched it: a low cross and a tap-in (the game's words were wrong) | no shot event | |
+| Everton 1-1 Plymouth, Premier Division (16 Feb 2064) | Aureli 69' | "a penalty into the top corner" | code 3: 3 449, `01`, `20 00 00 02 40 41 00 00 00` | 1.50, 3.21 (in the corner; 1.5 m is the upper part, not under the bar) |
+| | Óscar Pérez 74' | "a volley from close in which hit the post on its way" | 2 611, `85`, `40 00 00 02 00 45 00 00 00` | 0.51, -2.58 (1.1 m from the post) |
+| Watford 1-0 Rotherham, Premier Division (16 Feb 2064) | Carlos López 74' | "a low drive from the edge of the area which went in off the post" | 13 544, `21`, `90 08 00 00 04 45 00 04 10` | 0.74, -2.15 (1.5 m from the post) |
+| Manchester United 1-0 Aston Villa; Liverpool 1-0 Sheffield United (16 Feb 2064) | José Miguel 94', Conall Beck 91' | "a low drive" both | no shot event | |
 
 Labelled in the game's text but not in the save's detailed reports (no event to compare): Cosenza 2-3 AC Milan (9 Feb 2064:
 Alan Black 35' close range header, Tariq Tanser 50' powerful close range effort, Ion Lazar header from inside the six-yard
@@ -144,3 +165,30 @@ the zone flags, minutes apart (Sheminant 23:01 blocked and 73:54 goal are one en
 Goal of the Month or Week entries (they give the distance) from the Premier Division or the Champions League, whose
 matches the game details. Goals the game describes with: a deflected shot, a cross, a corner, a through ball, a penalty, a long shot "from 25 yards", a free kick, a
 rebound, a one-on-one, a chip, the left or right foot. Each one fixes or breaks a code.
+
+## The shot points of the analysis screen (search started 3 Nov 2026)
+
+The game's match analysis draws each shot from the point it was taken (Middlesbrough 0-2 Forest: Baldy's penalty 11.3 m,
+Robertson about 11.7 m out and 11.2 m to the side). Not found yet in the report's 98 KB (Middlesbrough v Forest): no f32,
+u16 or u8 pair near these points in metres, decimetres, centimetres, yards or half-metres, measured from the goal, a corner
+or the centre spot, that is not chance. The report holds the player records, the highlight events, a table of injury names
+and, after the next header, each player's name and attribute block. Your own matches keep far more (Chelsea 6-0 Luton:
+2.6 MB, likely the whole match), so the points of your games may be there. Not looked at yet: `.apm` files (one per team
+and match, not for every match), the Chelsea report.
+
+Found on the way: after the highlight events, a second shot list (2 flag bytes, a count, 15-byte parts like the players'
+shot lists) with other goal-line floats. Robertson 63' is there twice, at ticks 15 359 and 15 362, both -3.07 across, 0.03
+high: low, as the game said ("a deflected low drive"). The shooter's own record has 3.56, 1.87: where his shot was going
+before the deflection. So for a deflected goal the shooter's record is not where the ball went in. Baldy's penalty is
+there too (3.31, 0.46, as his record). Whose list this is (the goalkeeper's?) is not known yet.
+
+Luton's two shots (Chelsea 6-0 Luton, analysis screen, 3 Nov 2026): Roberto Pajares 22' (21:27) blocked, from 9.0 m out and
+10.8 m to one side, blocked at about 5 m; Renato Bernhard 70' (69:14) off target over the bar, from 8.6 m out and 13.4 m to
+the other side. Neither has a highlight event: the report keeps events almost only for goals, but the analysis draws every
+shot. Their shot records' flag bytes are `10 08` and `10 20`: the first byte is the goal-mouth band (`20` within about 1.2 m
+of the centre, `10` about 2-2.8 m, `40` beyond about 3.3 m: 10 of 10 shots), the second the outcome (`04` goal, `08` blocked,
+`20` off target). So the shot's point is not in its record. The float before a player's shot list is his xG in the match
+without penalties (Chelsea 4.11 of 4.11; Forest 0.38 + a penalty's 0.79 = the game's 1.17), already read as match_players.xg.
+In your own games the passes (with points) are kept too, in the 2.4 MB packed block (8-byte groups, single bits set); that is
+where the analysis points most likely come from. A match without it (Middlesbrough v Forest, 98 KB) still showed its shot
+points on the analysis screen: their source is not found.

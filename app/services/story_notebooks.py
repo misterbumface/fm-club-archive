@@ -671,7 +671,7 @@ def match_notebook(connection: Connection, fixture_id: int) -> dict | None:
     positions = q.main_positions(connection, scorers)
     club_standing = _standing_here(connection, scorers, (f["home_uid"], f["away_uid"]))
 
-    every_shot = q._rows(connection, "select s.side, s.person_uid, s.minute, s.second, s.outcome, s.across, s.height, s.outside_box, p.name "
+    every_shot = q._rows(connection, "select s.side, s.person_uid, s.minute, s.second, s.outcome, s.across, s.height, s.outside_box, s.range, p.name "
                                      "from match_shots s left join people p on p.fm_uid = s.person_uid where s.fixture_id = :f "
                                      "order by s.minute, s.second", f=fixture_id)
     shots = [sh for sh in every_shot if sh["outcome"] == "goal"]
@@ -691,6 +691,8 @@ def match_notebook(connection: Connection, fixture_id: int) -> dict | None:
             found["at"] = f"{shot['minute']}:{shot['second']:02d}"  # the clock to the second, from the shot
             if shot["outside_box"] == 1:
                 found["from_outside_the_box"] = True
+            elif shot["range"] == "close":
+                found["from_close_range"] = True
         blamed = [c for c in culprits if c["side"] != g["side"]]  # the conceding side's mistakes: tied to the goal only when it is the only one
         if len(blamed) == 1 and blamed[0]["mistakes"] == 1 and conceded[blamed[0]["side"]] == 1:
             found["after_a_mistake_by"] = blamed[0]["name"]

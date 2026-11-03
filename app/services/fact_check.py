@@ -47,7 +47,9 @@ PROMPT = (
     '- "player_game": a player\'s numbers in the game the article reports. player, team, stat (one of '
     + ", ".join(GAME_STATS) + "), value. \"X made Y's goal\" or \"from X's pass\" is X with assists, value 1.\n"
     '- "goal_kind": how a goal in the game the article reports was scored. player, team, shot ("header", "volley", "drive" for '
-    'a low hard strike, "shot" for any other strike with the foot). "Headed in" is a header.\n'
+    'a low hard strike, "shot" for any other strike with the foot), and range when the article tells it ("close" for close '
+    'range, a tap-in or from a few yards; "outside" for from outside the box or from distance; "inside" for from inside the '
+    'box). "Headed in" is a header.\n'
     '- "player_season": a player\'s numbers this season. player, team, competition ("league" or "all"), appearances, goals, '
     'assists. "His second league goal this season" is goals 2, competition "league".\n'
     '- "player_age": player, team, age.\n'
@@ -209,13 +211,19 @@ class Checker:
 
     def _goal_kind(self, claim):
         told = str(claim.get("shot") or "").lower()
-        if not self.game or told not in ("header", "volley", "drive", "shot"):
+        far = str(claim.get("range") or "").lower()
+        if not self.game or (told not in ("header", "volley", "drive", "shot") and far not in ("close", "outside", "inside")):
             return "unknown", ""
         person = self.archive.person(str(claim.get("player") or ""), claim.get("team"))
         if not person:
             return "unknown", ""
-        kinds = [r["kind"] for r in q._rows(self.c, "select kind from match_shots where fixture_id = :f and person_uid = :p and outcome = 'goal'",
-                                             f=self.game["id"], p=person)]
+        goals = q._rows(self.c, "select kind, range, outside_box from match_shots where fixture_id = :f and person_uid = :p and outcome = 'goal'",
+                        f=self.game["id"], p=person)
+        if far in ("close", "outside", "inside") and goals:
+            verdict = self._goal_range(far, goals, person)
+            if verdict[0] == "wrong" or told not in ("header", "volley", "drive", "shot"):
+                return verdict
+        kinds = [r["kind"] for r in goals]
         if not kinds or not all(kinds):
             return "unknown", ""  # a goal the game kept no event for
         # a header and a volley are told apart from any other strike; "drive" and "shot" both fit a strike with the foot
@@ -225,6 +233,19 @@ class Checker:
         name = q._rows(self.c, "select name from people where fm_uid = :p", p=person)[0]["name"]
         return "wrong", f"{name}'s goal{'s' if len(kinds) > 1 else ''} in this game: " + ", ".join(
             {"finish": "a shot with the foot", "drive": "a drive", "header": "a header", "volley": "a volley"}[k] for k in kinds)
+
+    def _goal_range(self, far: str, goals: list, person: int):
+        """Close range or outside the box from each goal's event (docs/goal-labels.md); inside the box from either."""
+        ranges = ["close" if g["range"] == "close" else "outside" if g["outside_box"] == 1 else "inside" if g["outside_box"] == 0 else None
+                  for g in goals]
+        fits = {"close": ("close",), "outside": ("outside",), "inside": ("close", "inside")}[far]
+        if any(r in fits for r in ranges):
+            return "right", ""
+        if None in ranges or (far == "close" and "inside" in ranges):  # a goal of unknown range, or inside but not said close
+            return "unknown", ""
+        name = q._rows(self.c, "select name from people where fm_uid = :p", p=person)[0]["name"]
+        return "wrong", f"{name}'s goal{'s' if len(ranges) > 1 else ''} in this game: " + ", ".join(
+            {"close": "from close range", "outside": "from outside the box", "inside": "from inside the box"}[r] for r in ranges)
 
     def _player_season(self, claim):
         person = self.archive.person(str(claim.get("player") or ""), claim.get("team"))

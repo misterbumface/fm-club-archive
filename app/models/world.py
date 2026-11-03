@@ -385,6 +385,7 @@ class WorldMatchShot(db.Model):
     height: Mapped[float] = mapped_column(Float, nullable=False)  # metres (the bar at 2.44)
     outside_box: Mapped[int | None] = mapped_column(Integer)  # a goal from outside the box: 1 yes, 0 no, null unknown (the scorer's goals mixed)
     kind: Mapped[str | None] = mapped_column(String(8))  # header, volley, drive, finish (fm_save.SHOT_KINDS); null when the game kept no event
+    range: Mapped[str | None] = mapped_column(String(8))  # close, outside (fm_save.SHOT_RANGES); null in between or no event
     as_of: Mapped[date] = mapped_column(Date, nullable=False)
 
 

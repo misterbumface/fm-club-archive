@@ -578,6 +578,7 @@ class _SaveReader:
                     shot_rows.append({"fixture_id": fixture_id, "side": side_number, "seq": seq, "person_uid": self.person_uid.get(player.person),
                                       "minute": shot.minute, "second": shot.second, "outcome": fm_save.SHOT_OUTCOMES[shot.outcome],
                                       "across": shot.across, "height": shot.height, "outside_box": _outside_box(shot, player),
+                                      "range": shot.range if shot.outcome == fm_save.SHOT_GOAL else None,
                                       "kind": shot.kind, "as_of": self.game_date})
                 for seq, player in enumerate(side.players):
                     row = {name: getattr(player, name) for name in world.MATCH_PLAYER_FIGURES}
@@ -1037,6 +1038,8 @@ def _outside_box(shot, player) -> int | None:
     his goals from outside: 1; none: 0; some: unknown (null). Not a goal: null."""
     if shot.outcome != fm_save.SHOT_GOAL or not player.goals:
         return None
+    if shot.range:  # the goal's own event (docs/goal-labels.md; proven for goals only)
+        return int(shot.range == "outside")
     outside = min(player.goals_outside_box, player.goals)
     return 1 if outside == player.goals else 0 if outside == 0 else None
 
