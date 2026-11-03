@@ -1048,10 +1048,16 @@ def european_nights(w) -> list:
         won = sum(q.result_for(f, team)[2] == "W" for f, team in games)
         drawn = sum(q.result_for(f, team)[2] == "D" for f, team in games)
         country = w.nations.get(nation, {}).get("name", "")
+        # a knockout leg carries its tie: the round, the aggregate and who goes through (25 Feb 2064: "Cluj 1-0 Napoli, Cluj
+        # won" alone, and the paper sent Napoli out on 3-2 on aggregate in their favour)
+        ties = {f["id"]: tie for f, _ in games if (tie := _tie(w, f))}
         facts = {"country": country, "record": f"{len(games)} games: {won} won, {drawn} drawn, {len(games) - won - drawn} lost",
-                 "results": [f"{_comp_name(w, f['competition_uid'])}, {_result_line(w, f)}" for f, _ in games]}
+                 "results": list(dict.fromkeys(  # a game between two of the country's clubs once
+                     f"{_comp_name(w, f['competition_uid'])}, {_result_line(w, f)}"
+                     + (f" ({ties[f['id']]['round'].split(', ', 1)[1]}; {ties[f['id']]['the_tie']})" if ties.get(f["id"], {}).get("the_tie") else "")
+                     for f, _ in games))}
         groups = []
-        for uid in {f["competition_uid"] for f, _ in games}:
+        for uid in {f["competition_uid"] for f, _ in games if f["id"] not in ties}:  # a knockout week has no table to tell
             for line in _group_lines(w, uid, clubs) or []:
                 groups.append(f"{_comp_name(w, uid)}, {line}")
         if groups:

@@ -12,16 +12,19 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from flask import current_app
 
 from app.services import world_queries as q
 
 KINDS = ("result", "record", "form", "place", "fixture", "player_game", "goal_kind", "player_season", "player_age", "player_club",
-         "meetings", "title_run", "other")
+         "meetings", "title_run", "tie", "other")
 GAME_STATS = ("goals", "assists", "shots", "shots_on_target", "passes", "passes_completed", "key_passes", "tackles", "tackles_won",
               "interceptions", "headers_won", "dribbles", "fouls", "yellow_cards", "minutes", "conceded")
+TIE_DAYS = 45  # a "through" or "out" is about a tie of these last weeks
+OPEN = -1  # a tie not decided yet
+LEG_DAYS = 35  # the legs of one tie lie within this of each other (a league-phase meeting months before is not a leg)
 RECORD_FIELDS = ("played", "won", "drawn", "lost", "points", "unbeaten_run", "winning_run")
 
 PROMPT = (
@@ -56,6 +59,9 @@ PROMPT = (
     '- "player_club": a player\'s whole career at a club, over all his seasons there. player, club, appearances, goals.\n'
     '- "meetings": the last games between two teams. team, opponent, last (how many meetings), won (how many of them team won), '
     "drawn, lost.\n"
+    '- "tie": a team through to the next round of a cup or out of it, over one game or two legs. team, outcome ("through" or '
+    '"out", for team), opponent and competition when the sentence names them. "The curtain has fallen for X", "X are out", '
+    '"X go through", "X reach the last 16" are ties.\n'
     '- "title_run": league titles won in a row. team, won_in_a_row (the titles already won one after another up to now; '
     '"on course for a 42nd title in a row" is 41).\n'
     '- "other": any other hard fact. in_notebook: true when the notebook gives this fact, false when it does not.\n'
@@ -328,6 +334,55 @@ class Checker:
             return "right", ""
         return "wrong", (f"the last {int(last)} games between {self.w.name(team)} and {self.w.name(other)}: "
                          + "; ".join(self._line(f) for f in games) + ". Wrong: " + ", ".join(wrong))
+
+    def _tie(self, claim):
+        """Through or out of a cup tie, from its legs (25 Feb 2064: Napoli sent out on 3-2 on aggregate in their favour)."""
+        team, other = self._team(claim.get("team")), self._team(claim.get("opponent"))
+        told = str(claim.get("outcome") or "").lower()
+        if not team or told not in ("through", "out"):
+            return "unknown", ""
+        cups = ",".join(str(u) for u, c in self.w.competitions.items() if c.get("scope") in ("cup", "continental")) or "0"
+        games = self.w.rows(f"select * from fixtures where (home_uid = :t or away_uid = :t) and competition_uid in ({cups}) "
+                            f"and home_goals is not null and date <= :d and date >= :s order by date desc, id desc",
+                            t=team, d=str(self.until), s=str(self.until - timedelta(days=TIE_DAYS)))
+        if other:
+            games = [f for f in games if other in (f["home_uid"], f["away_uid"])]
+        competition = str(claim.get("competition") or "").lower()
+        if competition:
+            games = [f for f in games if self._competition_fits(f["competition_uid"], competition)]
+        for f in games:
+            winner = self._tie_winner(f)
+            if winner is None:
+                continue  # a league-phase or group game
+            if winner == OPEN:
+                return "unknown", ""  # the latest tie is not decided yet: an older one is not what the sentence means
+            if (winner == team) == (told == "through"):
+                return "right", ""
+            rival = f["away_uid"] if f["home_uid"] == team else f["home_uid"]
+            return "wrong", (f"{self.w.name(winner)} went through against {self.w.name(rival if winner == team else team)}: "
+                             + "; ".join(self._line(g) for g in self._legs(f)))
+        return "unknown", ""
+
+    def _legs(self, f: dict) -> list[dict]:
+        """The legs of the tie a cup game belongs to: the same two teams in the same competition within LEG_DAYS."""
+        rows = self.w.rows("select * from fixtures where competition_uid = :c and ((home_uid = :h and away_uid = :a) or "
+                           "(home_uid = :a and away_uid = :h)) and date <= :d order by date", c=f["competition_uid"], h=f["home_uid"],
+                           a=f["away_uid"], d=str(self.until))
+        day = date.fromisoformat(str(f["date"])[:10])
+        return [g for g in rows if abs((date.fromisoformat(str(g["date"])[:10]) - day).days) <= LEG_DAYS]
+
+    def _tie_winner(self, f: dict) -> int | None:
+        """Who went through a knockout tie with this game in it; OPEN while it is not decided; None for a league-phase game."""
+        from app.services.story_leads_now import _tie
+
+        if self.w.comp(f["competition_uid"]).get("scope") == "continental":
+            told = _tie(self.w, f)  # the big cups' knockout rounds; a league-phase game has no tie
+            if not told:
+                return None
+            if " go through" not in told.get("the_tie", ""):
+                return OPEN
+        (tie,) = q.ties(self._legs(f))
+        return tie["winner"] if tie["played"] and tie["winner"] else OPEN
 
     def _title_run(self, claim):
         team = self._team(claim.get("team"))

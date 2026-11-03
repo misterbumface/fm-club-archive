@@ -4,7 +4,7 @@ from datetime import date
 
 from app.services import article_writer, fact_check, outlets
 from tests.test_outlets import _lead, fake_ai  # noqa: F401
-from tests.test_story_leads_now import SCORER, _season
+from tests.test_story_leads_now import SCORER, _big_cup, _season
 from tests.test_world_pages import AS_OF, CHELSEA, LIVERPOOL, app, small_world  # noqa: F401
 
 UNTIL = date(2063, 9, 3)  # Chelsea have won all four league games; they won 1-0 at Liverpool on 31 August
@@ -182,3 +182,14 @@ def test_a_player_trait_is_hinted_at_never_read_out():
     copied = trait_copies("Geyer cuts inside from the left wing, plays one-twos and comes deep to get the ball.", notebook)
     assert len(copied) == 3 and all(f.startswith(STYLE_FAULT) for f in copied)
     assert hard_faults(copied) == []  # a style fault: the writer is asked again, the piece is not stopped
+
+
+def test_through_or_out_is_checked_on_the_whole_tie(small_world):
+    """25 Feb 2064: "for Napoli, the curtain has fallen" after a 1-0 defeat in Cluj; they went through 3-2 on aggregate."""
+    _season(small_world)
+    _big_cup(small_world, (1, 1))  # Chelsea 2-1 Liverpool, then Liverpool 1-1 Chelsea; Arsenal v Spurs still open
+    out = _check(small_world, {"kind": "tie", "team": "Chelsea", "outcome": "out"})
+    assert out.verdict == "wrong" and out.truth.startswith("Chelsea went through against Liverpool: 2063-08-20: Chelsea 2-1 Liverpool")
+    assert _check(small_world, {"kind": "tie", "team": "Liverpool", "outcome": "out", "competition": "Champions League"}).verdict == "right"
+    assert _check(small_world, {"kind": "tie", "team": "Chelsea", "outcome": "through", "opponent": "Liverpool"}).verdict == "right"
+    assert _check(small_world, {"kind": "tie", "team": "Arsenal", "outcome": "through"}).verdict == "unknown"  # the second leg is to come

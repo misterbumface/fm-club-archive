@@ -823,6 +823,8 @@ def test_a_big_cups_knockout_game_is_told_in_its_tie(small_world):
     assert second["the_tie"] == "Chelsea 3-2 Liverpool on aggregate: Chelsea go through on aggregate"
     assert _tie_of(small_world, SPURS, "2063-09-02")["the_tie"] == "after the first leg: Arsenal 0-0 Tottenham; the second leg decides it"
     assert _tie_of(small_world, CHELSEA, "2063-07-10") is None  # a group game keeps its own stage words
+    with small_world.begin() as c:
+        c.exec_driver_sql("update clubs set nation_uid = 765")
     found = _found(small_world)
     report = next(lead for lead in found["club_report"] if lead.facts["competition"] == "UEFA Champions League")
     assert report.facts["the_tie"].endswith("Chelsea go through on aggregate") and "stage" not in report.facts
@@ -830,6 +832,10 @@ def test_a_big_cups_knockout_game_is_told_in_its_tie(small_world):
     (game,) = round_up.facts["games"]  # one game is enough, each game in full: a paragraph each
     assert game["the_tie"] == "Chelsea 3-2 Liverpool on aggregate: Chelsea go through on aggregate" and game["first_leg"]
     assert round_up.facts["region"] == "Europe" and "continental_round" not in found
+    (nights,) = found["european_nights"]  # 25 Feb 2064: "Cluj 1-0 Napoli, Cluj won" alone, and the paper sent Napoli out
+    assert nights.facts["results"] == ["UEFA Champions League, 2063-09-02: Liverpool 1-1 Chelsea, a draw (Semi-finals, leg 2 of 2; "
+                                       "Chelsea 3-2 Liverpool on aggregate: Chelsea go through on aggregate)"]
+    assert "groups_now" not in nights.facts  # a knockout week has no table to tell
 
 
 def test_a_continental_story_goes_to_its_part_of_the_world():
