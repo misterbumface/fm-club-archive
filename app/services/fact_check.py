@@ -168,8 +168,10 @@ class Checker:
         team, other = self._team(claim.get("team")), self._team(claim.get("opponent"))
         if not team:
             return "unknown", ""
-        games = self.w.rows("select * from fixtures where (home_uid = :t or away_uid = :t) and date > :d order by date limit 6",
-                            t=team, d=str(self.until))
+        # still to come: the paper's own day counts until its game is played (26 Feb 2064: "Ponferrada host Manchester United"
+        # that evening was called wrong)
+        games = self.w.rows("select * from fixtures where (home_uid = :t or away_uid = :t) and (date > :d or (date >= :d and "
+                            "home_goals is null)) order by date limit 6", t=team, d=str(self.until))
         if not games:
             return "unknown", ""
         day, venue = str(claim.get("day") or ""), str(claim.get("venue") or "").lower()
@@ -423,7 +425,8 @@ class Checker:
             games = self.w.rows("select * from fixtures where (home_uid = :t or away_uid = :t) and home_goals is not null and date <= :d "
                                 "and date >= :s order by date desc", t=team, d=str(self.until), s=str(self.until - timedelta(days=WEEKDAY_DAYS)))
         else:
-            games = self.w.rows("select * from fixtures where (home_uid = :t or away_uid = :t) and date > :d and date <= :e order by date",
+            games = self.w.rows("select * from fixtures where (home_uid = :t or away_uid = :t) and (date > :d or (date >= :d and "
+                                "home_goals is null)) and date <= :e order by date",
                                 t=team, d=str(self.until), e=str(self.until + timedelta(days=WEEKDAY_DAYS)))
         if other:
             games = [f for f in games if other in (f["home_uid"], f["away_uid"])][:1]

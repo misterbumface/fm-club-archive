@@ -838,6 +838,18 @@ def test_a_big_cups_knockout_game_is_told_in_its_tie(small_world):
     assert "groups_now" not in nights.facts  # a knockout week has no table to tell
 
 
+def test_a_knockout_game_on_the_papers_own_day_is_previewed(small_world):
+    """26 Feb 2064: the Tuesday second legs fell out of that Tuesday's Champions League preview, and no paper previewed them."""
+    _season(small_world)
+    _big_cup(small_world, (1, 1))
+    with small_world.begin() as c:
+        c.exec_driver_sql("update fixtures set date = ? where competition_uid = ? and home_uid = ? and home_goals is null",
+                          (str(UNTIL), CUP, SPURS))  # Spurs v Arsenal, the second leg, on the paper's day
+    found = _found(small_world)
+    games = [(lead.facts["home"], lead.facts["away"]) for kind in ("tie_preview", "preview") for lead in found.get(kind, [])]
+    assert ("Tottenham", "Arsenal") in games  # a semi-final: its own preview
+
+
 def test_a_continental_story_goes_to_its_part_of_the_world():
     from app.services import editions
     from app.services.story_leads import Lead

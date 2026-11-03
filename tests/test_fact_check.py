@@ -211,3 +211,12 @@ def test_a_goals_minute_and_a_games_weekday_are_checked(small_world):
     assert thursday.verdict == "wrong" and thursday.truth == "Chelsea's games of these days: Friday 24 August: Chelsea v Arsenal"
     assert _check(small_world, {"kind": "game_day", "team": "Liverpool", "weekday": "Monday", "when": "future"}).verdict == "right"
     assert _check(small_world, {"kind": "game_day", "team": "Liverpool", "weekday": "Sunday", "when": "future"}).verdict == "wrong"
+
+
+def test_a_game_on_the_papers_own_day_is_still_to_come(small_world):
+    """26 Feb 2064: "Ponferrada host Manchester United" that evening was called wrong: the checker looked only after the day."""
+    _season(small_world)
+    with small_world.connect() as c:  # Liverpool v Arsenal, unplayed, on the paper's day
+        checker = fact_check.Checker(c, date(2063, 9, 10))
+        assert checker.check({"sentence": "S.", "kind": "fixture", "team": "Liverpool", "opponent": "Arsenal", "venue": "home"}).verdict == "right"
+        assert checker.check({"sentence": "S.", "kind": "game_day", "team": "Liverpool", "weekday": "Monday", "when": "future"}).verdict == "right"

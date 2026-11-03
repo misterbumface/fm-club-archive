@@ -718,7 +718,9 @@ def previews(w) -> list:
     covered = {w.comp(league).get("nation_uid") for league in tables} - {None}
     comps = ",".join(str(u) for u in list(tables) + continental + cups + internationals) or "0"
     leads, knockout_ties = [], defaultdict(list)
-    for f in w.rows(f"select * from fixtures where competition_uid in ({comps}) and home_goals is null and date > :u and date <= :e "
+    # the paper's own day counts: its games are still to play when it comes out (26 Feb 2064: the two second legs of that
+    # Tuesday fell out of the Champions League preview, and no paper previewed them)
+    for f in w.rows(f"select * from fixtures where competition_uid in ({comps}) and home_goals is null and date >= :u and date <= :e "
                     f"order by date", u=str(w.until), e=str(w.until + timedelta(days=PREVIEW_DAYS))):
         home, away, league = f["home_uid"], f["away_uid"], f["competition_uid"]
         table, place, _ = _phase_table(w, league, tables)
