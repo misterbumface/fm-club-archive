@@ -61,7 +61,7 @@ SECTIONS = {"title": "Champions", "giant_killing": "Upsets", "big_win": "Results
             "club_report": "Results", "club_preview": "Coming up", "scouting_follow_up": "Scouting",
             "kings_wage": "Transfers", "contract_running_down": "Transfers", "manager_out": "Appointments",
             "travel_log": "Away days", "interview": "Interviews", "war_of_words": "War of words",
-            "under_pressure": "Appointments", "vacancy": "Appointments", "transfer_rumour": "Transfers", "loan_offer": "Transfers"}
+            "under_pressure": "Appointments", "crisis": "Form", "crisis_over": "Form", "vacancy": "Appointments", "transfer_rumour": "Transfers", "loan_offer": "Transfers"}
 ARTICLE_TYPE = {"lead": "report", "standard": "report", "brief": "brief", "feature": "analysis", "column": "analysis", "matchday": "report"}
 ISSUE_PROMINENCE = {"lead": "lead", "standard": "standard", "brief": "brief", "feature": "major", "column": "major", "matchday": "major"}
 
@@ -245,7 +245,7 @@ KIND_LIMITS = {"scouting": 3, "legend_profile": 1, "career_end": 1, "milestone":
                "tournament_report": 6, "tournament_preview": 4, "tournament_round_up": 1, "our_players_at_tournament": 1, "player_of_the_tournament": 1,
                "club_report": 8, "club_preview": 8, "scouting_follow_up": 3, "kings_wage": 1, "contract_running_down": 2, "manager_out": 2,
                "travel_log": 1, "interview": 1, "war_of_words": 1,
-               "under_pressure": 2, "vacancy": 1, "transfer_rumour": 2, "loan_offer": 2}
+               "under_pressure": 2, "crisis": 2, "crisis_over": 1, "vacancy": 1, "transfer_rumour": 2, "loan_offer": 2}
 # While the leagues play (a league round-up is among the leads), a news paper (the world or a nation beat) reports
 # what happens: its front story is news of the season, current news ranks higher, and it prints at most one story
 # that looks back, one scouting report and three transfers. The history, young and transfer papers are as before.
@@ -256,12 +256,18 @@ SEASON_NEWS = {"league_round", "misfiring", "clinical", "tired_legs", "run", "de
                "continental_round", "tie_report", "tie_preview", "knockout_round", "knockout_preview", "european_nights", "international_round", "national_team", "promised_report", "transfer_interest", "transfer_bid",
                "tournament_report", "tournament_preview", "tournament_round_up", "our_players_at_tournament", "player_of_the_tournament",
                "club_report", "club_preview", "contract_running_down", "manager_out", "war_of_words",
-               "under_pressure", "vacancy", "transfer_rumour", "loan_offer"}
+               "under_pressure", "crisis", "crisis_over", "vacancy", "transfer_rumour", "loan_offer"}
 SEASON_NEWS_BOOST = 1.25
 # The market's kinds: the transfer paper's own; a news paper damps them and never leads with one (World Soccer led with a
 # Saudi club's list three cycles in four, 8 to 19 Dec 2063, while Liverpool 1-3 Everton went unwritten).
 TRANSFER_KINDS = {"transfer_interest", "transfer_bid", "kings_wage", "contract_running_down", "transfer_rumour", "loan_offer"}
 TRANSFER_IN_NEWS = 0.7
+# The season's reading of the numbers and the shape: good reading, but no news (4 Nov 2026: "Villarreal's nine-point
+# mirage", an expected-points piece, led The Spanish Daily). A news paper damps them below the match news; By the
+# Numbers (the numbers beat) keeps them.
+NUMBERS_KINDS = {"expected_points", "misfiring", "clinical", "underperformer", "overperformer", "expectations", "stat_watch",
+                 "tired_legs", "partnership", "system_change", "position_change", "check_in"}
+NUMBERS_IN_NEWS = 0.7
 # A kind (or a tag of a lead) printed anywhere within this many game days is not printed again: once a month for a king's
 # wage and for a story of a club shopping widely ('Cash is king' every cycle, 14 to 19 Dec 2063).
 COOLDOWN_DAYS = {"kings_wage": 28, "shopping": 28, "contract_running_down": 14}
@@ -298,8 +304,9 @@ def outlet_score(lead: Lead, outlet: Outlet, in_season: bool = False) -> float:
     now = in_season and lead.kind in SEASON_NEWS and news_paper(outlet)
     market = lead.kind in TRANSFER_KINDS and news_paper(outlet)
     backward = lead.kind in NOSTALGIA | LANDMARKS and news_paper(outlet)
+    numbers = lead.kind in NUMBERS_KINDS and news_paper(outlet) and "numbers" not in outlet.beats
     return (lead.score * (story_leads.FOLLOWED_BOOST if home else 1.0) * (SEASON_NEWS_BOOST if now else 1.0)
-            * (TRANSFER_IN_NEWS if market else 1.0) * (BACKWARD_IN_NEWS if backward else 1.0))
+            * (TRANSFER_IN_NEWS if market else 1.0) * (BACKWARD_IN_NEWS if backward else 1.0) * (NUMBERS_IN_NEWS if numbers else 1.0))
 
 
 def cooldown_tags(lead: Lead) -> set[str]:

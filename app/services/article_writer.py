@@ -246,6 +246,12 @@ KIND_NOTES = {
                  "grudge or a debt show. Set the scene in two sentences first.",
     "under_pressure": "The press reports that a club's board are losing patience with the manager and that a coming game "
                       "could decide his fate. It is a report, not a sacking: say so. The results given show why.",
+    "crisis": "This is about a well-known club or nation in crisis: a squad this good (the_squad: its best players) taking "
+              "far fewer points than it should. The results given are the crisis; tell them as they are, with the players who "
+              "should be winning these games, the manager and the board when given, and the mood. the_story says whether it "
+              "begins or goes on. Never print the papers' own reading as a number of its own: no ratings, no expected points.",
+    "crisis_over": "This is about a well-known club or nation whose crisis is over: the games that ended it, and how the "
+                   "results have caught up with a squad this good. Tell the bad run before only as the results given.",
     "vacancy": "A club without a manager, and the men the press link with the job (some have denied it or said nothing). "
                "No appointment is known: never name one.",
     "transfer_rumour": "A press report that a club is after a player, with the fee reported. No bid is known: say it is a "
@@ -795,6 +801,9 @@ def write_article(outlet: Outlet, lead: Lead, published: date, prominence: str =
                            published=published.strftime("%-d %B %Y"), opening=form["opening"], headline_form=form["headline"])
     if lead.kind in KIND_NOTES:
         prompt += " " + KIND_NOTES[lead.kind]
+    if lead.facts.get("in_crisis"):
+        prompt += (" in_crisis (in the story facts) names a team in crisis by the papers' reading: let it colour the piece "
+                   "(a crisis-hit side, a manager under strain) in a phrase or two; it is not the story.")
     if notebook.get("connections"):
         prompt += (" connections lists players now at one side who once played for the other: weave these stories in "
                    "where they add to the story (an old boy deciding a final against his former club is magic).")

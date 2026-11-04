@@ -590,3 +590,55 @@ def test_the_about_page_says_what_the_site_is(site):
     assert "About World Sport" in about and "Football Manager 2024" in about and "The stories are checked" in about
     assert "stories printed" not in about or "<b>4</b>" in about  # the world's numbers only when a world was read
     assert '/about"' in pages.get("/").data.decode()  # the footer links it, so the export prints it
+
+
+def test_the_front_leads_with_big_events_then_home_and_far_stories_last(site, monkeypatch):
+    from app.models import world
+    from app.models.world_soccer_entity_link import WorldSoccerEntityLink
+    from app.public import BIG, FAR, HOME, story_reach
+    from app.services import world_queries
+
+    _league(site)
+    monkeypatch.setattr(world_queries, "cached_nation_continents", lambda c: {765: "Europe", 1649: "South America"})
+    monkeypatch.setattr("app.public.football.followed", lambda: (630,))
+    with site.app_context():
+        with db.engines[world.BIND].begin() as c:
+            c.execute(world.WorldClub.__table__.insert(), [{"fm_uid": 319, "name": "Corinthians", "short_name": "Corinthians", "nation_uid": 1649,
+                                                            "as_of": date(2063, 10, 1)}])
+            c.execute(world.WorldClub.__table__.update().where(world.WorldClub.fm_uid.in_((630, 662))).values(nation_uid=765))
+            c.execute(world.WorldCompetition.__table__.insert(), [{"fm_uid": 9, "name": "World Cup", "short_name": "World Cup",
+                                                                    "abbreviation": "WC", "scope": "national_teams", "reputation": 200}])
+
+        def article(headline: str, order: int, kind: str, uid: int, ref: str) -> WorldSoccerArticle:
+            made = WorldSoccerArticle(headline=headline, section="Transfers", lead_key=f"key:{order}", prominence="lead" if order == 0 else "standard",
+                                      body="Text.", byline="Desk", article_type="report", sort_order=order)
+            made.entity_links.append(WorldSoccerEntityLink(entity_type=kind, entity_id=uid, world_ref=ref, label=headline))
+            return made
+
+        far, near = article("Corinthians sign a midfielder", 0, "club", 319, "club:319"), article("Liverpool new man", 1, "club", 662, "club:662")
+        big = article("The World Cup draw", 2, "competition", 9, "competition:9")
+        made = WorldSoccerIssue(publication_date=date(2063, 10, 28), knowledge_cutoff=date(2063, 10, 28), status="published", edition_name="The Transfer Wire")
+        made.articles.extend([far, near, big])
+        db.session.add(made)
+        db.session.commit()
+        reach = story_reach(stories())
+        assert (reach[far.id][0], reach[near.id], reach[big.id][0]) == (FAR, (HOME, 190), BIG)
+    page = site.test_client().get("/").data.decode()
+    assert page.index("The World Cup draw") < page.index("Liverpool new man") < page.index("Corinthians sign a midfielder")
+
+
+def test_the_front_puts_football_before_flavour_then_the_bigger_competition_then_the_bigger_story():
+    from types import SimpleNamespace
+
+    from app.public import FAR, HOME, front_order
+
+    day = SimpleNamespace(publication_date=date(2064, 3, 1))
+
+    def story(uid: int, kind: str, score: float) -> SimpleNamespace:
+        return SimpleNamespace(id=uid, issue=day, lead={"kind": kind, "score": score})
+
+    reach = {1: (HOME, 184), 2: (HOME, 184), 3: (HOME, 183), 4: (HOME, 120), 5: (HOME, 200), 6: (FAR, 200)}
+    found = [story(1, "where_now", 90), story(2, "derby", 60), story(3, "knockout_preview", 80), story(4, "big_win", 99),
+             story(5, "transfer_rumour", 99), story(6, "derby", 99), story(7, "expected_points", 95)]
+    reach[7] = (HOME, 184)
+    assert [a.id for a in sorted(found, key=lambda a: front_order(a, reach))] == [3, 2, 4, 5, 7, 1, 6]

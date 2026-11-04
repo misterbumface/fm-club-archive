@@ -112,6 +112,90 @@ def competition_articles(where: str) -> set[int]:
     return found
 
 
+# How near a story is to the site's readers, who live where the followed clubs play (3 Nov 2026: Corinthians transfers led a
+# Chelsea site's front page). The world's big events come first (the World Cup, the Club World Championship, the major
+# tournament in play), then the home continent, then the rest of the world; inside each, the bigger competition first, by
+# the game's own competition reputation in steps of ten (a club counts as its league); see front_order. A far story keeps its section row and the latest
+# list, but leads the front only when there is nothing nearer.
+BIG, HOME, FAR = 0, 1, 2
+REPUTATION_STEP = 10  # the leagues inside a step (Premier Division 184, La Liga 183) are equals: the story's importance decides
+UNKNOWN_REPUTATION = 150  # a story that names no competition and no club in a league: a middling one
+
+
+def is_football(article) -> bool:
+    """The season's news (results, previews, runs, crises, injuries, the bench, the dressing room and the managers) is
+    football; the rest (the numbers, the market, the past, the columns, the scouting) is flavour. A story with no lead
+    kind counts as football."""
+    from app.services.editions import NUMBERS_KINDS, SEASON_NEWS, TRANSFER_KINDS
+
+    kind = (article.lead or {}).get("kind")
+    return not kind or (kind in SEASON_NEWS and kind not in TRANSFER_KINDS | NUMBERS_KINDS)
+
+
+def front_order(article, reach: dict) -> tuple:
+    """The front page's order (4 Nov 2026: "football should lead the headlines, the rest is flavour"): newest day first, far
+    stories only when nothing else is left, the big events, football before flavour, the bigger competition, then the
+    story's own importance (its lead's score: the stage, the drama, the kind)."""
+    where, size = reach.get(article.id, (HOME, UNKNOWN_REPUTATION))
+    return (where == FAR, -article.issue.publication_date.toordinal(), where, not is_football(article), -(size // REPUTATION_STEP),
+            -float((article.lead or {}).get("score") or 0))
+
+
+def story_reach(articles) -> dict[int, tuple[int, int]]:
+    """Each article's (reach, reputation), from its links (clubs, a person's club, nations, competitions): big when it names
+    a world competition or the major tournament in play, far when everything it names is on other continents than the
+    followed clubs', else home (also when it names nothing placed, or no followed club's continent is known). The
+    reputation is the biggest of the competitions it names and the leagues of the clubs it names."""
+    from app.models.world_soccer_entity_link import WorldSoccerEntityLink
+    from app.services import world_queries as q
+
+    ids = [a.id for a in articles]
+    if not ids:
+        return {}
+    links: dict[int, list] = {}
+    for link in WorldSoccerEntityLink.query.filter(WorldSoccerEntityLink.article_id.in_(ids)).all():
+        links.setdefault(link.article_id, []).append(link)
+    with football.connect() as c:
+        continents = q.cached_nation_continents(c)
+        team_nation = {r[0]: r[1] for r in c.exec_driver_sql(
+            "select t.fm_uid, coalesce(k.nation_uid, t.nation_uid) from teams t left join clubs k on k.fm_uid = t.club_uid")}
+        team_nation.update({r[0]: r[1] for r in c.exec_driver_sql("select fm_uid, nation_uid from clubs")})
+        competition = {r[0]: (q._continent_by_name(r[1]), r[2] or 0) for r in c.exec_driver_sql("select fm_uid, name, reputation from competitions")}
+        people = {link.entity_id for found in links.values() for link in found if link.entity_type == "person"}
+        person_team = {r[0]: r[1] for r in c.exec_driver_sql(
+            f"select fm_uid, coalesce(team_uid, staff_team_uid) from people where fm_uid in ({','.join(map(str, people)) or 0})")}
+        teams = {link.entity_id for found in links.values() for link in found if link.entity_type == "club"} | set(person_team.values())
+        marks = ",".join(str(t) for t in teams if t) or "0"
+        league = {r[0]: r[2] or 0 for r in c.exec_driver_sql(  # each club's latest league (sqlite takes the row of the max)
+            f"select team, competition_uid, reputation, max(date) from (select home_uid team, competition_uid, date from fixtures "
+            f"where home_uid in ({marks}) union all select away_uid, competition_uid, date from fixtures where away_uid in ({marks})) "
+            f"join competitions c on c.fm_uid = competition_uid where c.scope = 'league' group by team")}
+    home = {continents.get(team_nation.get(team)) for team in football.followed()} - {None}
+    major = (_major_tournament() or {}).get("uid")
+    reach = {}
+    for article_id in ids:
+        places, sizes, big = [], [], False
+        for link in links.get(article_id, []):
+            uid = link.entity_id
+            team = uid if link.entity_type == "club" else person_team.get(uid) if link.entity_type == "person" else None
+            if team:
+                places.append(continents.get(team_nation.get(team)))
+                sizes.append(league.get(team))
+            elif link.entity_type in ("competition", "competition_edition") and str(link.world_ref or "").count(":"):
+                competition_uid = int(str(link.world_ref).split(":")[1])
+                place, size = competition.get(competition_uid, (None, None))
+                big |= place == "World" or competition_uid == major
+                places.append(place)
+                sizes.append(size)
+            elif link.entity_type == "nation":
+                places.append(continents.get(uid))
+        known = {place for place in places if place}
+        sizes = [size for size in sizes if size is not None]
+        reach[article_id] = (BIG if big else FAR if home and known and not known & (home | {"World"}) else HOME,
+                             max(sizes) if sizes else UNKNOWN_REPUTATION)
+    return reach
+
+
 def section_name(key: str) -> str:
     return SECTIONS[key][0] if key in SECTIONS else "News"
 
@@ -258,7 +342,8 @@ def site():
 @public_bp.get("/")
 def front():
     everything = stories()
-    top = everything[:5]
+    reach = story_reach(everything)
+    top = sorted(everything, key=lambda a: front_order(a, reach))[:5]
     shown = {a.id for a in top}
     rows = []
     european = european_articles()
