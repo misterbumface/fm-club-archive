@@ -70,3 +70,27 @@ def test_invoke_is_a_maker_and_draws_the_portraits(monkeypatch):
     picture_makers.draw("a scene", 1, 1344, 768)
     picture_makers.edit("in action", b"face", 1)
     assert calls == [("draw", "Z-Image Turbo (Q8)", 1024), ("draw", "Z-Image Turbo (Q8)", 1344), ("edit", picture_makers.DEFAULT_INVOKE_EDIT)]
+
+
+def test_each_model_gets_the_qwen3_encoder_of_its_size():
+    """Z-Image reads its prompt with Qwen3 4B (2,560 wide); FLUX.2 Klein 9B with Qwen3 8B (4,096). The first encoder in the
+    list was taken before, and Z-Image with the 8B failed: "tensor a (4096) must match tensor b (2560)"."""
+    models = [m for m in MODELS if m["type"] != "qwen3_encoder"] + [
+        {"key": "e8", "hash": "h", "name": "Qwen3 8B Encoder", "base": "any", "type": "qwen3_encoder", "variant": "qwen3_8b"},
+        {"key": "e4", "hash": "h", "name": "Qwen3 4B Encoder", "base": "any", "type": "qwen3_encoder", "variant": "qwen3_4b"},
+        {"key": "f9", "hash": "h", "name": "FLUX.2 Klein 9B", "base": "flux2", "type": "main", "variant": "klein_9b"},
+        {"key": "f4", "hash": "h", "name": "FLUX.2 Klein 4B", "base": "flux2", "type": "main"},
+        {"key": "f2v", "hash": "h", "name": "FLUX.2 VAE", "base": "flux2", "type": "vae"},
+    ]
+
+    def encoder(name):
+        graph, _ = invoke_ai.create_graph(models, name, "a footballer", 1, 1024, 1024)
+        loader = next(n for n in graph["nodes"].values() if n["type"].endswith("model_loader"))
+        return loader["qwen3_encoder_model"]["key"]
+
+    assert encoder("Z-Image Turbo (Q8)") == "e4"
+    assert encoder("FLUX.2 Klein 4B") == "e4"
+    assert encoder("FLUX.2 Klein 9B") == "e8"
+    only_8b = [m for m in models if m["key"] != "e4"]
+    with pytest.raises(invoke_ai.InvokeError, match="4B"):
+        invoke_ai.create_graph(only_8b, "Z-Image Turbo (Q8)", "a footballer", 1, 1024, 1024)

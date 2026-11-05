@@ -95,6 +95,32 @@ def _helper(all_models: list[dict], type_: str, base: str | None = None) -> dict
     return _ident(found)
 
 
+def _qwen3_size(model: dict) -> str:
+    """The Qwen3 text encoder a model reads its prompt with: Z-Image and FLUX.2 Klein 4B the 4B (2,560 wide), Klein 9B the 8B
+    (4,096 wide). The wrong one fails in the denoise ("tensor a (4096) must match tensor b (2560)")."""
+    tell = f"{model.get('variant') or ''} {model['name']}".lower().replace(" ", "").replace("-", "")
+    return "8b" if model["base"] == "flux2" and "9b" in tell else "4b"
+
+
+def _qwen3_encoder(all_models: list[dict], model: dict) -> dict:
+    """The server's Qwen3 encoder of the size the model needs (its variant, else its name, says the size). With no encoder
+    that says its size, one that says no other size; with none of those, the first."""
+    size = _qwen3_size(model)
+    found = [m for m in all_models if m["type"] == "qwen3_encoder"]
+    if not found:
+        raise InvokeError("InvokeAI has no qwen3_encoder model.")
+
+    def says(m: dict) -> set[str]:
+        tell = f"{m.get('variant') or ''} {m['name']}".lower().replace(" ", "").replace("-", "").replace("_", "")
+        return {s for s in ("4b", "8b") if s in tell}
+
+    best = next((m for m in found if size in says(m)), None) or next((m for m in found if not says(m)), None)
+    if best is None:
+        raise InvokeError(f"InvokeAI has no Qwen3 {size.upper()} text encoder for {model['name']} (it has: "
+                          f"{', '.join(m['name'] for m in found)}).")
+    return _ident(best)
+
+
 def _steps(model: dict, fallback: int) -> int:
     return ((model.get("default_settings") or {}).get("steps")) or fallback
 
@@ -122,7 +148,7 @@ def create_graph(all_models: list[dict], model_name: str, prompt: str, seed: int
     g, seed = _Graph(), seed % 2_147_483_647
     if model["base"] == "z-image":
         loader = g.node("z_image_model_loader", model=_ident(model), vae_model=_helper(all_models, "vae", "flux"),
-                        qwen3_encoder_model=_helper(all_models, "qwen3_encoder"))
+                        qwen3_encoder_model=_qwen3_encoder(all_models, model))
         text = g.node("z_image_text_encoder", prompt=prompt)
         denoise = g.node("z_image_denoise", width=width, height=height, steps=_steps(model, 9), guidance_scale=1.0, seed=seed)
         decode = g.node("z_image_l2i")
@@ -133,7 +159,7 @@ def create_graph(all_models: list[dict], model_name: str, prompt: str, seed: int
         g.link(loader, "vae", decode, "vae")
     elif model["base"] == "flux2":
         loader = g.node("flux2_klein_model_loader", model=_ident(model), vae_model=_helper(all_models, "vae", "flux2"),
-                        qwen3_encoder_model=_helper(all_models, "qwen3_encoder"))
+                        qwen3_encoder_model=_qwen3_encoder(all_models, model))
         text = g.node("flux2_klein_text_encoder", prompt=prompt)
         texts = g.node("collect")
         denoise = g.node("flux2_denoise", width=width, height=height, num_steps=_steps(model, 4), seed=seed)
