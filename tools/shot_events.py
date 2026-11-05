@@ -66,7 +66,7 @@ def main() -> None:
                 continue
             player = side.players[slot]
             goal = next((s for s in player.shot_list if s.outcome == fs.SHOT_GOAL
-                         and abs(TICKS.get((player.person, s.minute, s.second), -99) - tick) <= 4), None)
+                         and abs(TICKS.get((player.person, s.minute, s.second), -99) - tick) <= fs.SHOT_EVENT_TICKS), None)
             if args.goals and goal is None:
                 continue
             who, game = str(player.person), f"report {report.fixture_id}"

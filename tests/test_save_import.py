@@ -414,3 +414,23 @@ def test_contracts_are_kept_as_history_by_person_club_and_wage(world_connection)
     from app.services import world_queries as q
     assert [q.wage_words(w) for w in (237663, 1444770, 7087, 0)] == ["£240,000 a week", "£1,400,000 a week", "£7,000 a week", None]
     assert q.current_contract(world_connection, 2002510270)["wage_words"] == "£240,000 a week"
+
+
+def test_a_goal_award_month_is_kept_once_given_and_a_running_vote_is_not():
+    """The 1 Mar 2064 save had February's Goal of the Month as the latest (given that day); a later save has March's running
+    vote there, which is not news yet; January's past month is given in February."""
+    from app.services import fm_save
+
+    goal = lambda person, day, place=1: fm_save.AwardGoal(place, person, 541, 560, day, 43, "drive", "outside")  # noqa: E731
+    january = fm_save.GoalAwardMonth(634, date(2063, 8, 11), date(2064, 2, 1), (goal(1, date(2064, 1, 19)),))
+    february = fm_save.GoalAwardMonth(634, date(2063, 8, 11), None, (goal(529736, date(2064, 2, 16)), goal(1, date(2064, 2, 2), 2)))
+    reader = _FakeReader(date(2064, 3, 1), [], {541: 630, 560: 650})
+    reader.person_uid = {529736: 2002510270}
+    reader.parts = {"goal_awards": [january, february]}
+    rows = reader._goal_award_rows({634: 5004896}, {5004896: None})
+    assert sorted((r["given"], r["place"], r["person_uid"]) for r in rows) == [
+        (date(2064, 2, 1), 1, None), (date(2064, 3, 1), 1, 2002510270), (date(2064, 3, 1), 2, None)]
+    assert rows[-1]["team_uid"] == 630 and rows[-1]["against_uid"] == 650 and rows[-1]["kind"] == "drive"
+    running = fm_save.GoalAwardMonth(634, date(2063, 8, 11), None, (goal(529736, date(2064, 3, 1)),))
+    reader.parts = {"goal_awards": [running]}
+    assert reader._goal_award_rows({634: 5004896}, {5004896: None}) == []

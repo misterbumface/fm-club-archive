@@ -11,7 +11,7 @@ built on these codes until each one has at least five labelled matches and no mi
 Each detailed match record (`match_stats_cfg.dat`, the reports `read_match_reports` reads) holds, besides the player
 records, a list of highlight events. An event: `02 <side 0/1> <slot> <code> <tick u16> 00 00 <minute> 00`, then detail bytes
 from +10. The tick is the match clock of the shot records (their bytes 11-12): a shot event and its shot record carry the
-same tick (+-4), which links an event to its shot exactly (836 goal events in the save of 9 Feb 2064).
+same tick (+-7), which links an event to its shot exactly (836 goal events in the save of 9 Feb 2064).
 
 | Finding | Evidence | Status |
 |---|---|---|
@@ -115,6 +115,17 @@ Source: the game's match report text or the user watching the goal. Bytes from t
 | | Óscar Pérez 74' | "a volley from close in which hit the post on its way" | 2 611, `85`, `40 00 00 02 00 45 00 00 00` | 0.51, -2.58 (1.1 m from the post) |
 | Watford 1-0 Rotherham, Premier Division (16 Feb 2064) | Carlos López 74' | "a low drive from the edge of the area which went in off the post" | 13 544, `21`, `90 08 00 00 04 45 00 04 10` | 0.74, -2.15 (1.5 m from the post) |
 | Manchester United 1-0 Aston Villa; Liverpool 1-0 Sheffield United (16 Feb 2064) | José Miguel 94', Conall Beck 91' | "a low drive" both | no shot event | |
+| Premier Division Goal of the Month, February 2064 (user's screenshot, 4 Nov 2026) | 1. Bruce Hilgers 43' v Luton (16 Feb) | "a low drive from 24 metres out" (as the match report) | as above: `21`, band `90` | |
+| | 2. Samuel 25', West Ham 3-3 Stoke (2 Feb) | "a low drive from 19 metres out", after "an excellent team move" | no shot event (no detailed report), but the award entry in `award_man.dat` carries the same bytes: `21`, band `90` (drive, outside the box): fits | |
+| | 3. José Miguel 94', Manchester United 1-0 Aston Villa (16 Feb) | "running from inside the Aston Villa half", beats a man, "a low drive": a solo run | award entry: `21`, band `10` (drive, in the box, after the run): fits | |
+| Plymouth 1-2 Chelsea, FA Cup fifth round (1 Mar 2064; save of 4 Nov 2026, 11:02) | Aureli 16' | "a close range header" | 8 471, `03`, `40 40 00 02 80 40 00 02 01` | 0.10, -3.24 |
+| | Roberto Baggio 32' | "a good header from just inside the six-yard box" | 3 021, `03`, `40 40 00 02 00 41 00 01 01` | 0.80, -2.96 |
+| | Júnior 90+3' | "a daisy cutter from 25 metres"; the user watched it go into the TOP LEFT corner | 26 384, `21`, `90 08 00 00 c8 40 00 04 10` | 1.87, 3.06 (high, near the post on the positive side: positive across = the left, as Ferrer's "bottom left" 2.21). The event's tick is 23 839 and the shot record's 23 834: 5 apart: the old 4-tick limit missed it; raised to 7 (`fm_save.SHOT_EVENT_TICKS`) on 4 Nov 2026, which links 54 more goals of this save |
+
+Goal awards (4 Nov 2026): `award_man.dat` keeps each goal award (Goal of the Month, of the Season, of the Tournament) with, per goal,
+the shot event's value, type byte, range band and the next bytes, so it gives the kind and range of award goals even when the
+game kept no detailed match report.
+
 
 Labelled in the game's text but not in the save's detailed reports (no event to compare): Cosenza 2-3 AC Milan (9 Feb 2064:
 Alan Black 35' close range header, Tariq Tanser 50' powerful close range effort, Ion Lazar header from inside the six-yard
@@ -192,3 +203,5 @@ without penalties (Chelsea 4.11 of 4.11; Forest 0.38 + a penalty's 0.79 = the ga
 In your own games the passes (with points) are kept too, in the 2.4 MB packed block (8-byte groups, single bits set); that is
 where the analysis points most likely come from. A match without it (Middlesbrough v Forest, 98 KB) still showed its shot
 points on the analysis screen: their source is not found.
+
+"Daisy cutter" (4 Nov 2026): Júnior's goal at Plymouth was a drive (`21`) from outside the box (`90`), as the type and band say, but it went in high (1.87 m), as the user saw and the shot record says. The game's word for the strike ("daisy cutter", like "low drive") is commentary on the kind of shot, not where the ball went: the papers should take the height and corner from the shot record, never from the game's words.

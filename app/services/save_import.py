@@ -982,6 +982,7 @@ class _SaveReader:
                     "votes": entry.votes,
                 }
         self._put(connection, world.WorldAwardPlace, list(places.values()), ["award_uid", "year", "place"])
+        self._put(connection, world.WorldGoalAward, self._goal_award_rows(keys, names), ["award_uid", "given", "place"])
 
         elevens = self.parts["best_elevens"]
         owners = fm_save.guess_best_eleven_clubs(elevens, self.stats, self.stat_groups, self.person_uid)
@@ -1005,6 +1006,23 @@ class _SaveReader:
                         "as_of": self.game_date,
                     }
         self._put(connection, world.WorldBestEleven, list(rows.values()), ["team_uid", "save_group", "season_start", "slot"], guarded=True)
+
+    def _goal_award_rows(self, keys: dict[int, int], names: dict) -> list[dict]:
+        """The goal awards' months. The latest month of an award counts as given in the game date's month when all its goals
+        are from before that month (the save of 1 Mar 2064 had February's award there); otherwise it is still being voted on."""
+        rows = {}
+        month = self.game_date.replace(day=1)
+        for award in self.parts.get("goal_awards", []):
+            uid = keys.get(award.award_key)
+            given = award.given or (month if all(g.scored_on < month for g in award.goals) else None)
+            if uid not in names or given is None:
+                continue
+            for goal in award.goals:
+                rows[(uid, given, goal.place)] = {
+                    "award_uid": uid, "given": given, "place": goal.place, "person_uid": self.person_uid.get(goal.person),
+                    "team_uid": self.team_uid.get(goal.team), "against_uid": self.team_uid.get(goal.against), "scored_on": goal.scored_on,
+                    "minute": goal.minute, "kind": goal.kind, "range": goal.range, "season_start": award.season_start, "as_of": self.game_date}
+        return list(rows.values())
 
     def _write_transfers(self, connection: Connection) -> None:
         self.progress("Writing transfers")

@@ -173,7 +173,7 @@ def find_leads(connection: Connection, since: date, until: date, followed: tuple
     leads: list[Lead] = []
     for finder in (_titles, _giant_killings, _big_wins, _promotions_and_relegations, _transfers, _spending, _rising_stars,
                    _scouting, _academy_scorers, _awards, _milestones, _club_scorers, _careers_ended, _legends, _legend_profiles,
-                   _dynasties, _great_finals, _appointments, _where_are_they_now, _anniversaries, _performances, _sendings_off,
+                   _dynasties, _great_finals, _appointments, _where_are_they_now, _anniversaries, _performances, _sendings_off, _goal_awards,
                    _smash_and_grabs, *now.FINDERS, *sheets.FINDERS, *dressing.FINDERS, crisis.crises):
         leads.extend(finder(world))
     crisis.mark(world, leads)
@@ -709,6 +709,54 @@ def _awards(w: _World) -> list[Lead]:
                           [f"person:{r['person_uid']}"] + ([f"club:{r['club_uid']}"] if r["club_uid"] else []),
                           w.beats_for(r["club_uid"]) | ({"young"} if young else set())))
     return sorted(leads, key=lambda lead: -lead.score)[:12]
+
+
+GOAL_AWARD_SIZE = {"Goal of the Month": 2.6, "Goal of the Season": 3.6, "Goal of the Year": 3.6, "Goal of the Tournament": 4.2, "Best Goal": 4.2}
+
+
+def _goal_awards(w: _World) -> list[Lead]:
+    """A goal award given in the cycle (4 Nov 2026: Hilgers' 24-metre drive at Luton, the Premier Division's Goal of the Month
+    for February 2064): the three goals in order, each with its game, minute and how it went in (the shot records)."""
+    leads = []
+    for award in w.rows("select distinct g.award_uid, g.given, a.name, a.short_name from goal_awards g join awards a on a.fm_uid = g.award_uid "
+                        "where g.given > :s and g.given <= :u", s=str(w.since), u=str(w.until)):
+        goals = w.rows("select g.*, p.name from goal_awards g left join people p on p.fm_uid = g.person_uid "
+                       "where g.award_uid = :a and g.given = :g order by g.place", a=award["award_uid"], g=str(award["given"]))
+        if not goals or not goals[0]["person_uid"]:
+            continue
+        monthly = "Month" in award["name"]
+        given = date.fromisoformat(str(award["given"])[:10])
+        month = (given.replace(day=1) - timedelta(days=1)).strftime("%B %Y")
+        facts = {"award": award["name"], "for": f"the goals of {month}" if monthly else "the season's best goals so far", "given": given.strftime("%B %Y"),
+                 "the_goals_in_order": [_award_goal_line(w, g) for g in goals]}
+        winner = goals[0]
+        size = next((v for k, v in GOAL_AWARD_SIZE.items() if k in award["name"]), 2.6)
+        score = 10 * size * (1 + (w.rep(winner["team_uid"]) or 3000) / 20_000) * (1.4 if w.followed(winner["team_uid"]) else 1)
+        leads.append(Lead("goal_award", f"{winner['name']} ({w.name(winner['team_uid'])}) wins the {award['name']}" + (f" for {month}" if monthly else ""),
+                          given, score, facts, [f"person:{winner['person_uid']}", f"club:{winner['team_uid']}"]
+                          + [f"person:{g['person_uid']}" for g in goals[1:] if g["person_uid"]],
+                          w.beats_for(winner["team_uid"]), slug=f"{award['award_uid']}:{given}"))
+    return sorted(leads, key=lambda lead: -lead.score)[:4]
+
+
+def _award_goal_line(w: _World, g: dict) -> str:
+    """'1. Bruce Hilgers (Chelsea), 43' against Luton Town, 2064-02-16 (Chelsea 6-0 Luton Town, Chelsea won): a drive (struck
+    low and hard) from outside the box, high, near a post'."""
+    f = next(iter(w.rows("select * from fixtures where date = :d and ((home_uid = :t and away_uid = :o) or (home_uid = :o and away_uid = :t))",
+                         d=str(g["scored_on"])[:10], t=g["team_uid"], o=g["against_uid"])), None)
+    minute = f"{g['minute']}'"
+    how = None
+    if f:
+        scored = w.rows("select minute, added_time from goals where fixture_id = :f and scorer_uid = :p and kind in (0, 2) order by abs(minute - :m) limit 1",
+                        f=f["id"], p=g["person_uid"], m=g["minute"])
+        if scored:
+            minute = f"{scored[0]['minute']}" + (f"+{scored[0]['added_time']}" if scored[0]["added_time"] else "") + "'"
+        how = next((line.split(": ", 1)[1] for line in now._how_goals_went_in(w, f) or [] if line.startswith(f"{g['name']} (")), None)
+    if how is None:  # the award keeps the kind and the range of the shot itself
+        how = {"header": "a header", "volley": "a volley", "drive": "a drive (struck low and hard)", "finish": "a shot with the foot"}.get(
+            g["kind"] or "", "the kind of shot is not recorded") + {"close": " from close range", "outside": " from outside the box"}.get(g["range"] or "", "")
+    game = f" ({now._result_line(w, f).split(': ', 1)[1]})" if f else ""
+    return f"{g['place']}. {g['name'] or 'unknown'} ({w.name(g['team_uid'])}), {minute} against {w.name(g['against_uid'])}, {str(g['scored_on'])[:10]}{game}: {how}"
 
 
 def _milestones(w: _World) -> list[Lead]:

@@ -1348,3 +1348,26 @@ def test_the_preferred_moves_are_a_bit_field_before_the_birth_date():
     assert fm_save.read_preferred_moves(noise, 10 + 27) is None
     assert fm_save.read_preferred_moves(buffer, 5) is None  # no room before the birth date
     assert len(fm_save.PREFERRED_MOVES) == 64 and fm_save.PREFERRED_MOVES.count(None) == 5
+
+
+def _award_goal(person: int, team: int, against: int, day: int, year: int, minute: int, kind: int, far: int) -> bytes:
+    return struct.pack("<BIIHIBIIHHBB", 1, 22769, 10148, minute, team, 0, against, person, day, year, kind, far) + b"\x08\x00\x18"
+
+
+def test_goal_awards_give_the_past_months_and_the_latest():
+    """The Premier Division Goal of the Month (key 634) as the save of 1 Mar 2064 keeps it: February's three (Hilgers' 24-metre
+    drive first) and January's, given in February."""
+    latest = [_award_goal(531123, 0x21D, 0x24B, 47, 2064, 43, 0x21, 0x90), _award_goal(530005, 0x284, 0x277, 33, 2064, 25, 0x21, 0x90),
+              _award_goal(691445, 0x24E, 0x202, 47, 2064, 90, 0x21, 0x10)]
+    january = [_award_goal(529965, 0x264, 0x24B, 19, 2064, 32, 0x01, 0x80)]
+    record = (struct.pack("<H", 634) + b"\x03" + b"\xff" * 4 + struct.pack("<HHHH", 223, 2063, 140, 2064) + b"\x1b\x00"
+              + b"\x01\x00\x6c\x07" + b"\xff" * 4 + struct.pack("<HH", 140, 2064) + struct.pack("<H", 3) + b"".join(latest)
+              + struct.pack("<H", 1) + struct.pack("<I", 1) + b"".join(january) + struct.pack("<BH", 13, 2063))
+
+    past, now = fm_save.read_goal_awards(b"\x00" * 9 + record + b"\x00" * 8)
+
+    assert past.given == date(2064, 2, 1) and past.goals[0].person == 529965 and past.season_start == date(2063, 8, 11)
+    assert now.given is None and now.award_key == 634 and [g.place for g in now.goals] == [1, 2, 3]
+    hilgers = now.goals[0]
+    assert (hilgers.person, hilgers.team, hilgers.against, hilgers.scored_on, hilgers.minute) == (531123, 0x21D, 0x24B, date(2064, 2, 16), 43)
+    assert (hilgers.kind, hilgers.range) == ("drive", "outside") and now.goals[2].range is None

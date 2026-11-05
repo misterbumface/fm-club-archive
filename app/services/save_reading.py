@@ -138,6 +138,7 @@ def _the_rest(save: fm_save.FmSave, game_db: bytes, lang_db: Path) -> dict[str, 
     return {"nation_names": fm_save.read_nation_names(lang_db), "award_names": award_names,
             "award_keys": fm_save.read_award_keys(game_db, list(award_names)),
             "award_years": list(fm_save.read_award_history(save.read("award_year_hist_dt.cmt"))),
+            "goal_awards": fm_save.read_goal_awards(save.read("award_man.dat")) if "award_man.dat" in save.directory else [],
             # a new game has no best elevens until its first season's are picked
             "best_elevens": fm_save.read_best_elevens(save.read("tc_best_eleven_history_dt.cmt"), save.read("tc_best_eleven_history_ls.dat"))
             if "tc_best_eleven_history_dt.cmt" in save.directory else [],

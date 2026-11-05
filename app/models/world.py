@@ -811,6 +811,27 @@ class WorldAwardPlace(db.Model):
     votes: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class WorldGoalAward(db.Model):
+    """A goal award's month (Goal of the Month, of the Season, of the Tournament): its goals, best first (fm_save.read_goal_awards).
+    ``given`` is the first day of the month the award was given; a month still being voted on is not kept."""
+
+    __bind_key__ = BIND
+    __tablename__ = "goal_awards"
+
+    award_uid: Mapped[int] = mapped_column(Integer, primary_key=True)
+    given: Mapped[date] = mapped_column(Date, primary_key=True)
+    place: Mapped[int] = mapped_column(Integer, primary_key=True)  # 1 = the winner
+    person_uid: Mapped[int | None] = mapped_column(Integer, index=True)
+    team_uid: Mapped[int | None] = mapped_column(Integer)
+    against_uid: Mapped[int | None] = mapped_column(Integer)
+    scored_on: Mapped[date] = mapped_column(Date, nullable=False)
+    minute: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str | None] = mapped_column(String(8))  # header, volley, drive, finish
+    range: Mapped[str | None] = mapped_column(String(8))  # close, outside
+    season_start: Mapped[date | None] = mapped_column(Date)
+    as_of: Mapped[date] = mapped_column(Date, nullable=False)
+
+
 class WorldBestEleven(db.Model):
     """A seasonal best eleven: slots 0-10 start, 11-17 are the substitutes.
 

@@ -44,7 +44,7 @@ WRITERS = 6  # articles written at the same time
 
 SECTIONS = {"title": "Champions", "giant_killing": "Upsets", "big_win": "Results", "rise": "Rising", "fall": "Fallen",
             "transfer": "Transfers", "spending": "Transfers", "rising_star": "Next generation", "scouting": "Scouting", "academy": "Academy",
-            "award": "Awards", "milestone": "Records", "club_record": "Records", "career_end": "Farewells",
+            "award": "Awards", "goal_award": "Awards", "milestone": "Records", "club_record": "Records", "career_end": "Farewells",
             "legend": "Legends", "all_time": "Legends", "anniversary": "On this day", "legend_profile": "Legends",
             "dynasty": "Dynasties", "great_final": "Great finals", "appointment": "Appointments",
             "where_now": "Where are they now", "league_round": "The round", "misfiring": "Numbers", "clinical": "Numbers", "tired_legs": "Form", "run": "Form", "derby": "Derbies", "preview": "Coming up",
@@ -236,7 +236,7 @@ def printed_keys(outlet: Outlet) -> set[str]:
 
 # At most this many stories of one kind in an edition, so one kind does not fill a paper (an outlet
 # whose leads are all of one kind, like The Transfer Wire, is not limited).
-KIND_LIMITS = {"scouting": 3, "legend_profile": 1, "career_end": 1, "milestone": 1, "club_record": 1, "misfiring": 1, "clinical": 1, "tired_legs": 1, "academy": 2, "dynasty": 1, "great_final": 1,
+KIND_LIMITS = {"goal_award": 1, "scouting": 3, "legend_profile": 1, "career_end": 1, "milestone": 1, "club_record": 1, "misfiring": 1, "clinical": 1, "tired_legs": 1, "academy": 2, "dynasty": 1, "great_final": 1,
                "where_now": 1, "appointment": 2, "performance": 2, "sending_off": 1, "smash_and_grab": 1,
                "league_round": 2, "run": 2, "derby": 2, "giant_killing": 2, "preview": 2, "injury_blow": 2, "underperformer": 1, "overperformer": 1,
                "expectations": 1, "check_in": 1, "stat_watch": 1, "system_change": 1, "position_change": 1, "dropped": 2, "breakthrough": 1,

@@ -2562,6 +2562,89 @@ class BestEleven:
     players: tuple[BestElevenPlayer, ...]
 
 
+
+# -- goal awards (Goal of the Month, of the Season, of the Tournament) ---------------------------------------------------------
+# award_man.dat (plain part and inner blocks) holds each goal award as: the award key (u16, read_award_keys), 03 (places),
+# ff x4, the season's first and last days, a u16, 01 00 6c 07 (no date), ff x4, a date, then the latest month's goals (u16
+# count, then the goals, best first); then the past months: a u16 count, and per month a u32 count, the goals and the month
+# the award was given (u8, 0-based, counted on from January of the u16 year: 12 = January of the next year). A goal is 33
+# bytes: 01, the shot event's value (u32), a u32, the minute (u16), the scorer's team (u32 team number), 00, the opponent
+# (u32), the scorer (u32 person number), the day (u16 day of year, u16 year), the shot type and range bytes of the match
+# event (shot_kind, shot_range) and three bytes. Found 4 Nov 2026 from the user's screenshot of the Premier Division's
+# February 2064 award (Hilgers, Samuel, José Miguel; key 634) and checked against its six past months.
+_GOAL_AWARD = re.compile(rb"(..)\x03\xff\xff\xff\xff(....)(....)..\x01\x00\x6c\x07\xff\xff\xff\xff....(..)", re.DOTALL)
+_GOAL_ENTRY = struct.Struct("<BIIHIBIIHHBB3x")
+_MAX_AWARD_MONTHS = 40
+
+
+@dataclass(frozen=True, slots=True)
+class AwardGoal:
+    place: int  # 1 = the winner
+    person: int  # person number
+    team: int  # team number
+    against: int  # team number
+    scored_on: date
+    minute: int
+    kind: str | None  # shot_kind: header, volley, drive, finish
+    range: str | None  # shot_range: close, outside
+
+
+@dataclass(frozen=True, slots=True)
+class GoalAwardMonth:
+    award_key: int
+    season_start: date | None
+    given: date | None  # the first day of the month it was given; None for the latest, not yet in the history
+    goals: tuple[AwardGoal, ...]
+
+
+def _award_goals(buffer: bytes, position: int, count: int) -> tuple[AwardGoal, ...] | None:
+    goals = []
+    for place in range(1, count + 1):
+        if position + _GOAL_ENTRY.size > len(buffer):
+            return None
+        one, _, _, minute, team, zero, against, person, day, year, kind, far = _GOAL_ENTRY.unpack_from(buffer, position)
+        scored = _date_from_day_of_year(day & _DAY_BITS, year)
+        if one != 1 or zero != 0 or scored is None or minute > 130:
+            return None
+        goals.append(AwardGoal(place, person, team, against, scored, minute, shot_kind(kind), shot_range(far)))
+        position += _GOAL_ENTRY.size
+    return tuple(goals)
+
+
+def _goal_award_months(buffer: bytes) -> Iterator[GoalAwardMonth]:
+    for match in _GOAL_AWARD.finditer(buffer):
+        key = struct.unpack("<H", match.group(1))[0]
+        first = struct.unpack("<HH", match.group(2))
+        season_start = _date_from_day_of_year(first[0] & _DAY_BITS, first[1])
+        count, position = struct.unpack("<H", match.group(4))[0], match.end()
+        latest = _award_goals(buffer, position, count) if 0 < count <= 5 else None
+        if latest is None or season_start is None:
+            continue
+        position += _GOAL_ENTRY.size * count
+        months = struct.unpack_from("<H", buffer, position)[0] if position + 2 <= len(buffer) else 0
+        position += 2
+        for _ in range(months if months <= _MAX_AWARD_MONTHS else 0):
+            count = struct.unpack_from("<I", buffer, position)[0] if position + 4 <= len(buffer) else 0
+            goals = _award_goals(buffer, position + 4, count) if 0 < count <= 5 else None
+            if goals is None:
+                break
+            position += 4 + _GOAL_ENTRY.size * count
+            if position + 3 > len(buffer):
+                break
+            month, year = struct.unpack_from("<BH", buffer, position)
+            position += 3
+            yield GoalAwardMonth(key, season_start, date(year + month // 12, month % 12 + 1, 1), goals)
+        yield GoalAwardMonth(key, season_start, None, latest)
+
+
+def read_goal_awards(award_man: bytes) -> list[GoalAwardMonth]:
+    """Every goal award month in ``award_man.dat``: the past months with the month they were given, and each award's latest."""
+    found = list(_goal_award_months(award_man))
+    for block in iter_inner_blocks(award_man):
+        found.extend(_goal_award_months(block))
+    return found
+
+
 def read_best_elevens(dt: bytes, ls: bytes) -> list[list[BestEleven]]:
     """Seasonal best elevens, one list per team, oldest season first.
 
@@ -3861,6 +3944,11 @@ def shot_kind(code: int) -> str | None:
     return "finish" if code & 0x01 else None
 
 
+# A shot event and its shot record carry nearly the same tick: in the save of 4 Nov 2026, 766 goals lie 0-4 ticks from their
+# event and 54 lie 5-7 (Júnior's 25-metre drive at Plymouth, 1 Mar 2064: 5), then none until 481. 4 lost those 54.
+SHOT_EVENT_TICKS = 7
+
+
 def _with_shot_kinds(stream: bytes, report: MatchReport, end: int) -> MatchReport:
     kinds: dict[tuple[int, int], list[tuple[int, str, str | None]]] = {}
     for m in _EVENT.finditer(stream, report.position, end):
@@ -3877,7 +3965,8 @@ def _with_shot_kinds(stream: bytes, report: MatchReport, end: int) -> MatchRepor
             mine = kinds.get((number, slot))
             if mine:
                 def event(shot: Shot) -> tuple:
-                    return next(((kind, far) for tick, kind, far in mine if abs(tick - shot.tick) <= 4), (None, None))
+                    near = [(abs(tick - shot.tick), kind, far) for tick, kind, far in mine if abs(tick - shot.tick) <= SHOT_EVENT_TICKS]
+                    return min(near)[1:] if near else (None, None)
                 player = replace(player, shot_list=tuple(
                     replace(shot, kind=event(shot)[0], range=event(shot)[1]) for shot in player.shot_list))
             players.append(player)

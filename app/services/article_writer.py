@@ -246,6 +246,9 @@ KIND_NOTES = {
                  "grudge or a debt show. Set the scene in two sentences first.",
     "under_pressure": "The press reports that a club's board are losing patience with the manager and that a coming game "
                       "could decide his fate. It is a report, not a sacking: say so. The results given show why.",
+    "goal_award": "This is about a goal award (Goal of the Month and the like): the winning goal first, then the others in "
+                  "order, each in its game. Tell how each went in only as the_goals_in_order says (the kind of shot, the range, "
+                  "the height); no distances in metres, no build-up, no corner side: they are not recorded.",
     "crisis": "This is about a well-known club or nation in crisis: a squad this good (the_squad: its best players) taking "
               "far fewer points than it should. The results given are the crisis; tell them as they are, with the players who "
               "should be winning these games, the manager and the board when given, and the mood. the_story says whether it "
