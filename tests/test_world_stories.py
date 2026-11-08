@@ -464,3 +464,9 @@ def test_a_continental_game_may_tell_the_league_only_as_background():
             "More.\n\nAt home they lead the English Premier Division, a different matter entirely.")
     assert story_writer.own_league_lead_faults(good, notebook) == []
     assert story_writer.own_league_lead_faults(bad, {"competition": "English Premier Division"}) == []  # a league game: no check
+
+
+def test_left_and_right_wingers_do_not_compete_for_one_place():
+    from app.services.story_leads_now import POSITION_GROUPS
+
+    assert POSITION_GROUPS["M (L)"] == POSITION_GROUPS["AM (L)"] != POSITION_GROUPS["AM (R)"] == POSITION_GROUPS["M (R)"]

@@ -40,7 +40,7 @@ POSITION_WORDS = {"GK": "goalkeeper", "D (C)": "centre-back", "D (R)": "right-ba
 
 # Positions that compete for one place in a team.
 POSITION_GROUPS = {"GK": "GK", "D (C)": "DC", "D (R)": "R", "WB (R)": "R", "D (L)": "L", "WB (L)": "L", "DM": "MC", "M (C)": "MC",
-                   "AM (C)": "AMC", "M (R)": "W", "AM (R)": "W", "M (L)": "W", "AM (L)": "W", "ST (C)": "ST"}
+                   "AM (C)": "AMC", "M (R)": "RW", "AM (R)": "RW", "M (L)": "LW", "AM (L)": "LW", "ST (C)": "ST"}  # a side each: Júnior, a right winger, was named among the left midfielders
 REPLACED_DAYS = 120  # players who left this long before a signing in his position
 REGULAR_STARTS = 5
 SAME_PLACE_PLAYERS = 4  # the players in a position a transfer story names
