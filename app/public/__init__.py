@@ -29,7 +29,7 @@ SECTIONS = OrderedDict([
     ("results", ("Results", {"Results", "The round", "Upsets", "Derbies", "Champions", "Form", "Rising", "Fallen", "Check-in", "Finalists", "Third Place"})),
     ("international", ("International", {"International", "Tournament", "Tournament Stories", "Tournament Briefing", "Knockout Briefs"})),
     ("transfers", ("Transfers", {"Transfers", "Appointments"})),
-    ("analysis", ("Analysis", {"Tactics", "Numbers", "Records", "Selection", "Dressing room", "Injuries", "War of words"})),
+    ("analysis", ("Analysis", {"Tactics", "Numbers", "Records", "Selection", "Dressing room", "Injuries", "War of words", "Business"})),
     ("talent", ("Talent", {"Next generation", "Scouting", "Academy"})),
     ("history", ("History", {"Legends", "Dynasties", "Farewells", "Where are they now", "Awards", "Great finals", "On this day", "The Last Word"})),
     ("features", ("Features", {"Away days", "Interviews", "Profiles", "Players"})),  # the Away Days column and the interviews (25 Oct 2026)

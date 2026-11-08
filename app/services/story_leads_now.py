@@ -1381,8 +1381,10 @@ def _returns(w, team: int, other: int) -> tuple[list[str] | None, str]:
 def _record_chance(w, team: int, league: int, comp: dict) -> str | None:
     """A current player within a goal of the club's all-time scoring record, or a player on 99 caps in an international."""
     if comp.get("scope") == "national_teams":
-        caps = w.rows("select p.name, sum(ps.starts + ps.substitute_appearances) caps from people p join player_seasons ps on ps.person_uid = p.fm_uid "
-                      "where ps.team_uid = :t and ps.kind = 4 group by p.fm_uid having caps = 99", t=team)
+        caps = w.rows("select p.name, sum(ps.starts + ps.substitute_appearances) caps from national_squads s join people p on p.fm_uid = s.person_uid "
+                      "join player_seasons ps on ps.person_uid = p.fm_uid and ps.kind = 4 "  # the save counts a cap at the club he was at, so not by team
+                      "where s.team_uid = :t and s.as_of = (select max(as_of) from national_squads where team_uid = :t and as_of <= :u) "
+                      "group by p.fm_uid having caps = 99", t=team, u=str(w.until))
         return f"{caps[0]['name']} would win his 100th cap" if caps else None
     scorers = w.rows("select ps.person_uid, p.name, p.team_uid now_at, sum(ps.goals) goals from player_seasons ps join people p on p.fm_uid = ps.person_uid "
                      "where ps.team_uid = :t and ps.kind in (1, 2, 3) group by ps.person_uid order by goals desc limit 2", t=team)

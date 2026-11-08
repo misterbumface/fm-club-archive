@@ -824,6 +824,20 @@ class WorldNationalSquad(db.Model):
     role: Mapped[str | None] = mapped_column(String(12))
 
 
+class WorldPointDeduction(db.Model):
+    """A first team with points taken off in a league table, as one save has it (fm_save.read_point_deductions): one copy per
+    save date, so that the first copy says when it happened."""
+
+    __bind_key__ = BIND
+    __tablename__ = "point_deductions"
+
+    competition_uid: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    team_uid: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    as_of: Mapped[date] = mapped_column(Date, primary_key=True)
+    points: Mapped[int] = mapped_column(Integer, nullable=False)
+    played: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class WorldGoalAward(db.Model):
     """A goal award's month (Goal of the Month, of the Season, of the Tournament): its goals, best first (fm_save.read_goal_awards).
     ``given`` is the first day of the month the award was given; a month still being voted on is not kept."""

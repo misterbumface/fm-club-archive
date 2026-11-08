@@ -973,6 +973,21 @@ def person_club_relations(connection: Connection, uid: int) -> list[dict]:
     return rows
 
 
+def rough_pounds(pounds: int) -> int:
+    """A sum as a paper could know it: no one outside a private club knows its books to the pound."""
+    size = abs(pounds)
+    step = 100_000_000 if size >= 1_000_000_000 else 50_000_000 if size >= 200_000_000 else 10_000_000 if size >= 20_000_000 else 5_000_000 if size >= 5_000_000 else 1_000_000 if size >= 1_000_000 else 100_000
+    return round(pounds / step) * step
+
+
+def rough_money(pounds: int) -> str:
+    """A rounded sum in words: "around £300m", "around £1.2bn"."""
+    size = abs(rough_pounds(pounds))
+    if size >= 1_000_000_000:
+        return f"around £{size / 1_000_000_000:.1f}bn"
+    return f"around £{size / 1_000_000:g}m"
+
+
 def club_money(connection: Connection, club_uid: int) -> dict | None:
     """A club's finances: the newest save's balance, budgets, income streams and debts, and the balance and
     budgets at every save the archive has (pounds)."""

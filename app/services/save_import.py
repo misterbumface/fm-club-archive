@@ -155,6 +155,7 @@ class _SaveReader:
         self._write_player_seasons(connection)
         self._write_awards(connection)
         self._write_national_squads(connection)
+        self._write_point_deductions(connection)
         self._write_transfers(connection)
         self._clear_retired_teams(connection, save_id)
         self._drop_unconfirmed_names(connection)
@@ -1013,6 +1014,14 @@ class _SaveReader:
         rows = national_squad_rows(self.parts.get("national_squads") or [], self.game_date)
         connection.execute(world.WorldNationalSquad.__table__.delete().where(world.WorldNationalSquad.__table__.c.as_of == self.game_date))
         self._put(connection, world.WorldNationalSquad, rows, ["team_uid", "as_of", "person_uid"])
+
+    def _write_point_deductions(self, connection: Connection) -> None:
+        """This save's points taken off; the copies of the other save dates stay (importing again replaces its own)."""
+        table = world.WorldPointDeduction.__table__
+        rows = [{"competition_uid": d.competition_uid, "team_uid": d.team_uid, "as_of": self.game_date, "points": d.points, "played": d.played}
+                for d in self.parts.get("point_deductions") or []]
+        connection.execute(table.delete().where(table.c.as_of == self.game_date))
+        self._put(connection, world.WorldPointDeduction, rows, ["competition_uid", "team_uid", "as_of"])
 
     def _goal_award_rows(self, keys: dict[int, int], names: dict) -> list[dict]:
         """The goal awards' months. The latest month of an award counts as given in the game date's month when all its goals

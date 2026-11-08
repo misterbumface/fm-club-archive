@@ -323,7 +323,7 @@ def test_the_finances_tab_and_notebooks_tell_the_clubs_money(small_world, pages)
     assert "Over the saves" in page and "£750.0m" in page
     with small_world.connect() as c:
         money = story_notebooks.club_notebook(c, CHELSEA)["finances"]
-    assert money["bank_balance"] == {"pounds": 891_033_986, "euros": round(891_033_986 * 1.16)}
+    assert money["bank_balance"] == {"pounds": 900_000_000, "euros": 1_000_000_000}  # as a paper could know it
     assert money["debts"][0]["from"] == "CVA" and money["bank_balance_earlier"]["pounds"] == 750_000_000
 
 

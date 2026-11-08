@@ -5,6 +5,7 @@ from datetime import date
 
 from app.models import world
 from app.services.story_leads import _World
+from app.services.story_leads_now import _record_chance
 from app.services.story_leads_squads import squads
 from tests.test_world_pages import AS_OF, CHELSEA, ENGLAND, _fixture, app, small_world  # noqa: F401
 
@@ -83,3 +84,13 @@ def test_it_is_the_finals_squad_only_when_no_game_was_played_with_it(small_world
         (played, *_) = squads(_World(c, date(2064, 3, 15), NOW, ()))
     assert "the_finals_squad_for" not in played.facts and len(played.facts["games_played_since_the_last_squad"]) == 1
     assert played.facts["next_game"].startswith("Copa América, 2064-06-13")
+
+
+def test_a_player_on_99_caps_in_the_squad_is_told_though_his_caps_are_filed_under_his_club(small_world):
+    with small_world.begin() as c:
+        _setup(c)
+        c.exec_driver_sql(f"update player_seasons set starts = 90, substitute_appearances = 9 where person_uid = {VETERAN}")
+    comp = {"scope": "national_teams"}
+    with small_world.connect() as c:
+        assert _record_chance(_World(c, BEFORE, date(2064, 3, 15), ()), NATION, 77, comp) == "Old Hand would win his 100th cap"
+        assert _record_chance(_World(c, NOW, date(2064, 4, 12), ()), NATION, 77, comp) is None  # no longer in the squad

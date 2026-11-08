@@ -255,6 +255,15 @@ KIND_NOTES = {
                       "before and now, the usual shape, the manager's preferred one), but say it is the paper's guess. 'Uncapped' is a "
                       "fact; never call anyone's call-up his first unless told so. No squad was announced at a press conference: no quotes "
                       "from the manager on it.",
+    "club_accounts": "This is about a great club's money, told when its accounts come out. the_story says which way it goes. No paper sees a private club's "
+                     "books: every figure is rounded and comes from the accounts or people close to the club, so write about, reported or believed, and "
+                     "never make a figure more exact. Say what the sums mean: wages, debt and an overdraft like this cannot go on, or a pile of cash like this "
+                     "is what rivals dream of. What may come next is the paper's guess, and say so: a forced sale, a takeover, administration and points "
+                     "docked. None of it has happened unless told; invent no owner, sale, bid, loan or statement. Quotes only from unnamed people close to the club, "
+                     "and never with a figure in them.",
+    "points_docked": "This is about a club with points taken off in the league. points_taken_off is a fact. The reason is not known unless given; when "
+                     "their_money shows the club deep in the red, the paper may suggest that money is the reason and say it is suggesting. Its money figures are "
+                     "rounded and reported: say about or believed. Invent no ruling, date, hearing or statement.",
     "squad_dropped": "This is about one well-known international left out of his country's squad; it is a tournament squad only when "
                      "the_finals_squad_for says so. His caps and his starts show what "
                      "he has been to the team; his why is given only when it says so, and no_reason_known means nobody has said. "

@@ -24,7 +24,8 @@ from app.services import fm_save, fm_tactics
 def _clubs(save: fm_save.FmSave, game_db: bytes, lang_db: Path) -> dict[str, Any]:
     clubs = fm_save.read_clubs(game_db)
     records = fm_save._club_records(game_db)  # once: the relations and the finances both need it
-    return {"clubs": clubs, "teams": fm_save.read_teams(game_db, clubs), "stadiums": fm_save.read_stadiums(game_db),
+    teams = fm_save.read_teams(game_db, clubs)
+    return {"clubs": clubs, "teams": teams, "point_deductions": fm_save.read_point_deductions(save, teams), "stadiums": fm_save.read_stadiums(game_db),
             "club_relations": fm_save.read_club_relations(game_db, records),
             "club_finances": fm_save.read_club_finances(game_db, clubs, records), "manager_history": _manager_history(save)}
 

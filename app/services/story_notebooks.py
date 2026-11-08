@@ -270,12 +270,13 @@ def club_finances(connection: Connection, club_uid: int) -> dict | None:
     now = money["now"]
 
     def both(pounds: int | None) -> dict | None:
-        return {"pounds": pounds, "euros": round(pounds * EUROS_PER_POUND)} if pounds is not None else None
+        return {"pounds": q.rough_pounds(pounds), "euros": q.rough_pounds(round(pounds * EUROS_PER_POUND))} if pounds is not None else None
 
     first = money["history"][0]
     return {
         "as_of": str(now["game_date"]),
-        "use": "the club's money at that date only; tell it as where the club stands now, never as a past season's",
+        "use": "the club's money at that date only; tell it as where the club stands now, never as a past season's. These are rounded, as a paper "
+               "would know them from accounts and sources: say about, reported or believed, and never give a figure more exact than this",
         "bank_balance": both(now["bank"]), "transfer_budget": both(now["transfer_budget"]), "wage_budget": both(now["wage_budget"]),
         "income_a_year": both(money["yearly_income"]) if money["incomes"] else None,
         "biggest_income_streams": [{"type": i["kind_name"], "a_year": both(i["yearly"]), "until": str(i["ends"]) if i["ends"] else None}

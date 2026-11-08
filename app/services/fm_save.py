@@ -244,7 +244,8 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Iterable, Iterator
+from collections.abc import Mapping
+from typing import Iterable, Iterator, Mapping
 
 ZSTD_MAGIC = bytes.fromhex("28b52ffd")
 SECTION_HEADER = b"\x02\x01fmf."
@@ -1303,6 +1304,9 @@ _DEBT_ENTRY = re.compile(rb"(?=\x01[\s\S]{19}[\x07\x08][\x01-\x20][\x00\x01][\x0
 # A club's block in the area of debt lists starts with the club's index + 1, two small bytes, 00 and a u16 count
 # of u32s; its debt list (u32 count, then the debts) follows within a few thousand bytes.
 _DEBT_OWNER_REACH = 8000
+_DEBT_OWNER_VALUES = 1 << 24  # the u32s after a real block header are small numbers
+_COMPETITION_FILE = re.compile(r"comp_(\d+)\.dat")
+_DEDUCTION_TABLE, _DEDUCTION_KEEPING, _DEDUCTION_MINIMUM = 10, 0.8, 3
 
 
 def _game_date(buffer: bytes, position: int) -> date | None:
@@ -1341,7 +1345,7 @@ def _incomes(buffer: bytes, bank_at: int) -> tuple[Income, ...]:
 def read_club_finances(buffer: bytes, clubs: dict[int, Club], records: list[tuple[int, int]] | None = None) -> dict[int, ClubFinances]:
     """Every club's bank balance, budgets, income streams and debts, by club index (``records``: _club_records, when read already)."""
     records = _club_records(buffer) if records is None else records
-    debts = _read_debts(buffer)
+    debts = _read_debts(buffer, clubs)
     found: dict[int, ClubFinances] = {}
     ends = [start for start, _ in records[1:]] + [records[-1][0] + 200_000] if records else []
     for (start, index), end in zip(records, ends):
@@ -1358,7 +1362,40 @@ def read_club_finances(buffer: bytes, clubs: dict[int, Club], records: list[tupl
     return found
 
 
-def _read_debts(buffer: bytes) -> dict[int, tuple[Debt, ...]]:
+def _debt_owner(buffer: bytes, first: int, reach_from: int, clubs: Mapping[int, Club]) -> int | None:
+    """The club whose block header stands nearest before the debt list at ``first``. A header is the club's index + 1, two
+    small bytes, a byte of any value (usually 00, but ff and others in about a third of the clubs) and a u16 count of small u32s."""
+    for header in range(first - 14, reach_from - 1, -1):
+        club = struct.unpack_from("<I", buffer, header)[0] - 1
+        if club not in clubs or not (1 <= buffer[header + 4] <= 0x20 and 1 <= buffer[header + 5] <= 0x20):
+            continue
+        count = struct.unpack_from("<H", buffer, header + 7)[0]
+        if 0 < count < 300 and header + 9 + 4 * count <= first - 4 and max(struct.unpack_from(f"<{count}I", buffer, header + 9)) < _DEBT_OWNER_VALUES:
+            return club
+    return None
+
+
+def _rising_owners(owners: list[int | None]) -> dict[int, int]:
+    """The clubs' blocks come in rising order, so the true owners are the longest rising chain ({list number: club}); a list
+    off the chain is a false list, or a false header was taken for its owner."""
+    length: dict[int, int] = {}
+    previous: dict[int, int | None] = {}
+    for number, club in enumerate(owners):
+        if club is None:
+            continue
+        length[number], previous[number] = 1, None
+        for earlier in length:
+            if earlier != number and owners[earlier] < club and length[earlier] >= length[number]:
+                length[number], previous[number] = length[earlier] + 1, earlier
+    chain: dict[int, int] = {}
+    step = max(length, key=length.get) if length else None
+    while step is not None:
+        chain[step] = owners[step]
+        step = previous[step]
+    return chain
+
+
+def _read_debts(buffer: bytes, clubs: Mapping[int, Club]) -> dict[int, tuple[Debt, ...]]:
     """Every club's debts. A debt list is a u32 count and its 28-byte debts; its club is the nearest club
     block header before it and after the previous list, the clubs coming in rising order."""
     entries = {m.start() for m in _DEBT_ENTRY.finditer(buffer)}
@@ -1371,27 +1408,51 @@ def _read_debts(buffer: bytes) -> dict[int, tuple[Debt, ...]]:
             length += 1
         if struct.unpack_from("<I", buffer, first - 4)[0] == length:  # a list is its count and that many debts
             lists.append((first, length))
-    found: dict[int, tuple[Debt, ...]] = {}
-    previous_end, previous_club = 0, -1
+    owners, previous_end = [], 0
     for first, count in lists:
-        candidates = []
-        for header in range(max(previous_end, first - _DEBT_OWNER_REACH), first - 13):
-            club = struct.unpack_from("<I", buffer, header)[0] - 1
-            if 0 <= club < 100_000 and buffer[header + 6] == 0 and 1 <= buffer[header + 4] <= 0x20 and 1 <= buffer[header + 5] <= 0x20:
-                n = struct.unpack_from("<H", buffer, header + 7)[0]
-                if 0 < n < 300 and header + 9 + 4 * n <= first - 4:
-                    candidates.append(club)
-        if not candidates:
-            continue
-        rising = [club for club in candidates if club > previous_club]
-        club = (rising or candidates)[-1]
+        owners.append(_debt_owner(buffer, first, max(previous_end, first - _DEBT_OWNER_REACH), clubs))
+        previous_end = first + _DEBT_SIZE * count
+    found: dict[int, tuple[Debt, ...]] = {}
+    for number, club in _rising_owners(owners).items():
+        first, count = lists[number]
         debts = []
         for position in range(first, first + _DEBT_SIZE * count, _DEBT_SIZE):
             amount, repayment, interest, conditional = struct.unpack_from("<IIII", buffer, position + 1)
             debts.append(Debt(buffer[position + 21], amount, repayment, interest, conditional,
                               _game_date(buffer, position + 24), _game_date(buffer, position + 17), buffer[position + 22] == 1))
         found[club] = tuple(debts)
-        previous_end, previous_club = first + _DEBT_SIZE * count, club
+    return found
+
+
+@dataclass(frozen=True, slots=True)
+class PointDeduction:
+    competition_uid: int
+    team_uid: int
+    points: int  # taken off, above zero
+    played: int
+
+
+def read_point_deductions(save: FmSave, teams: dict[int, Team]) -> list[PointDeduction]:
+    """The first teams with points taken off in the league tables of this save. The only sign in the save is a table where
+    points are less than 3 x won + drawn. Split leagues and leagues with bonus points break that rule for many rows, so a
+    table counts only when nearly all its rows keep it (Sunderland -12 in the Championship; a Romanian -2 is left out)."""
+    found = []
+    for name in save.directory:
+        match = _COMPETITION_FILE.fullmatch(name.rsplit("/", 1)[-1])
+        if not match:
+            continue
+        try:
+            rows = read_league_table(save.read(name))
+        except FmSaveError:
+            continue
+        keeping = sum(r.points == 3 * r.won + r.drawn for r in rows)
+        if len(rows) < _DEDUCTION_TABLE or keeping < len(rows) * _DEDUCTION_KEEPING:
+            continue
+        for row in rows:
+            taken = 3 * row.won + row.drawn - row.points
+            team = teams.get(row.club_id)
+            if taken >= _DEDUCTION_MINIMUM and team is not None and not team.national and team.age_limit is None:
+                found.append(PointDeduction(int(match.group(1)), team.fm_uid, taken, row.played))
     return found
 
 
