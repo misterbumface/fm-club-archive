@@ -54,7 +54,7 @@ SECTIONS = {"title": "Champions", "giant_killing": "Upsets", "big_win": "Results
             "dropped": "Selection", "breakthrough": "Next generation", "unsettled": "Dressing room", "dressing_room": "Dressing room",
             "settled": "Dressing room", "expected_points": "Numbers", "continental_round": "Europe", "tie_report": "Europe", "tie_preview": "Europe",
             "knockout_round": "Europe", "knockout_preview": "Coming up",
-            "european_nights": "Europe", "international_round": "International", "national_team": "International",
+            "european_nights": "Europe", "international_round": "International", "national_team": "International", "national_squad": "International", "squad_dropped": "International",
             "promised_report": "Results", "transfer_interest": "Transfers", "transfer_bid": "Transfers",
             "tournament_report": "Tournament", "tournament_preview": "Tournament", "tournament_round_up": "Tournament",
             "our_players_at_tournament": "Tournament", "player_of_the_tournament": "Tournament",
@@ -236,7 +236,7 @@ def printed_keys(outlet: Outlet) -> set[str]:
 
 # At most this many stories of one kind in an edition, so one kind does not fill a paper (an outlet
 # whose leads are all of one kind, like The Transfer Wire, is not limited).
-KIND_LIMITS = {"goal_award": 1, "scouting": 3, "legend_profile": 1, "career_end": 1, "milestone": 1, "club_record": 1, "misfiring": 1, "clinical": 1, "tired_legs": 1, "academy": 2, "dynasty": 1, "great_final": 1,
+KIND_LIMITS = {"national_squad": 3, "squad_dropped": 2, "goal_award": 1, "scouting": 3, "legend_profile": 1, "career_end": 1, "milestone": 1, "club_record": 1, "misfiring": 1, "clinical": 1, "tired_legs": 1, "academy": 2, "dynasty": 1, "great_final": 1,
                "where_now": 1, "appointment": 2, "performance": 2, "sending_off": 1, "smash_and_grab": 1,
                "league_round": 2, "run": 2, "derby": 2, "giant_killing": 2, "preview": 2, "injury_blow": 2, "underperformer": 1, "overperformer": 1,
                "expectations": 1, "check_in": 1, "stat_watch": 1, "system_change": 1, "position_change": 1, "dropped": 2, "breakthrough": 1,
@@ -253,7 +253,7 @@ NOSTALGIA = {"legend", "legend_profile", "where_now", "anniversary", "all_time",
 SEASON_NEWS = {"league_round", "misfiring", "clinical", "tired_legs", "run", "derby", "preview", "injury_blow", "underperformer", "overperformer", "expectations", "check_in",
                "stat_watch", "title", "giant_killing", "big_win", "performance", "sending_off", "smash_and_grab", "system_change",
                "position_change", "dropped", "breakthrough", "partnership", "unsettled", "dressing_room", "settled", "expected_points",
-               "continental_round", "tie_report", "tie_preview", "knockout_round", "knockout_preview", "european_nights", "international_round", "national_team", "promised_report", "transfer_interest", "transfer_bid",
+               "continental_round", "tie_report", "tie_preview", "knockout_round", "knockout_preview", "european_nights", "international_round", "national_team", "national_squad", "squad_dropped", "promised_report", "transfer_interest", "transfer_bid",
                "tournament_report", "tournament_preview", "tournament_round_up", "our_players_at_tournament", "player_of_the_tournament",
                "club_report", "club_preview", "contract_running_down", "manager_out", "war_of_words",
                "under_pressure", "crisis", "crisis_over", "vacancy", "transfer_rumour", "loan_offer"}

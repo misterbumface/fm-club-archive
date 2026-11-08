@@ -154,6 +154,7 @@ class _SaveReader:
         self._write_news_items(connection)
         self._write_player_seasons(connection)
         self._write_awards(connection)
+        self._write_national_squads(connection)
         self._write_transfers(connection)
         self._clear_retired_teams(connection, save_id)
         self._drop_unconfirmed_names(connection)
@@ -1007,6 +1008,12 @@ class _SaveReader:
                     }
         self._put(connection, world.WorldBestEleven, list(rows.values()), ["team_uid", "save_group", "season_start", "slot"], guarded=True)
 
+    def _write_national_squads(self, connection: Connection) -> None:
+        """This save's copy of every national squad; the copies of the other save dates stay (importing again replaces its own)."""
+        rows = national_squad_rows(self.parts.get("national_squads") or [], self.game_date)
+        connection.execute(world.WorldNationalSquad.__table__.delete().where(world.WorldNationalSquad.__table__.c.as_of == self.game_date))
+        self._put(connection, world.WorldNationalSquad, rows, ["team_uid", "as_of", "person_uid"])
+
     def _goal_award_rows(self, keys: dict[int, int], names: dict) -> list[dict]:
         """The goal awards' months. The latest month of an award counts as given in the game date's month when all its goals
         are from before that month (the save of 1 Mar 2064 had February's award there); otherwise it is still being voted on."""
@@ -1049,6 +1056,16 @@ class _SaveReader:
     def _put(self, connection: Connection, model, rows: list[dict], keys: list[str], guarded: bool = False) -> None:
         _upsert(connection, model.__table__, rows, keys, guarded)
         self.counts[model.__tablename__] += len(rows)
+
+
+def national_squad_rows(squads: list, as_of: date) -> list[dict]:
+    """The rows of one save's national squads (fm_save.NationalSquad)."""
+    rows: dict[tuple[int, int], dict] = {}
+    for squad in squads:
+        for person in squad.players:
+            role = "captain" if person == squad.captain else "vice-captain" if person == squad.vice_captain else None
+            rows[(squad.team_uid, person)] = {"team_uid": squad.team_uid, "as_of": as_of, "person_uid": person, "role": role}
+    return list(rows.values())
 
 
 def _outside_box(shot, player) -> int | None:

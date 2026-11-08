@@ -246,6 +246,21 @@ KIND_NOTES = {
                  "grudge or a debt show. Set the scene in two sentences first.",
     "under_pressure": "The press reports that a club's board are losing patience with the manager and that a coming game "
                       "could decide his fate. It is a report, not a sacking: say so. The results given show why.",
+    "national_squad": "This is about a national team's new squad: who is in, who is left out, and the manager's thinking. It is the "
+                      "squad for a tournament only when the_finals_squad_for says so; when games_played_since_the_last_squad is given, it "
+                      "is the squad for those games, so tell it as past. Lead with "
+                      "the biggest name left out or brought in. The squad, the caps, the starts, the injuries and the club form are "
+                      "facts: tell them as given. A left-out player's why is given only when it says so; when no_reason_known is there, "
+                      "say the manager has given none. You may speculate on the shape and the strategy from the_shape (the squad's lines "
+                      "before and now, the usual shape, the manager's preferred one), but say it is the paper's guess. 'Uncapped' is a "
+                      "fact; never call anyone's call-up his first unless told so. No squad was announced at a press conference: no quotes "
+                      "from the manager on it.",
+    "squad_dropped": "This is about one well-known international left out of his country's squad; it is a tournament squad only when "
+                     "the_finals_squad_for says so. His caps and his starts show what "
+                     "he has been to the team; his why is given only when it says so, and no_reason_known means nobody has said. "
+                     "likely_replacements are the new names in his part of the team: the paper's guess at who takes his place, so say "
+                     "so. Imagine how he takes it from his character and how he gets on with the manager (when given): colour, in "
+                     "his own manner, never a fact or a number of your own. the_shape allows a guess at a change of plan, as a guess.",
     "goal_award": "This is about a goal award (Goal of the Month and the like): the winning goal first, then the others in "
                   "order, each in its game. Tell how each went in only as the_goals_in_order says (the kind of shot, the range, "
                   "the height); no distances in metres, no build-up, no corner side: they are not recorded.",

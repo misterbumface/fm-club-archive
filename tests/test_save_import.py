@@ -434,3 +434,13 @@ def test_a_goal_award_month_is_kept_once_given_and_a_running_vote_is_not():
     running = fm_save.GoalAwardMonth(634, date(2063, 8, 11), None, (goal(529736, date(2064, 3, 1)),))
     reader.parts = {"goal_awards": [running]}
     assert reader._goal_award_rows({634: 5004896}, {5004896: None}) == []
+
+
+def test_a_national_squad_keeps_one_row_a_player_with_his_role():
+    from app.services import fm_save
+    from app.services.save_import import national_squad_rows
+
+    day = date(2064, 4, 5)
+    rows = national_squad_rows([fm_save.NationalSquad(765, (1, 2, 3), 2, 3)], day)
+    assert sorted((r["person_uid"], r["role"]) for r in rows) == [(1, None), (2, "captain"), (3, "vice-captain")]
+    assert {r["as_of"] for r in rows} == {day} and {r["team_uid"] for r in rows} == {765}

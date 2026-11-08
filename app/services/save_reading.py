@@ -42,7 +42,8 @@ def _contracts(save: fm_save.FmSave, game_db: bytes, lang_db: Path) -> dict[str,
     human_team = human.most_common(1)[0][0] if human else None
     groups = fm_save.read_social_groups(game_db, human_team, rows) if human_team is not None else []
     return {"staff_contracts": contracts, "staff_profiles": fm_save.read_staff_profiles(game_db, contracts, person_rows=rows),
-            "partnerships": [(a, b, p) for a, b, p in partnerships if a and b], "social_groups": (human_team, groups)}
+            "partnerships": [(a, b, p) for a, b, p in partnerships if a and b], "social_groups": (human_team, groups),
+            "national_squads": fm_save.read_national_squads(game_db, teams, rows)}
 
 
 def _manager_history(save: fm_save.FmSave) -> list[list[fm_save.ManagerSpell]]:

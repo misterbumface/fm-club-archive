@@ -1371,3 +1371,15 @@ def test_goal_awards_give_the_past_months_and_the_latest():
     hilgers = now.goals[0]
     assert (hilgers.person, hilgers.team, hilgers.against, hilgers.scored_on, hilgers.minute) == (531123, 0x21D, 0x24B, date(2064, 2, 16), 43)
     assert (hilgers.kind, hilgers.range) == ("drive", "outside") and now.goals[2].range is None
+
+
+def test_a_national_squad_comes_from_its_team_record():
+    """England's record (8 Nov 2026): reputation and five numbers, ff ff ff ff, the size, the players, captain, vice, 6 bytes, the header."""
+    players = [11, 12, 13]
+    record = b"\x00" * 40 + b"\xff" * 4 + struct.pack("<H", 3) + struct.pack("<5I", *players, 12, 13) + b"\x00" * 6
+    team = fm_save.Team(3, 0, 765, None, "", "", True, header=len(record))
+    youth = fm_save.Team(4, 0, 900, 21, "", "", True, header=len(record))
+    club = fm_save.Team(5, 0, 630, None, "", "", False, header=len(record))
+    rows = {11: (1001, None), 12: (1002, None), 13: (1003, None)}
+
+    assert fm_save.read_national_squads(record, {3: team, 4: youth, 5: club}, rows) == [fm_save.NationalSquad(765, (1001, 1002, 1003), 1002, 1003)]

@@ -811,6 +811,19 @@ class WorldAwardPlace(db.Model):
     votes: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class WorldNationalSquad(db.Model):
+    """A senior national team's squad as one save has it (fm_save.read_national_squads): one copy per save date, kept, so
+    that two copies say who came in and who was left out. ``role``: captain, vice-captain or null."""
+
+    __bind_key__ = BIND
+    __tablename__ = "national_squads"
+
+    team_uid: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    as_of: Mapped[date] = mapped_column(Date, primary_key=True)
+    person_uid: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False, index=True)
+    role: Mapped[str | None] = mapped_column(String(12))
+
+
 class WorldGoalAward(db.Model):
     """A goal award's month (Goal of the Month, of the Season, of the Tournament): its goals, best first (fm_save.read_goal_awards).
     ``given`` is the first day of the month the award was given; a month still being voted on is not kept."""

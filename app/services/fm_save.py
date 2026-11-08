@@ -241,7 +241,7 @@ import mmap
 import re
 import struct
 from collections import Counter
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Iterable, Iterator
@@ -1133,6 +1133,7 @@ class Team:
     national: bool = False
     reputation: int | None = None  # 0-10 000, as the editor shows it (Chelsea 9983)
     stadium: int | None = None  # the stadium's number in the save (read_stadiums gives its FM uid)
+    header: int = field(default=-1, compare=False)  # where its record's header is in game_db (read_national_squads)
 
 
 def _read_string(buffer: bytes, position: int, limit: int = 100) -> tuple[str, int] | None:
@@ -1415,7 +1416,7 @@ def read_teams(buffer: bytes, clubs: dict[int, Club]) -> dict[int, Team]:
         reputation, stadium = _team_reputation_and_stadium(buffer, match.start())
         teams[number] = Team(
             number, club_index, fm_uid, None if age in NO_AGE_LIMIT else age, own[0], own_short[0], national,
-            reputation, stadium,
+            reputation, stadium, match.start(),
         )
     return teams
 
@@ -1441,6 +1442,37 @@ def _team_reputation_and_stadium(buffer: bytes, header: int) -> tuple[int | None
             stadium = struct.unpack_from("<I", buffer, at + _TEAM_STADIUM)[0]
             return (value if value <= MAX_REPUTATION else None), (stadium if stadium != _NONE_U32 else None)
     return None, None
+
+
+@dataclass(frozen=True, slots=True)
+class NationalSquad:
+    """The players a senior national team has called up, as the save has it now: the last squad named (8 Nov 2026: the
+    same 23 as the latest team sheet for England, Italy, Brazil and most others). All FM uids."""
+
+    team_uid: int
+    players: tuple[int, ...]
+    captain: int | None
+    vice_captain: int | None
+
+
+def read_national_squads(buffer: bytes, teams: dict[int, Team], person_rows: dict[int, tuple]) -> list[NationalSquad]:
+    """Each senior national team's squad from its team record (see the layout above), for the teams that have one."""
+    found = []
+    for team in teams.values():
+        if not team.national or team.age_limit is not None or team.header < 0:
+            continue
+        for size in range(1, _MAX_SQUAD):
+            count = team.header - _TEAM_SQUAD_COUNT - 4 * size
+            if count < _TEAM_REPUTATION:
+                break
+            if struct.unpack_from("<H", buffer, count)[0] == size and buffer[count - 4 : count] == b"\xff\xff\xff\xff":
+                numbers = struct.unpack_from(f"<{size + 2}I", buffer, count + 2)
+                uid = lambda number: (person_rows.get(number) or (None,))[0]  # noqa: E731
+                players = tuple(u for u in map(uid, numbers[:size]) if u)
+                if players:
+                    found.append(NationalSquad(team.fm_uid, players, uid(numbers[size]), uid(numbers[size + 1])))
+                break
+    return found
 
 
 _NONE_U32 = 0xFFFFFFFF

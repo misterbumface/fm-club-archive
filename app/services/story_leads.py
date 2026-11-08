@@ -27,6 +27,7 @@ from sqlalchemy.engine import Connection
 
 from app.services import story_leads_now as now
 from app.services import story_leads_crisis as crisis
+from app.services import story_leads_squads as squads
 from app.services import story_leads_moods as dressing
 from app.services import story_leads_tactics as sheets
 from app.services import world_queries as q
@@ -174,7 +175,7 @@ def find_leads(connection: Connection, since: date, until: date, followed: tuple
     for finder in (_titles, _giant_killings, _big_wins, _promotions_and_relegations, _transfers, _spending, _rising_stars,
                    _scouting, _academy_scorers, _awards, _milestones, _club_scorers, _careers_ended, _legends, _legend_profiles,
                    _dynasties, _great_finals, _appointments, _where_are_they_now, _anniversaries, _performances, _sendings_off, _goal_awards,
-                   _smash_and_grabs, *now.FINDERS, *sheets.FINDERS, *dressing.FINDERS, crisis.crises):
+                   _smash_and_grabs, *now.FINDERS, *sheets.FINDERS, *dressing.FINDERS, crisis.crises, squads.squads):
         leads.extend(finder(world))
     crisis.mark(world, leads)
     leads = fold_into_matchdays(leads)
