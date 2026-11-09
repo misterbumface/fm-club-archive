@@ -41,6 +41,7 @@ ACCOUNT_SETTING = "publish_account_id"
 LAST_SETTING = "publish_last"
 EXPORTED_SETTING = "publish_exported_at"  # when the folder was last rendered: a Publish renders again only when the archive changed since
 EXPORTED_VERSION_SETTING = "publish_exported_version"  # and the app that rendered it: a new app may draw the pages differently
+PAGES_FILE = ".pages.json"  # a finished export's note of what its story and match pages were made from: the next export keeps those unchanged
 MAX_FILES = 20_000
 MAX_FILE_BYTES = 25 * 1024 * 1024
 COMPATIBILITY_DATE = "2025-01-01"
@@ -101,6 +102,7 @@ class Export:
     pages: int = 0
     assets: int = 0
     skipped: int = 0
+    kept: int = 0  # pages taken from the last export, their data unchanged
     types: dict[str, str] = field(default_factory=dict)  # file path -> content type, for the upload
 
 
@@ -121,41 +123,112 @@ def _worker_site():
     return _SITE
 
 
-def _render_one(path: str) -> tuple[str, int, str, bytes]:
-    """One page rendered by this process's own app: its status, content type and body."""
+_KEPT = 304  # a render's status: the page's data has not changed, the last export's file stands
+
+
+def _page_digest(path: str) -> str | None:
+    """A fingerprint of what a story's or a match's page is made from; None for a page always rendered, or one it cannot judge.
+    A story's list of the section's newest stories is left out on purpose: alone, it does not make an old page worth rendering."""
+    from sqlalchemy import text
+
+    from app.public import football
+
+    kind = kind_of(path)
+    if kind not in ("story", "match"):
+        return None
+
+    def rows(sql: str, **params) -> list[dict]:
+        return [dict(r) for r in db.session.execute(text(sql), params).mappings()]
+
+    def stories_of(ref: str) -> list[dict]:
+        return rows("select a.id, a.headline from world_soccer_entity_links l join world_soccer_articles a on a.id = l.article_id "
+                    "join world_soccer_issues i on i.id = a.issue_id where l.world_ref = :r and i.status = 'published' order by a.id", r=ref)
+
+    try:
+        uid = int(path.split("/")[2])
+        if kind == "story":
+            found = rows("select a.*, i.status, i.publication_date, i.outlet_id from world_soccer_articles a join world_soccer_issues i "
+                         "on i.id = a.issue_id where a.id = :a and i.status = 'published'", a=uid)
+            if not found:
+                return None
+            links = rows("select entity_type, entity_id, world_ref, label from world_soccer_entity_links where article_id = :a order by id", a=uid)
+            match = next((link["world_ref"] for link in links if (link["world_ref"] or "").startswith("match:")), None)
+            data = [found, links, stories_of(match) if match else []]
+        else:
+            with football.connect() as c:
+                page = football.match(c, uid)
+            if page is None:
+                return None
+            data = [page, stories_of(page["ref"])]
+        return hashlib.sha256(json.dumps(data, default=str).encode()).hexdigest()
+    except Exception:  # noqa: BLE001 - a page it cannot judge is rendered
+        return None
+
+
+def _answer(client, path: str, known: str | None) -> tuple[str, int, str, bytes, str | None]:
+    """One page: its status, content type, body and fingerprint; no body when its fingerprint is the one the last export has."""
+    digest = _page_digest(path)
+    if digest and digest == known:
+        return path, _KEPT, "", b"", digest
+    try:
+        answer = client.get(path)
+    except Exception:  # noqa: BLE001 - a page that fails to render is left out, the export goes on
+        return path, 500, "", b"", None
+    return path, answer.status_code, (answer.content_type or "application/octet-stream").split(";")[0], answer.data, digest
+
+
+def _render_one(item: tuple[str, str | None]) -> tuple[str, int, str, bytes, str | None]:
+    """One page by this process's own app."""
     site = _worker_site()
     with site.app_context():
-        try:
-            answer = site.test_client().get(path)
-        except Exception:  # noqa: BLE001 - a page that fails to render is left out, the export goes on
-            return path, 500, "", b""
-        return path, answer.status_code, (answer.content_type or "application/octet-stream").split(";")[0], answer.data
+        return _answer(site.test_client(), *item)
 
 
 def _render_in_process(site):
     client = site.test_client()
 
-    def render(paths: list[str]) -> list[tuple[str, int, str, bytes]]:
-        out = []
+    def render(items: list[tuple[str, str | None]]) -> list[tuple[str, int, str, bytes, str | None]]:
         with site.app_context():
-            for path in paths:
-                try:
-                    answer = client.get(path)
-                except Exception:  # noqa: BLE001
-                    out.append((path, 500, "", b""))
-                    continue
-                out.append((path, answer.status_code, (answer.content_type or "application/octet-stream").split(";")[0], answer.data))
-        return out
+            return [_answer(client, *item) for item in items]
     return render
+
+
+def _export_stamp(site, followed: tuple[int, ...]) -> list:
+    """What every page shows: when it changes, no page of the last export can be kept."""
+    from app import public
+    from app.services import public_site
+
+    with site.app_context():
+        tournament = public._major_tournament()
+        return [app_version(), public.SITE_NAME, sorted(followed), tournament and [tournament["uid"], tournament["label"]], public_site.offline()]
+
+
+def _move_last_export(out_dir: Path, stamp: list) -> tuple[Path, dict[str, str], dict[str, str]]:
+    """Make ``out_dir`` empty, the last finished export moved beside it: its folder, the fingerprints of its pages and their types.
+    An export stopped half way is thrown away and the finished one before it is used. A different stamp keeps nothing."""
+    previous = out_dir.with_name(out_dir.name + ".previous")
+    if (out_dir / PAGES_FILE).exists():
+        shutil.rmtree(previous, ignore_errors=True)
+        out_dir.rename(previous)
+    elif out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True)
+    try:
+        last = json.loads((previous / PAGES_FILE).read_text(encoding="utf-8"))
+        types = json.loads((previous / ".types.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return previous, {}, {}
+    return previous, last["pages"] if last.get("stamp") == stamp else {}, types
 
 
 def export_site(site, out_dir: Path, followed: tuple[int, ...], progress: Callable[[str], None] = lambda text: None,
                 limit: int = MAX_FILES - 1, workers: int = EXPORT_WORKERS) -> Export:  # one place for the 404 page
     """Render the paper's pages with the public site and write them under ``out_dir`` (emptied first): round by round, a
-    round's paths rendered side by side by worker processes (in tests, or with one worker, by the site itself here)."""
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True)
+    round's paths rendered side by side by worker processes (in tests, or with one worker, by the site itself here). A story or
+    a match whose data has not changed keeps its page from the last export (its links are still followed)."""
+    stamp = _export_stamp(site, followed)
+    previous, last_pages, last_types = _move_last_export(out_dir, stamp)
+    pages_made: dict[str, str] = {}
     export = Export(out_dir)
     counts: dict[str, int] = {}
     followed_paths = {f"/clubs/{uid}" for uid in followed}
@@ -167,14 +240,21 @@ def export_site(site, out_dir: Path, followed: tuple[int, ...], progress: Callab
         from concurrent.futures import ProcessPoolExecutor
 
         pool = ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn"))
-        render = lambda paths: list(pool.map(_render_one, paths, chunksize=4))  # noqa: E731
+        render = lambda items: list(pool.map(_render_one, items, chunksize=4))  # noqa: E731
     else:
         render = _render_in_process(site)
     try:
         while frontier and export.pages + export.assets < limit:
             batch = [frontier.popleft() for _ in range(min(len(frontier), RENDER_CHUNK, limit - export.pages - export.assets))]
-            for path, status, content_type, body in render(batch):
+            known = [(path, last_pages.get(path) if ("/" + target_path(path)) in last_types and (previous / target_path(path)).is_file() else None)
+                     for path in batch]
+            for path, status, content_type, body, digest in render(known):
                 kind = kind_of(path)
+                if digest:
+                    pages_made[path] = digest
+                if status == _KEPT:
+                    body, content_type, status = (previous / target_path(path)).read_bytes(), last_types["/" + target_path(path)], 200
+                    export.kept += 1
                 if status != 200:
                     export.skipped += 1
                     continue
@@ -200,7 +280,9 @@ def export_site(site, out_dir: Path, followed: tuple[int, ...], progress: Callab
     (out_dir / "404.html").write_text(NOT_FOUND_HTML, encoding="utf-8")
     export.types["/404.html"] = "text/html"
     (out_dir / ".types.json").write_text(json.dumps(export.types), encoding="utf-8")
-    progress(f"Exported {export.pages} pages and {export.assets} files: {_counts_words(counts)}")
+    (out_dir / PAGES_FILE).write_text(json.dumps({"stamp": stamp, "pages": pages_made}), encoding="utf-8")  # last: only a finished export has it
+    shutil.rmtree(previous, ignore_errors=True)
+    progress(f"Exported {export.pages} pages ({export.kept} kept from the last export) and {export.assets} files: {_counts_words(counts)}")
     return export
 
 
@@ -235,7 +317,7 @@ def file_hash(content: bytes, extension: str) -> str:
 def manifest_of(out_dir: Path) -> tuple[dict[str, dict], dict[str, Path]]:
     """The export's manifest ({"/path": {"hash", "size"}}) and the file of each hash."""
     manifest, files = {}, {}
-    for path in sorted(p for p in out_dir.rglob("*") if p.is_file() and p.name != ".types.json"):
+    for path in sorted(p for p in out_dir.rglob("*") if p.is_file() and p.name not in (".types.json", PAGES_FILE)):
         content = path.read_bytes()
         if len(content) > MAX_FILE_BYTES:
             continue

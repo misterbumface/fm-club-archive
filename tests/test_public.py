@@ -450,6 +450,30 @@ def test_the_public_site_shows_its_holding_page_when_taken_offline(site):
     assert status.address == "https://worldsport.uk" and status.word == "online"
 
 
+def test_an_export_keeps_unchanged_stories_and_renders_changed_ones(site, tmp_path):
+    from app.models.world_soccer_article import WorldSoccerArticle
+    from app.services import site_publish
+
+    out = tmp_path / "out"
+    first = site_publish.export_site(site, out, (630,))
+    assert first.kept == 0 and first.pages > 3
+    second = site_publish.export_site(site, out, (630,))
+    stories = [path for path in second.types if path.startswith("/story/")]
+    assert second.kept == len(stories) > 1 and second.pages == first.pages and not (tmp_path / "out.previous").exists()
+    assert ".pages.json" not in str(site_publish.manifest_of(out)[0])  # never uploaded
+    article = WorldSoccerArticle.query.filter_by(headline="Chelsea's run goes on").one()
+    page = next(out / path.lstrip("/") for path in stories if f"/story/{article.id}/" in path)
+    article.body = "A corrected paragraph."
+    db.session.commit()
+    third = site_publish.export_site(site, out, (630,))
+    assert third.kept == len(stories) - 1 and "A corrected paragraph." in page.read_text()
+    (out / ".pages.json").unlink()  # an export stopped half way has no note
+    stopped = site_publish.export_site(site, out, (630,))
+    assert stopped.kept == 0
+    site_publish.export_site(site, out, (630,))
+    assert site_publish.export_site(site, out, (630, 602)).kept == 0  # the followed clubs change what every page shows
+
+
 def test_the_paper_is_exported_as_static_pages_and_published_to_cloudflare(site, tmp_path, monkeypatch, a_logo):
     from app.services import site_publish
 
