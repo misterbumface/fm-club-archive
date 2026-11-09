@@ -445,18 +445,12 @@ def test_the_travel_column_and_the_interviews(small_world):
     assert home["club"] == "Chelsea" and home["league_seasons"] and ("Old Legend: 420 games over 12 seasons" in home["most_appearances"])
     assert trip.facts["the_visitors"]["club"] == "Arsenal" and "most_appearances" not in trip.facts["the_visitors"]
     assert round(features.distance_km((51.4817, -0.191), (46.5547, 15.6459))) == 1275 and features.bearing_words((51.48, -0.19), (46.55, 15.65)) == "east"
-    told = trip.facts["this_trip"]  # 3 Nov 2026: fifteen columns opened on a bus and ran the same six parts in the same order
-    assert told["angle"] in features.ANGLES and told["shape"] in features.SHAPES and told["game_kind"] in features.GAME_KINDS
-    assert told["the_shape"] == features.SHAPES[told["shape"]] and "running_thread" not in told and "the_last_columns" not in trip.facts
-
-    # the last trips' angles, shapes and happenings do not come back; the third trip brings the running thread
-    shape = next(iter(features.SHAPES))
-    earlier = [{"trip": n, "headline": "A night in Molde", "this_trip": {"angle": a, "shape": shape, "happening": "calm", "game_kind": "league"}}
-               for n, a in enumerate(("the_town", "the_food"), 1)]
+    told = trip.facts["this_trip"]  # 9 Nov 2026: a deal of angles, shapes and mishaps had become a formula ("can't get in, locked gate")
+    assert set(told) == {"game_kind", "the_game_is"} and told["game_kind"] in features.GAME_KINDS and "the_last_columns" not in trip.facts
+    assert "gate" not in features.COLUMNIST["persona"]
     with small_world.connect() as c:
         w = _World(c, SINCE, UNTIL, (CHELSEA,))
-        third = features.this_trip(w, w.rows("select f.*, t.club_uid home_club from fixtures f join teams t on t.fm_uid = f.home_uid where f.id = :f", f=played)[0], earlier, "league")
-    assert third["angle"] not in ("the_town", "the_food") and third["shape"] != shape and third["happening"] != "calm"
+        third = features.this_trip([{"trip": n} for n in (1, 2)], "league")
     assert [features.game_kind(w, {"scope": s, "home_club": 1, "competition_uid": 1}) for s in ("cup", "continental", "national_teams")] == [
         "cup", "continental", "international"]
     assert third["running_thread"].startswith("the scarf") and "number 3" in third["running_thread"]
@@ -860,3 +854,65 @@ def test_a_continental_story_goes_to_its_part_of_the_world():
     assert editions.section_of(lead("continental_round", "South America")) == "South America"
     assert editions.section_of(lead("tie_report", "Europe")) == "Europe"
     assert editions.section_of(lead("league_round", "South America")) == "The round"
+
+
+def _double_round(c, league, year, results, unplayed=()):
+    """Every club plays every other twice in a season from August: ``results`` as (day offset, home, away, home goals, away goals)."""
+    from datetime import timedelta
+
+    start = date(year, 8, 10)
+    c.execute(world.WorldFixture.__table__.insert(), [{"date": start + timedelta(days=d), "home_uid": h, "away_uid": a, "competition_uid": league, "stage": 1,
+                                                       "home_goals": hg, "away_goals": ag, "as_of": AS_OF} for d, h, a, hg, ag in [*results, *((d, h, a, None, None) for d, h, a in unplayed)]])
+
+
+def _title_world(c):
+    comps = world.WorldCompetition.__table__
+    c.execute(comps.update().where(comps.c.fm_uid == LEAGUE).values(scope="league", level=1))
+    c.execute(world.WorldFixture.__table__.delete().where(world.WorldFixture.__table__.c.competition_uid == LEAGUE))
+    a, b, d = CHELSEA, ARSENAL, LIVERPOOL
+    _double_round(c, LEAGUE, 2062, [(1, a, b, 2, 0), (2, b, d, 1, 0), (3, d, a, 0, 2), (4, b, a, 0, 1), (5, d, b, 0, 1), (6, a, d, 3, 0)])
+    c.execute(world.WorldEditionPlace.__table__.delete().where(world.WorldEditionPlace.__table__.c.competition_uid == LEAGUE))
+    c.execute(world.WorldEdition.__table__.delete().where(world.WorldEdition.__table__.c.competition_uid == LEAGUE))
+    c.execute(world.WorldEdition.__table__.insert(), [{"competition_uid": LEAGUE, "year": 2063, "season_label": "2062/63", "decided_on": date(2063, 5, 20)}])
+    c.execute(world.WorldEditionPlace.__table__.insert(), [{"competition_uid": LEAGUE, "year": 2063, "place": 1, "team_uid": a}])
+    _double_round(c, LEAGUE, 2063, [(1, a, b, 2, 0), (2, b, d, 0, 0), (3, d, a, 0, 2), (4, b, a, 0, 1), (5, a, d, 1, 0)], unplayed=[(6, d, b)])
+
+
+def test_a_title_that_cannot_change_is_known_and_a_race_that_can_is_not(small_world):
+    from app.services import story_leads_title as title
+
+    with small_world.begin() as c:
+        _title_world(c)
+    with small_world.connect() as c:
+        assert title.settled(c, LEAGUE, date(2063, 8, 12)) is None  # one game gone: Arsenal can still reach Chelsea
+        won = title.settled(c, LEAGUE, date(2063, 8, 16))
+        assert won["champions_uid"] == CHELSEA and won["points"] == 12 and won["games_left"] == 0 and won["games_left_when_won"] == 1 and won["best_any_other_can_reach"] == 4
+        assert won["clinched_on"] == "2063-08-14"  # the day no club could reach them any more
+        facts = title.writer_facts(c, [f"club:{LIVERPOOL}"], date(2063, 8, 16))
+        assert facts[0]["already_champions"] and "over" in facts[0]["use"]
+
+
+def test_a_league_of_another_shape_is_never_called_settled(small_world):
+    from app.services import story_leads_title as title
+
+    with small_world.begin() as c:
+        _title_world(c)
+        fixtures = world.WorldFixture.__table__
+        c.execute(fixtures.delete().where(fixtures.c.competition_uid == LEAGUE, fixtures.c.date < date(2063, 7, 1)))  # no plain season to go by
+    with small_world.connect() as c:
+        assert title.settled(c, LEAGUE, date(2063, 8, 16)) is None
+    with small_world.begin() as c:
+        _double_round(c, LEAGUE, 2062, [(1, CHELSEA, ARSENAL, 2, 0), (2, ARSENAL, LIVERPOOL, 1, 0), (3, LIVERPOOL, CHELSEA, 0, 2), (4, ARSENAL, CHELSEA, 0, 1), (5, LIVERPOOL, ARSENAL, 0, 1), (6, CHELSEA, LIVERPOOL, 3, 0),
+                                       (7, CHELSEA, ARSENAL, 1, 0)])  # a third meeting: a split league
+    with small_world.connect() as c:
+        assert title.settled(c, LEAGUE, date(2063, 8, 16)) is None
+
+
+def test_a_club_with_points_taken_off_makes_the_sum_unsafe(small_world):
+    from app.services import story_leads_title as title
+
+    with small_world.begin() as c:
+        _title_world(c)
+        c.execute(world.WorldPointDeduction.__table__.insert(), [{"competition_uid": LEAGUE, "team_uid": CHELSEA, "as_of": date(2063, 8, 15), "points": 9, "played": 5}])
+    with small_world.connect() as c:
+        assert title.settled(c, LEAGUE, date(2063, 8, 16)) is None

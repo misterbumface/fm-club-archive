@@ -48,6 +48,7 @@ _OLD = ("an old soccer stadium at golden hour, empty seats, nostalgic film grain
         "an old pair of soccer boots and a folded shirt on a bench, warm window light")
 _SCENES: dict[str, tuple[str, ...]] = {
     "title": _TROPHY,
+    "title_clinched": _TROPHY,
     "great_final": ("a cup final at night, players celebrating at the final whistle, fireworks over the stadium roof",
                     "a goalkeeper diving full-length in a penalty shoot-out, a packed stadium holding its breath",
                     "two teams lined up before a final, a trophy on a plinth in front of them, smoke and flags"),

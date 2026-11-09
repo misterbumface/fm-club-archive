@@ -23,7 +23,7 @@ from app.models import world as world_models
 from app.models.outlet import Outlet
 from app.services import moods, story_notebooks, world_queries as q
 from app.services.ai_settings import get_checker_model, get_papers_model, resolve_ai_api_key
-from app.services import archive_questions, fact_check
+from app.services import archive_questions, fact_check, story_leads_title
 from app.services.story_leads import Lead
 from app.services.story_writer import ARTICLE_RULES, StoryError, hard_faults, request_json, request_with_questions, text_faults
 
@@ -38,7 +38,7 @@ PROMINENCE = {
 }
 
 # A column's opening, whatever the edition's deal of forms.
-COLUMN_OPENINGS = {"travel_log": "Open as this_trip's the_shape says (in the notebook's story facts), never as the_last_columns opened."}
+COLUMN_OPENINGS = {"travel_log": "Open in a way of your own that suits this piece and is unlike every opening in the_last_columns (in the notebook's story facts)."}
 
 # Each article of an edition opens and is headlined in its own way, so an edition does not read as one formula.
 OPENINGS = (
@@ -209,31 +209,26 @@ KIND_NOTES = {
                        "says where: Europe, or South America for the Libertadores; never call it Europe otherwise): every "
                        "result in every continental competition and where they stand in their groups. Write it for that country's readers: how their "
                        "clubs fared, who flew the flag and who let it down, and what comes next. Report only the results given.",
-    "travel_log": "This is the Away Days column: a first-person travel log of one trip to one game, in the year the notebook gives. "
-                  "It is a long piece with meat on it, never shorter than 1,100 words whatever the notebook holds (the town and the "
-                  "real club's history come from your own knowledge), with three to five short section headings, each a few words on "
-                  "a line of its own; the game is the smallest part. this_trip says how this trip is told, and it rules the piece: "
-                  "the_angle leads it, the_shape sets how it opens and runs, what_happens is what the day brings (life on the road: "
-                  "tell it as it happened to him, in scenes, and let it change his day), the_game_is the kind of day out, and "
-                  "running_thread, when given, comes back once, lightly. The things a trip can hold, for the angle to choose among and "
-                  "weigh, never a checklist in a fixed order: the journey (the route from the last stop over the real geography, "
-                  "trains, buses, ferries, roads, hours, changes, borders, rough cost; a paragraph or less unless the angle is the "
-                  "journey). The town: who lives there and what they do, what it was built on, made and lost, its real landmarks "
-                  "visited (the cathedral, the castle, the bridge, the old quarter, the museum, the market), and what it is like to "
-                  "arrive. The club, always, in two layers: first the real club's history before our day, as a well-read traveller "
-                  "knows it (when and how it was founded, its nickname and colours, its old grounds, its famous days and long years, "
-                  "its place in its town); then the notebook's decades (the_home_club; its honours are the whole record, the oldest under today's competition names, so a 1912 title is the league of that level then): "
-                  "the climbs and falls between the divisions, what it won, its legends, rivals and longest servants, its manager, where "
-                  "it stands now, told as the story of the club and not as a list. The people met, in character, with what they said. "
-                  "The food by its proper name, when the day has room for it, not by habit. The ground from where he stands or sits. "
-                  "Then the game as the goals say (how_the_goals_went_in tells each goal; the build-up is not known, so tell none), as "
-                  "he saw or heard it, at most a quarter of the piece, set against the club's story (the_visitors and meetings_before "
-                  "give the other side). the_last_columns are the column's last pieces: do not reuse their headlines' wording, their "
-                  "openings or their section headings, and do not bring back their stock figures (an old man in a flat cap, a boy in "
-                  "the club shirt, the walk back to the station, the price of every meal). Whatever happens on the day, the match facts "
-                  "stand as the notebook gives: the score, the scorers and minutes, the crowd. Name only what you know of the real "
-                  "place and the real club; where you do not know a particular, say less, and let the weather, the landscape and the "
-                  "people met carry the paragraph. Particular things only: no 'passionate fans', no 'hidden gem', no 'football is life "
+    "travel_log": "This is the Away Days column: a first-person piece about one trip to one game, in the year the notebook gives, never shorter than 1,100 "
+                  "words. The piece is yours to make. Nobody has planned it: you decide what it is about, where it opens, how it runs, whether it has section "
+                  "headings, and what, if anything, happens on the day. Follow whatever is most alive about this place, this club and this game, and write the "
+                  "piece that only this trip could give. There are no parts to fill and no order to keep. The trip may be the road, the town, a person, a meal, a "
+                  "club's past, the weather, an argument, or something nobody asked for. Most days nothing goes wrong: he gets there, he gets in, he watches the game. "
+                  "Do not invent a mishap to give the piece a plot, and do not repeat one the_last_columns already had. this_trip gives the_game_is, the kind of day "
+                  "out; running_thread, when given, is an old habit of his that you may touch on or leave out. "
+                  "The trip itself is invented and you are free in it, and here this note overrules the article rules: the meals and stalls, trains and buses, rooms, "
+                  "weather, the people he meets, their names and what they say are yours to make up, with confidence and in particulars. Keep real places true where "
+                  "you know them. Never tell the reader what you do not know or will not invent, never say that a detail is missing, and never speak of a notebook, an "
+                  "archive, supplied or given figures, or coordinates: he was there, and he writes as a man who was there. If the facts seem to disagree about where a "
+                  "ground is, pick one and go on. "
+                  "Only the football is fixed: the score, the scorers and minutes, how_the_goals_went_in (the build-up is not known, so tell none), the crowd, and "
+                  "the club's record in the_home_club, the_visitors and meetings_before (the honours in the_home_club are the whole record, the oldest under today's "
+                  "competition names, so a 1912 title is the league of that level then). The game is at most a quarter of the piece. Somewhere in it the reader learns "
+                  "who the home club is, its real history before our day as a well-read traveller knows it and the notebook's decades since, told as a story and not "
+                  "as a list; how much and where is your choice. "
+                  "the_last_columns are the column's last pieces, with how_it_ran as the first sentence of each paragraph: this piece must be unlike them in its way "
+                  "in, its course, its kind of day, its headline's wording and its stock figures. "
+                  "Particular things only: no 'passionate fans', no 'hidden gem', no 'football is life "
                   "here', no list of generic charms. Mention an earlier stop when it fits. It is the notebook's year, decades on from "
                   "our day: no event, person or price of the 2020s; history older than that is fair. The match facts and the club's "
                   "archive years are the notebook's and nothing more.",
@@ -261,6 +256,7 @@ KIND_NOTES = {
                      "is what rivals dream of. What may come next is the paper's guess, and say so: a forced sale, a takeover, administration and points "
                      "docked. None of it has happened unless told; invent no owner, sale, bid, loan or statement. Quotes only from unnamed people close to the club, "
                      "and never with a figure in them.",
+    "title_clinched": "A league title has been won with games still to play: no other club can reach the champions' points. Say that plainly and early, and say on which day it was settled (title_won_on): the champions have not been presented with the trophy yet and the season is not over. ",
     "points_docked": "This is about a club with points taken off in the league. points_taken_off is a fact. The reason is not known unless given; when "
                      "their_money shows the club deep in the red, the paper may suggest that money is the reason and say it is suggesting. Its money figures are "
                      "rounded and reported: say about or believed. Invent no ruling, date, hearing or statement.",
@@ -425,6 +421,8 @@ def article_notebook(connection: Connection, lead: Lead, published: date) -> dic
         links = _connections(connection, sides[0], sides[1], mover) + _connections(connection, sides[1], sides[0], mover)
         if links:
             notebook["connections"] = links
+    if settled := story_leads_title.writer_facts(connection, lead.refs, published):
+        notebook["league_titles_already_won"] = settled
     return _for_writer(notebook)
 
 

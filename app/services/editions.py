@@ -42,7 +42,7 @@ STANDARD_ARTICLES = 3  # after the lead
 FEATURE_BEATS = {"history"}  # outlets on these beats write features, not briefs
 WRITERS = 6  # articles written at the same time
 
-SECTIONS = {"title": "Champions", "giant_killing": "Upsets", "big_win": "Results", "rise": "Rising", "fall": "Fallen",
+SECTIONS = {"title": "Champions", "title_clinched": "Champions", "giant_killing": "Upsets", "big_win": "Results", "rise": "Rising", "fall": "Fallen",
             "transfer": "Transfers", "spending": "Transfers", "rising_star": "Next generation", "scouting": "Scouting", "academy": "Academy",
             "award": "Awards", "goal_award": "Awards", "milestone": "Records", "club_record": "Records", "career_end": "Farewells",
             "legend": "Legends", "all_time": "Legends", "anniversary": "On this day", "legend_profile": "Legends",
@@ -236,7 +236,7 @@ def printed_keys(outlet: Outlet) -> set[str]:
 
 # At most this many stories of one kind in an edition, so one kind does not fill a paper (an outlet
 # whose leads are all of one kind, like The Transfer Wire, is not limited).
-KIND_LIMITS = {"club_accounts": 1, "points_docked": 1, "national_squad": 3, "squad_dropped": 2, "goal_award": 1, "scouting": 3, "legend_profile": 1, "career_end": 1, "milestone": 1, "club_record": 1, "misfiring": 1, "clinical": 1, "tired_legs": 1, "academy": 2, "dynasty": 1, "great_final": 1,
+KIND_LIMITS = {"title_clinched": 2, "club_accounts": 1, "points_docked": 1, "national_squad": 3, "squad_dropped": 2, "goal_award": 1, "scouting": 3, "legend_profile": 1, "career_end": 1, "milestone": 1, "club_record": 1, "misfiring": 1, "clinical": 1, "tired_legs": 1, "academy": 2, "dynasty": 1, "great_final": 1,
                "where_now": 1, "appointment": 2, "performance": 2, "sending_off": 1, "smash_and_grab": 1,
                "league_round": 2, "run": 2, "derby": 2, "giant_killing": 2, "preview": 2, "injury_blow": 2, "underperformer": 1, "overperformer": 1,
                "expectations": 1, "check_in": 1, "stat_watch": 1, "system_change": 1, "position_change": 1, "dropped": 2, "breakthrough": 1,
@@ -250,7 +250,7 @@ KIND_LIMITS = {"club_accounts": 1, "points_docked": 1, "national_squad": 3, "squ
 # what happens: its front story is news of the season, current news ranks higher, and it prints at most one story
 # that looks back, one scouting report and three transfers. The history, young and transfer papers are as before.
 NOSTALGIA = {"legend", "legend_profile", "where_now", "anniversary", "all_time", "career_end", "dynasty", "great_final"}
-SEASON_NEWS = {"club_accounts", "points_docked", "league_round", "misfiring", "clinical", "tired_legs", "run", "derby", "preview", "injury_blow", "underperformer", "overperformer", "expectations", "check_in",
+SEASON_NEWS = {"title_clinched", "club_accounts", "points_docked", "league_round", "misfiring", "clinical", "tired_legs", "run", "derby", "preview", "injury_blow", "underperformer", "overperformer", "expectations", "check_in",
                "stat_watch", "title", "giant_killing", "big_win", "performance", "sending_off", "smash_and_grab", "system_change",
                "position_change", "dropped", "breakthrough", "partnership", "unsettled", "dressing_room", "settled", "expected_points",
                "continental_round", "tie_report", "tie_preview", "knockout_round", "knockout_preview", "european_nights", "international_round", "national_team", "national_squad", "squad_dropped", "promised_report", "transfer_interest", "transfer_bid",
