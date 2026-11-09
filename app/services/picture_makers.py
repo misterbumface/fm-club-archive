@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import secrets
 import time
 import urllib.error
@@ -26,9 +27,10 @@ OPENAI_MODEL_KEY, OPENAI_QUALITY_KEY = "openai_image_model", "openai_image_quali
 # Draw Things' models, chosen on the Settings page: each request names its model. Its API (27 Oct 2026) lists no installed
 # models, only the one selected in the app (/sdapi/v1/options), so the page offers the defaults and every model it has
 # seen selected there. An empty illustration model means "the one selected in Draw Things".
+DT_SECOND_ADDRESS_KEY, DT_ON_SECOND_KEY = "draw_things_second_address", "draw_things_on_second"
 DT_ILLUSTRATION_KEY, DT_PORTRAIT_KEY, DT_EDIT_KEY, DT_SEEN_KEY = ("draw_things_illustration_model", "draw_things_portrait_model",
                                                                   "draw_things_edit_model", "draw_things_seen_models")
-MAKERS = {"draw_things": "Draw Things (on this Mac)", "invoke": "InvokeAI (server)", "wavespeed": "WaveSpeed (API)", "openai": "OpenAI (API)"}
+MAKERS = {"draw_things": "Draw Things", "invoke": "InvokeAI (server)", "wavespeed": "WaveSpeed (API)", "openai": "OpenAI (API)"}
 # InvokeAI on another computer (invoke_ai): its address and the two models, one that draws from a prompt and one that edits a
 # portrait. With InvokeAI chosen the portraits are drawn there too.
 INVOKE_URL_KEY, INVOKE_CREATE_KEY, INVOKE_EDIT_KEY = "invoke_url", "invoke_create_model", "invoke_edit_model"
@@ -104,6 +106,30 @@ def _app_setting(key: str, default):
         return default
 
 
+def draw_things_second_address() -> str:
+    return _app_setting(DT_SECOND_ADDRESS_KEY, "")
+
+
+def draw_things_on_second() -> bool:
+    return _app_setting(DT_ON_SECOND_KEY, "") == "1" and bool(draw_things_second_address())
+
+
+def draw_things_url() -> str:
+    """The Draw Things server the pictures are drawn on: this Mac, or the second address when it is chosen on the Settings page."""
+    return draw_things_second_address() if draw_things_on_second() else world_portraits.DRAW_THINGS_URL
+
+
+def set_draw_things_server(address: str | None, on_second: bool) -> None:
+    """The second server's address (empty: none) and whether the pictures are drawn on it."""
+    address = (address or "").strip().rstrip("/")
+    if address and not re.fullmatch(r"https?://[^\s/]+(:\d+)?", address):
+        raise ValueError("A Draw Things address looks like http://192.168.1.20:7860.")
+    if on_second and not address:
+        raise ValueError("Enter the second Draw Things address before you choose it.")
+    _set(DT_SECOND_ADDRESS_KEY, address)
+    _set(DT_ON_SECOND_KEY, "1" if on_second else "")
+
+
 def draw_things_illustration_model() -> str | None:
     return _app_setting(DT_ILLUSTRATION_KEY, "") or world_portraits.ILLUSTRATION_DEFAULT
 
@@ -119,7 +145,7 @@ def draw_things_edit_model() -> str:
 def draw_things_selected() -> str | None:
     """The model selected in the Draw Things app now, or None when it does not answer."""
     try:
-        with urllib.request.urlopen(f"{world_portraits.DRAW_THINGS_URL}/sdapi/v1/options", timeout=3) as response:
+        with urllib.request.urlopen(f"{draw_things_url()}/sdapi/v1/options", timeout=3) as response:
             return json.load(response).get("model") or None
     except (OSError, ValueError, AttributeError):
         return None

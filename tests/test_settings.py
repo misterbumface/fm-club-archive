@@ -287,3 +287,25 @@ def test_the_publish_box_sets_the_cores_of_the_export(settings_app, monkeypatch,
     monkeypatch.setattr("app.services.story_leads.followed_clubs", lambda: (630,))
     save_jobs._publish(settings_app, lambda text: None, workers=automatic)
     assert used["workers"] == expected
+
+
+def test_a_second_draw_things_address_is_saved_and_draws_when_chosen(settings_app, monkeypatch):
+    from app.services import picture_makers, world_portraits
+
+    asked = []
+    monkeypatch.setattr(world_portraits, "_request_image", lambda endpoint, body, url, timeout: (asked.append(endpoint), b"png")[1])
+    client = settings_app.test_client()
+    data = {"picture_maker": "draw_things", "dt_second_address": "http://192.168.1.20:7860/", "dt_server": "this_mac"}
+    client.post("/settings/pictures", data=data)
+    assert picture_makers.draw_things_second_address() == "http://192.168.1.20:7860" and picture_makers.draw_things_url() == world_portraits.DRAW_THINGS_URL
+    world_portraits.draw("a face", 1)
+    client.post("/settings/pictures", data={**data, "dt_server": "second"})
+    page = client.get("/settings/").data.decode()
+    assert 'value="http://192.168.1.20:7860"' in page and '<option value="second" selected>' in page
+    world_portraits.draw("a face", 1)
+    world_portraits.draw_edit("in action", b"face", 1)
+    assert asked == [f"{world_portraits.DRAW_THINGS_URL}/sdapi/v1/txt2img", "http://192.168.1.20:7860/sdapi/v1/txt2img", "http://192.168.1.20:7860/sdapi/v1/img2img"]
+    client.post("/settings/pictures", data={**data, "dt_second_address": "not an address", "dt_server": "second"})
+    assert picture_makers.draw_things_second_address() == "http://192.168.1.20:7860"  # a bad address changes nothing
+    with pytest.raises(ValueError):
+        picture_makers.set_draw_things_server("", True)

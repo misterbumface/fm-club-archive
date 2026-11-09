@@ -64,6 +64,7 @@ def index():
         wavespeed_edit_model=picture_makers.wavespeed_edit_model(), wavespeed_edit_models=picture_makers.WAVESPEED_EDIT_MODELS,
         dt_illustration=picture_makers._app_setting(picture_makers.DT_ILLUSTRATION_KEY, ""),
         dt_portrait=picture_makers.draw_things_portrait_model(), dt_edit=picture_makers.draw_things_edit_model(),
+        dt_second_address=picture_makers.draw_things_second_address(), dt_on_second=picture_makers.draw_things_on_second(),
         dt_selected=dt_selected, dt_known=picture_makers.draw_things_known(dt_selected),
         invoke_url=picture_makers.invoke_url(), invoke_create_model=picture_makers.invoke_create_model(),
         invoke_edit_model=picture_makers.invoke_edit_model(), invoke_models=picture_makers.invoke_models(),
@@ -248,6 +249,7 @@ def picture_settings():
         picture_makers.set_maker(request.form.get("picture_maker") or "", request.form.get("wavespeed_model"), request.form.get("wavespeed_edit_model"),
                                  request.form.get("openai_image_model"), request.form.get("openai_image_quality"), commit=False)
         picture_makers.set_draw_things_models(request.form.get("dt_illustration"), request.form.get("dt_portrait"), request.form.get("dt_edit"))
+        picture_makers.set_draw_things_server(request.form.get("dt_second_address"), request.form.get("dt_server") == "second")
         picture_makers.set_invoke(request.form.get("invoke_url"), request.form.get("invoke_create_model"), request.form.get("invoke_edit_model"))
         db.session.commit()
     except ValueError as exc:

@@ -112,8 +112,10 @@ _VIEWS = ("35mm lens, close to the action", "telephoto lens from the stands", "w
 
 def drawing_online() -> bool:
     """True when Draw Things answers on its API port."""
+    from app.services import picture_makers
+
     try:
-        with urllib.request.urlopen(f"{world_portraits.DRAW_THINGS_URL}/sdapi/v1/options", timeout=3):
+        with urllib.request.urlopen(f"{picture_makers.draw_things_url()}/sdapi/v1/options", timeout=3):
             return True
     except OSError:
         return False

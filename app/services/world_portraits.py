@@ -492,10 +492,17 @@ def _draw_portrait(prompt: str, seed: int) -> bytes:
 
 
 # -- generating ------------------------------------------------------------------------------------
-def draw(prompt: str, seed: int, url: str = DRAW_THINGS_URL, timeout: int = 600, width: int = 1024, height: int = 1024,
+def _draw_things_url() -> str:
+    from app.services import picture_makers
+
+    return picture_makers.draw_things_url()
+
+
+def draw(prompt: str, seed: int, url: str | None = None, timeout: int = 600, width: int = 1024, height: int = 1024,
          model: str | None = PORTRAIT_MODEL, negative: str | None = NEGATIVE_PROMPT) -> bytes:
     """One image from Draw Things (1024 x 1024 unless given), as PNG bytes. With ``model`` None the model selected in Draw
     Things draws it; its other settings (steps, guidance, sampler) stay as the user set them there."""
+    url = url or _draw_things_url()
     request = {"prompt": prompt, "seed": seed % 2_147_483_647, "width": width, "height": height}
     if model:
         request["model"] = model
@@ -504,9 +511,10 @@ def draw(prompt: str, seed: int, url: str = DRAW_THINGS_URL, timeout: int = 600,
     return _request_image(f"{url}/sdapi/v1/txt2img", json.dumps(request).encode(), url, timeout)
 
 
-def draw_edit(prompt: str, reference: bytes, seed: int, url: str = DRAW_THINGS_URL, timeout: int = 1800, model: str = EDIT_MODEL,
+def draw_edit(prompt: str, reference: bytes, seed: int, url: str | None = None, timeout: int = 1800, model: str = EDIT_MODEL,
               width: int = 1024, height: int = 1024) -> bytes:
     """A new picture from a reference picture and an instruction, with the editing model (the face is kept)."""
+    url = url or _draw_things_url()
     body = json.dumps({"prompt": prompt, "negative_prompt": NEGATIVE_PROMPT, "init_images": [base64.b64encode(reference).decode()],
                        "model": model, "steps": EDIT_STEPS, "strength": 1.0, "seed": seed % 2_147_483_647,
                        "width": width, "height": height}).encode()

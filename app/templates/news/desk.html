@@ -49,7 +49,7 @@
 <section class="card" style="margin-top:18px">
   <h3>On the newsstand</h3>
   <p class="note">Imports do not draw pictures. Without one, a paper shows the archive's photos, faces, stadiums or crests.
-    {{ picture_maker }} draws them{% if picture_maker == 'Draw Things (on this Mac)' %} and must be running{% endif %}; the <a href="{{ url_for('settings.index') }}#pictures">Settings</a> choose the maker.</p>
+    {{ picture_maker }} draws them{% if picture_maker == 'Draw Things' %} and must be running{% endif %}; the <a href="{{ url_for('settings.index') }}#pictures">Settings</a> choose the maker.</p>
   <form class="job-form" data-working="Drawing…" method="post" action="{{ url_for('news.draw_front_pages') }}">
     <button class="btn primary" type="submit" {{ 'disabled' if busy }}>Draw front-page pictures</button>
     <span class="muted">for the lead stories that have none</span></form>
