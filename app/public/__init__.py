@@ -200,25 +200,32 @@ def section_name(key: str) -> str:
     return SECTIONS[key][0] if key in SECTIONS else "News"
 
 
-def stories(limit: int | None = None, section: str | None = None) -> list:
-    """The published articles, newest first, one per story (the most prominent version, then the newest)."""
-    from app.models.world_soccer_article import WorldSoccerArticle
-    from app.models.world_soccer_issue import WorldSoccerIssue
+def stories(limit: int | None = None, section: str | None = None, among: set[int] | None = None) -> list:
+    """The published articles, newest first, one per story (the most prominent version, then the newest); with ``among``, only
+    those of these ids. Chosen on plain rows, and only the articles returned are loaded: nearly every page of the site asks."""
+    from app.models.world_soccer_article import WorldSoccerArticle as Article
+    from app.models.world_soccer_issue import WorldSoccerIssue as Issue
 
-    rows = (WorldSoccerArticle.query.join(WorldSoccerIssue).filter(WorldSoccerIssue.status == "published")
-            .order_by(WorldSoccerIssue.publication_date.desc(), WorldSoccerArticle.sort_order).all())
-    best: dict[str, WorldSoccerArticle] = {}
+    if among is not None and not among:
+        return []
+    rows = (db.session.query(Article.id, Article.lead_key, Article.section, Article.prominence, Issue.publication_date).join(Issue)
+            .filter(Issue.status == "published").order_by(Issue.publication_date.desc(), Article.sort_order).all())
+    best: dict = {}
     for article in rows:
         key = article.lead_key or f"article:{article.id}"
         kept = best.get(key)
-        if kept is None or (article.issue.publication_date == kept.issue.publication_date
+        if kept is None or (article.publication_date == kept.publication_date
                             and PROMINENCE.get(article.prominence, 9) < PROMINENCE.get(kept.prominence, 9)):
             best[key] = article
-    found = sorted(best.values(), key=lambda a: (a.issue.publication_date, -PROMINENCE.get(a.prominence, 9)), reverse=True)
+    found = sorted(best.values(), key=lambda a: (a.publication_date, -PROMINENCE.get(a.prominence, 9)), reverse=True)
     if section:
-        european = european_articles()
+        european = european_articles() if section == "europe" else set()
         found = [a for a in found if in_section(a, section, european)]
-    return found[:limit] if limit else found
+    if among is not None:
+        found = [a for a in found if a.id in among]
+    ids = [a.id for a in (found[:limit] if limit else found)]
+    loaded = {a.id: a for a in Article.query.filter(Article.id.in_(ids)).all()}
+    return [loaded[uid] for uid in ids]
 
 
 def picture(article) -> str | None:
@@ -315,7 +322,7 @@ def stories_about(kind: str, uid: int, limit: int = 12) -> list:
     from app.models.world_soccer_entity_link import WorldSoccerEntityLink
 
     linked = {row.article_id for row in WorldSoccerEntityLink.query.filter_by(entity_type=kind, entity_id=uid).all()}
-    return [a for a in stories() if a.id in linked][:limit]
+    return stories(limit, among=linked)
 
 
 def _major_tournament() -> dict | None:
@@ -366,7 +373,7 @@ def uefa():
     with football.connect() as c:
         boards = [t for r in football.in_play(c, "continental", "UEFA%", 3) if (t := football.tournament(c, r["fm_uid"]))]
     linked = european_articles()
-    items = [a for a in stories() if a.id in linked][:8]
+    items = stories(8, among=linked)
     return render_template("public/tournaments.html", title="UEFA", boards=boards, items=items, active="europe")
 
 
@@ -376,7 +383,7 @@ def international():
         boards = [t for r in sorted(football.in_play(c, "national_teams", None, 14), key=football.international_order)
                   if (t := football.tournament(c, r["fm_uid"]))]
     linked = competition_articles("scope = 'national_teams'")
-    items = [a for a in stories() if a.id in linked][:8]
+    items = stories(8, among=linked)
     return render_template("public/tournaments.html", title="International", boards=boards, items=items, active="international")
 
 
@@ -394,7 +401,7 @@ def tournament(uid: int, name: str | None = None):
     if page is None:
         abort(404)
     linked = competition_articles(f"fm_uid = {int(uid)}")
-    items = [a for a in stories() if a.id in linked][:8]
+    items = stories(8, among=linked)
     return render_template("public/tournament.html", page=page, items=items,
                            active="major" if page.get("major") else "international" if scope == "national_teams" else "europe")
 
@@ -477,7 +484,7 @@ def match(fixture_id: int, name: str | None = None):
         abort(404)
     ref = (page or coming)["ref"]
     linked = {row.article_id for row in WorldSoccerEntityLink.query.filter_by(world_ref=ref).all()}
-    items = [a for a in stories() if a.id in linked]
+    items = stories(among=linked)
     if coming:
         return render_template("public/preview.html", page=coming, items=items, active="scores")
     return render_template("public/match.html", page=page, items=items, active="scores")
@@ -498,7 +505,7 @@ def player(uid: int, name: str | None = None):
     if page is None:
         abort(404)
     bio = db.session.get(PersonBio, uid)
-    items = [a for a in stories() if a.id in _linked({"person", "player"}, uid)][:12]
+    items = stories(12, among=_linked({"person", "player"}, uid))
     return render_template("public/player.html", page=page, bio=bio, items=items, face=face_url(uid), active=None)
 
 
@@ -662,10 +669,9 @@ def related_stories(article) -> list[dict]:
         return []
     linked = {row.article_id for row in WorldSoccerEntityLink.query.filter_by(world_ref=ref).all()} - {article.id}
     found = []
-    for other in stories():
-        if other.id in linked:
-            before = other.section == "Coming up"
-            found.append({"article": other, "label": "What we said before the game" if before else "The match report"})
+    for other in stories(among=linked):
+        before = other.section == "Coming up"
+        found.append({"article": other, "label": "What we said before the game" if before else "The match report"})
     return found
 
 

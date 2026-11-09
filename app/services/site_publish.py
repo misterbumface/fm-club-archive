@@ -29,6 +29,7 @@ from typing import Callable
 from urllib.parse import urljoin, urlsplit
 
 import requests
+from flask import current_app
 
 from app.extensions import db
 from app.models.app_setting import AppSetting
@@ -131,6 +132,8 @@ def _page_digest(path: str) -> str | None:
     A story's list of the section's newest stories is left out on purpose: alone, it does not make an old page worth rendering."""
     from sqlalchemy import text
 
+    from app import public
+    from app.models.world_soccer_article import WorldSoccerArticle
     from app.public import football
 
     kind = kind_of(path)
@@ -153,9 +156,11 @@ def _page_digest(path: str) -> str | None:
                 return None
             links = rows("select entity_type, entity_id, world_ref, label from world_soccer_entity_links where article_id = :a order by id", a=uid)
             match = next((link["world_ref"] for link in links if (link["world_ref"] or "").startswith("match:")), None)
-            data = [found, links, stories_of(match) if match else []]
+            with current_app.test_request_context(path):  # the picture is chosen by the page: a new photograph of the player can change it
+                shown = public.picture(db.session.get(WorldSoccerArticle, uid))
+            data = [found, links, stories_of(match) if match else [], shown]
         else:
-            with football.connect() as c:
+            with current_app.test_request_context(path), football.connect() as c:  # the page's data holds crest addresses: url_for needs a request
                 page = football.match(c, uid)
             if page is None:
                 return None

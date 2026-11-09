@@ -450,23 +450,40 @@ def test_the_public_site_shows_its_holding_page_when_taken_offline(site):
     assert status.address == "https://worldsport.uk" and status.word == "online"
 
 
-def test_an_export_keeps_unchanged_stories_and_renders_changed_ones(site, tmp_path):
+def test_a_page_asks_only_for_its_own_stories(site):
+    from app.public import stories
+    from app.models.world_soccer_article import WorldSoccerArticle
+
+    with site.test_request_context():
+        everything = stories()
+        assert [a.headline for a in everything][0] == "Chelsea's run goes on" and "A draft nobody should see" not in [a.headline for a in everything]
+        older = WorldSoccerArticle.query.filter_by(headline="Chelsea ten from ten").one()  # the older version of a story: not shown
+        newest = everything[0]
+        assert stories(among={older.id}) == [] and stories(among={newest.id, older.id}) == [newest] and stories(among=set()) == []
+        assert [a.id for a in stories(1)] == [newest.id] and all(a.section == "Coming up" for a in stories(section="coming-up"))
+
+
+def test_an_export_keeps_unchanged_stories_and_renders_changed_ones(site, tmp_path, monkeypatch):
     from app.models.world_soccer_article import WorldSoccerArticle
     from app.services import site_publish
 
+    _league(site)
     out = tmp_path / "out"
     first = site_publish.export_site(site, out, (630,))
     assert first.kept == 0 and first.pages > 3
     second = site_publish.export_site(site, out, (630,))
     stories = [path for path in second.types if path.startswith("/story/")]
-    assert second.kept == len(stories) > 1 and second.pages == first.pages and not (tmp_path / "out.previous").exists()
+    played = 2  # Chelsea's two results; a game not played yet is rendered each time
+    assert second.kept == len(stories) + played and len(stories) > 1 and second.pages == first.pages and not (tmp_path / "out.previous").exists()
     assert ".pages.json" not in str(site_publish.manifest_of(out)[0])  # never uploaded
     article = WorldSoccerArticle.query.filter_by(headline="Chelsea's run goes on").one()
     page = next(out / path.lstrip("/") for path in stories if f"/story/{article.id}/" in path)
     article.body = "A corrected paragraph."
     db.session.commit()
     third = site_publish.export_site(site, out, (630,))
-    assert third.kept == len(stories) - 1 and "A corrected paragraph." in page.read_text()
+    assert third.kept == len(stories) + played - 1 and "A corrected paragraph." in page.read_text()
+    monkeypatch.setattr("app.public.picture", lambda article: "/static/a-new-photograph.png")  # the player has a new photograph
+    assert site_publish.export_site(site, out, (630,)).kept == played
     (out / ".pages.json").unlink()  # an export stopped half way has no note
     stopped = site_publish.export_site(site, out, (630,))
     assert stopped.kept == 0
