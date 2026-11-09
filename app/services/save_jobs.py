@@ -230,11 +230,12 @@ def _publish(app: Flask, set_status, reuse: bool = False, prefix: str = "", work
         account = site_publish.setting(site_publish.ACCOUNT_SETTING)
         followed = followed_clubs()
         name = read_archive_settings(ARCHIVE_DIR).name
+        chosen = site_publish.export_workers()
     site = create_public_app()
     try:
         result = site_publish.publish(site, ARCHIVE_DIR / "published", name, followed, token, hostname, account,
                                       progress=lambda text: set_status(f"{prefix}Publish: {text}"), reuse=reuse,
-                                      workers=workers or site_publish.EXPORT_WORKERS)
+                                      workers=min(workers or chosen, chosen))
     except Exception as exc:  # noqa: BLE001 - the error goes to the Desk and the settings
         with app.app_context():
             site_publish.set_setting(site_publish.LAST_SETTING, json.dumps({"when": datetime.now().isoformat(timespec="minutes"), "error": str(exc)}))

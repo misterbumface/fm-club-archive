@@ -36,6 +36,7 @@ from app.models.app_setting import AppSetting
 API = "https://api.cloudflare.com/client/v4"
 TOKEN_KEY = "CLOUDFLARE_API_TOKEN"
 HOSTNAME_SETTING = "publish_hostname"
+WORKERS_SETTING = "publish_workers"
 ACCOUNT_SETTING = "publish_account_id"
 LAST_SETTING = "publish_last"
 EXPORTED_SETTING = "publish_exported_at"  # when the folder was last rendered: a Publish renders again only when the archive changed since
@@ -104,6 +105,7 @@ class Export:
 
 
 EXPORT_WORKERS = 8  # pages rendered at once, each worker a process with its own app and caches (the app's caches are not for threads)
+EXPORT_WORKER_CHOICES = (EXPORT_WORKERS, 4, 3)  # the settings' choice: fewer cores keep the laptop's fans quiet, and the export takes longer
 UPLOAD_THREADS = 1  # batches in flight at once: four at once brought "an unknown error" from Cloudflare (25 Oct 2026)
 UPLOAD_TRIES = 3
 RENDER_CHUNK = 400  # paths rendered per round
@@ -362,6 +364,12 @@ def setting(key: str) -> str | None:
     except Exception:  # noqa: BLE001 - no app context or no table
         return None
     return found.value if found else None
+
+
+def export_workers() -> int:
+    """The cores the export may use, as chosen in the settings."""
+    chosen = setting(WORKERS_SETTING)
+    return int(chosen) if chosen and chosen.isdigit() and int(chosen) in EXPORT_WORKER_CHOICES else EXPORT_WORKERS
 
 
 def set_setting(key: str, value: str | None) -> None:

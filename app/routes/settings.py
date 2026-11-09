@@ -77,7 +77,8 @@ def index():
         checker_chosen=bool(AppSetting.query.filter_by(key=CHECKER_MODEL_SETTING_KEY).first()),
         app_version=_app_version(), followed=_followed_rows(), tunnel=public_site.status(), site_offline=public_site.offline(),
         cloudflare_token_configured=bool(stored_key(site_publish.TOKEN_KEY)), publish_hostname=site_publish.setting(site_publish.HOSTNAME_SETTING) or "",
-        publish_account=site_publish.setting(site_publish.ACCOUNT_SETTING) or "", last_publish=site_publish.last_publish(),
+        publish_account=site_publish.setting(site_publish.ACCOUNT_SETTING) or "", publish_workers=site_publish.export_workers(),
+        publish_worker_choices=site_publish.EXPORT_WORKER_CHOICES, last_publish=site_publish.last_publish(),
         job=save_jobs.job(),
     )
 
@@ -222,6 +223,7 @@ def publish_site():
 
     site_publish.set_setting(site_publish.HOSTNAME_SETTING, (request.form.get("hostname") or "").strip().lower() or None)
     site_publish.set_setting(site_publish.ACCOUNT_SETTING, (request.form.get("account_id") or "").strip() or None)
+    site_publish.set_setting(site_publish.WORKERS_SETTING, request.form.get("workers"))
     if request.form.get("action") in ("publish", "resume"):
         if not stored_key(site_publish.TOKEN_KEY):
             flash("Add a Cloudflare API token in the keys card first.", "error")

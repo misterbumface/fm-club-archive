@@ -95,6 +95,26 @@ def test_editions_are_published_at_once_and_corrected_on_the_desk(app, small_wor
     assert "In the news" in page and "A better headline" in page
 
 
+def test_writing_a_transfer_story_again_uses_corrected_position_facts(app, small_world, fake_writer, monkeypatch):
+    """Write again kept the facts stored with the first version, so a position fix never reached the article."""
+    _prepare(small_world)
+    result = editions.make_editions(date(2063, 3, 24), AS_OF, progress=lambda text: None)
+    issue = db.session.get(WorldSoccerIssue, result.editions[0])
+    article = issue.articles[0]
+    issue.status = "draft"
+    stale = {"at_the_bidding_club": {"club": "Chelsea", "who_plays_there": ["Júnior: 20 starts there"]}}
+    article.lead = article_writer.lead_to_dict(Lead("transfer_bid", "Chelsea bid", date(2063, 3, 20), 50.0, {"player": "Myers", "if_he_moves": stale},
+                                                    [f"person:{MYERS}", f"club:{CHELSEA}", f"club:{LIVERPOOL}"], {"transfers"}, slug="bid"))
+    db.session.commit()
+    seen = []
+    write = article_writer.write_article
+    monkeypatch.setattr(article_writer, "write_article", lambda outlet, lead, *a, **k: (seen.append(lead), write(outlet, lead, *a, **k))[1])
+    monkeypatch.setattr("app.services.story_leads_now.q.main_positions", lambda c, uids: {MYERS: "AM (L)"})
+    editions.rewrite_article(article)
+    assert "Júnior" not in str(seen[0].facts["if_he_moves"]) and seen[0].facts["player"] == "Myers"
+    assert "Júnior" not in str(db.session.get(WorldSoccerArticle, article.id).lead["facts"])
+
+
 def test_old_world_soccer_issues_belong_to_world_soccer(app):
     outlets.ensure_outlets()
     old = WorldSoccerIssue(publication_date=date(2063, 1, 1), knowledge_cutoff=date(2063, 1, 1), status="published")

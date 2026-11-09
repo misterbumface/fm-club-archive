@@ -58,6 +58,7 @@
         <div class="archive-fields">
             <label>Domain <small>optional; one on your Cloudflare account, else the free workers.dev address</small><input name="hostname" value="{{ publish_hostname }}" placeholder="worldsport.uk"></label>
             <label>Account id <small>only if the token cannot list your account</small><input name="account_id" value="{{ publish_account }}" placeholder="32 hex characters"></label>
+            <label>Cores for the export <small>fewer cores are quieter, and the export takes longer</small><select name="workers">{% for n in publish_worker_choices %}<option value="{{ n }}" {{ 'selected' if n == publish_workers }}>{{ n }} cores{{ ' (fastest, noisy)' if loop.first else ' (quiet)' }}</option>{% endfor %}</select></label>
         </div>
         <dl class="settings-facts">
             <dt>Token</dt><dd>{{ 'set' if cloudflare_token_configured else 'none: add it in the keys card (Workers Scripts: Edit, Workers Routes: Edit, Zone DNS: Edit, Account Settings: Read)' }}</dd>

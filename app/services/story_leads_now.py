@@ -124,6 +124,32 @@ def transfer_context(w, person: int, to_uid: int, day: date) -> dict:
     return {k: v for k, v in facts.items() if v is not None}
 
 
+def _if_he_moves(w, person: int, bidder: int, owner: int | None) -> dict | None:
+    """How a bid would go: whom he would compete with, and who plays there at his club if he leaves."""
+    code = q.main_positions(w.c, [person]).get(person)
+    if not code:
+        return None
+    moves = {"at_the_bidding_club": position_picture(w, person, bidder, code),
+             "at_his_club_without_him": position_picture(w, person, owner, code) if owner else None}
+    return {k: v for k, v in moves.items() if v}
+
+
+_TRANSFER_CONTEXT = ("position", "same_position_players_who_left", "who_plays_there_now", "starters_there_a_game", "formation",
+                     "his_concerns_before_the_move")
+
+
+def refresh_positions(w, lead) -> None:
+    """Work out again who plays in a transfer story's position, so that a story written again has the corrected facts and not
+    those stored with its first version (Júnior, a right winger, among the left midfielders: 9 Nov 2026)."""
+    uids = [int(ref.split(":")[1]) for ref in lead.refs if ref.startswith(("person:", "club:"))]
+    if lead.kind == "transfer_bid":
+        moves = _if_he_moves(w, uids[0], uids[1], uids[2] if len(uids) > 2 else None)
+        lead.facts = {k: v for k, v in lead.facts.items() if k != "if_he_moves"} | ({"if_he_moves": moves} if moves is not None else {})  # a new dict, or the database does not see the change
+    elif lead.kind == "transfer" and "position" in lead.facts:  # a small loan has no position facts
+        fresh = transfer_context(w, uids[0], uids[1], lead.date)
+        lead.facts = {k: v for k, v in lead.facts.items() if k not in _TRANSFER_CONTEXT} | fresh
+
+
 def _concerns_before(w, person: int, day: date) -> list[str]:
     """The player's named concerns (not about team-mates) open in the weeks before a move: he wanted to move on, a new deal..."""
     rows = moods.describe(w.rows("select * from person_concerns where person_uid = :p and started <= :d and (ended is null or ended >= :s)",
@@ -1500,11 +1526,7 @@ def transfer_market(w) -> list:
                                           f"£{counter['fee'] / 1e6:.1f}m" + (f" (known since {counter['status_changed_on']})" if counter["status_changed_on"] else ""))
                                          if counter else None,
                  "completes_on": str(b["completes_on"]) if b["status"] == "agreed" and b["completes_on"] else None}
-        code = q.main_positions(w.c, [b["person_uid"]]).get(b["person_uid"])
-        if code:  # how it would go: whom he would compete with, and who plays there at his club if he leaves
-            moves = {"at_the_bidding_club": position_picture(w, b["person_uid"], bidder, code),
-                     "at_his_club_without_him": position_picture(w, b["person_uid"], owner, code) if owner else None}
-            facts["if_he_moves"] = {k: v for k, v in moves.items() if v}
+        facts["if_he_moves"] = _if_he_moves(w, b["person_uid"], bidder, owner)
         leads.append(Lead("transfer_bid", f"{b['bidder']} bid £{b['fee'] / 1e6:.1f}m for {b['name']} ({status})",
                           date.fromisoformat(str(b["offered_on"])), (w.rep(bidder) or 3000) / 1000 * 10 * (1.2 if b["status"] in ("agreed", "collapsed") else 1.0),
                           {k: v for k, v in facts.items() if v is not None}, [f"person:{b['person_uid']}", f"club:{bidder}"] + ([f"club:{owner}"] if owner else []),

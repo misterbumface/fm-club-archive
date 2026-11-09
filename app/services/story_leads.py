@@ -187,6 +187,11 @@ def find_leads(connection: Connection, since: date, until: date, followed: tuple
     return list(unique.values())
 
 
+def refresh_positions(connection: Connection, lead: Lead, until: date) -> None:
+    """Correct a stored transfer lead's position facts, as of the day its edition knew."""
+    now.refresh_positions(_World(connection, until, until), lead)
+
+
 # -- economy (27 Oct 2026): one match-day piece instead of a dozen small ones; the market in its windows -------------------------
 FOLDED_KINDS = ("performance", "sending_off", "smash_and_grab", "big_win")  # told inside the match-day article of their game
 

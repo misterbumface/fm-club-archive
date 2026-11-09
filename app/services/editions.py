@@ -635,6 +635,8 @@ def rewrite_article(article: WorldSoccerArticle) -> WorldSoccerArticle:
     if not article.lead or article.issue.outlet is None:
         raise StoryError("This article has no story lead to write from.")
     lead = article_writer.lead_from_dict(article.lead)
+    with db.engines[world_models.BIND].connect() as connection:
+        story_leads.refresh_positions(connection, lead, article.issue.knowledge_cutoff)
     prominence = LONG_KINDS.get(lead.kind) or {value: key for key, value in ISSUE_PROMINENCE.items()
                                                if key not in ("column", "matchday")}.get(article.prominence, "standard")
     writer = COLUMNISTS.get(lead.kind) or (article.writer.as_dict() if article.writer else None)  # a column keeps its columnist
@@ -643,7 +645,7 @@ def rewrite_article(article: WorldSoccerArticle) -> WorldSoccerArticle:
                                          earlier=earlier)
     article.headline, article.standfirst, article.body = draft["headline"][:300], draft["standfirst"] or None, draft["body"]
     article.model, article.byline, article.writer_id = draft["model"], draft["byline"], draft.get("writer_id")
-    article.lead = {k: v for k, v in article.lead.items() if k != "picture"} | ({"picture": draft["picture"]} if draft.get("picture") else {})
+    article.lead = {k: v for k, v in article.lead.items() if k != "picture"} | {"facts": lead.facts} | ({"picture": draft["picture"]} if draft.get("picture") else {})
     _sync_issue_headline(article.issue)
     db.session.commit()
     return article

@@ -271,3 +271,19 @@ def test_the_automatic_switch_reads_a_settled_new_save_and_chains_the_publish(se
     assert auto_pilot.run_once(settings_app) is None and started == []
     fresh.modified += timedelta(seconds=1)  # the game saved again
     assert auto_pilot.run_once(settings_app) == fresh.name and started == [fresh.name]
+
+
+@pytest.mark.parametrize("chosen, automatic, expected", [("3", None, 3), ("4", 5, 4), ("8", 5, 5), ("8", None, 8), ("99", None, 8)])
+def test_the_publish_box_sets_the_cores_of_the_export(settings_app, monkeypatch, chosen, automatic, expected):
+    from app.services import save_jobs, site_publish
+
+    client = settings_app.test_client()
+    client.post("/settings/publish", data={"hostname": "", "account_id": "", "workers": chosen})
+    page = client.get("/settings/").data.decode()
+    assert "Cores for the export" in page and f'<option value="{site_publish.export_workers()}" selected>' in page
+    used = {}
+    monkeypatch.setattr(site_publish, "publish", lambda *a, **k: used.update(k) or {"address": "x", "files": 1})
+    monkeypatch.setattr("app.public.create_public_app", lambda: None)
+    monkeypatch.setattr("app.services.story_leads.followed_clubs", lambda: (630,))
+    save_jobs._publish(settings_app, lambda text: None, workers=automatic)
+    assert used["workers"] == expected
