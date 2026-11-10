@@ -20,8 +20,9 @@ import uuid
 DEFAULT_URL = "http://localhost:9090"
 POLL_EVERY, POLL_FOR = 1.5, 900.0  # seconds; the first picture after a model change loads the model (a minute or more)
 # The families with a graph here, by the model's "base": what each can do.
-CREATE_BASES = ("z-image", "flux2")
-EDIT_BASES = ("flux", "qwen-image")  # FLUX.1 Kontext (a Kontext model only) and Qwen Image Edit
+CREATE_BASES = ("z-image", "flux2", "flux3")
+EDIT_BASES = ("flux", "qwen-image", "flux3")  # FLUX.1 Kontext (a Kontext model only), Qwen Image Edit, FLUX.3
+FLUX3_STEPS = 16  # the server's own default for FLUX.3 Klein (4-16 work)
 KONTEXT_STEPS, KONTEXT_GUIDANCE = 20, 2.5
 QWEN_LIGHTNING = "Lightning (8-step"  # the Qwen Image Edit speed LoRA, when the server has it: 8 steps at CFG 1
 
@@ -64,7 +65,8 @@ def main_models(url: str) -> dict[str, list[str]]:
             continue
         if m["base"] in CREATE_BASES:
             found["create"].append(m["name"])
-        if (m["base"] == "flux" and "kontext" in m["name"].lower()) or (m["base"] == "qwen-image" and m.get("variant") == "edit"):
+        if (m["base"] == "flux" and "kontext" in m["name"].lower()) or (m["base"] == "qwen-image" and m.get("variant") == "edit") \
+                or m["base"] == "flux3":
             found["edit"].append(m["name"])
     return {k: sorted(v, key=str.casefold) for k, v in found.items()}
 
@@ -121,6 +123,29 @@ def _qwen3_encoder(all_models: list[dict], model: dict) -> dict:
     return _ident(best)
 
 
+def _flux3(g: "_Graph", all_models: list[dict], model: dict, prompt: str, seed: int, width: int, height: int,
+           image_name: str | None = None) -> str:
+    """FLUX.3 (Klein): one graph draws and edits; a reference picture goes in as Kontext conditioning. It shares FLUX.2's
+    VAE and reads the prompt with a Qwen3-VL encoder. Returns the decoding step."""
+    loader = g.node("flux3_model_loader", model=_ident(model), vae_model=_helper(all_models, "vae", "flux2"),
+                    qwen3_vl_encoder_model=_helper(all_models, "qwen3_vl_encoder"))
+    text = g.node("flux3_text_encoder", prompt=prompt)
+    denoise = g.node("flux3_denoise", width=width, height=height, steps=_steps(model, FLUX3_STEPS), seed=seed)
+    decode = g.node("flux2_vae_decode")
+    g.link(loader, "qwen3_vl_encoder", text, "qwen3_vl_encoder")
+    g.link(loader, "transformer", denoise, "transformer")
+    g.link(loader, "vae", denoise, "vae")
+    g.link(text, "conditioning", denoise, "positive_conditioning")
+    if image_name:
+        kontext = g.node("flux_kontext", image={"image_name": image_name})
+        kontexts = g.node("collect")
+        g.link(kontext, "kontext_cond", kontexts, "item")
+        g.link(kontexts, "collection", denoise, "kontext_conditioning")
+    g.link(denoise, "latents", decode, "latents")
+    g.link(loader, "vae", decode, "vae")
+    return decode
+
+
 def _steps(model: dict, fallback: int) -> int:
     return ((model.get("default_settings") or {}).get("steps")) or fallback
 
@@ -172,15 +197,17 @@ def create_graph(all_models: list[dict], model_name: str, prompt: str, seed: int
         g.link(texts, "collection", denoise, "positive_text_conditioning")
         g.link(denoise, "latents", decode, "latents")
         g.link(loader, "vae", decode, "vae")
+    elif model["base"] == "flux3":
+        decode = _flux3(g, all_models, model, prompt, seed, width, height)
     else:
-        raise InvokeError(f"{model_name} is a {model['base']} model: this app draws with Z-Image or FLUX.2 Klein on InvokeAI.")
+        raise InvokeError(f"{model_name} is a {model['base']} model: this app draws with Z-Image, FLUX.2 Klein or FLUX.3 on InvokeAI.")
     g.nodes[decode]["is_intermediate"] = False
     return g.body(), decode
 
 
 def edit_graph(all_models: list[dict], model_name: str, prompt: str, image_name: str, seed: int, width: int = 1024,
                height: int = 1024) -> tuple[dict, str]:
-    """A graph that draws a new picture from a reference picture already on the server (FLUX.1 Kontext or Qwen Image Edit)."""
+    """A graph that draws a new picture from a reference picture already on the server (FLUX.1 Kontext, Qwen Image Edit or FLUX.3)."""
     model = _model(all_models, model_name)
     g, seed = _Graph(), seed % 2_147_483_647
     if model["base"] == "flux" and "kontext" in model["name"].lower():
@@ -226,8 +253,10 @@ def edit_graph(all_models: list[dict], model_name: str, prompt: str, image_name:
         g.link(text, "conditioning", denoise, "positive_conditioning")
         g.link(denoise, "latents", decode, "latents")
         g.link(loader, "vae", decode, "vae")
+    elif model["base"] == "flux3":
+        decode = _flux3(g, all_models, model, prompt, seed, width, height, image_name)
     else:
-        raise InvokeError(f"{model_name} cannot edit: choose FLUX.1 Kontext or Qwen Image Edit on InvokeAI.")
+        raise InvokeError(f"{model_name} cannot edit: choose FLUX.1 Kontext, Qwen Image Edit or FLUX.3 on InvokeAI.")
     g.nodes[decode]["is_intermediate"] = False
     return g.body(), decode
 

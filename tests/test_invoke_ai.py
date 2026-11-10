@@ -42,7 +42,7 @@ def test_the_graphs_follow_the_model_family():
     denoise = next(n for n in qwen["nodes"].values() if n["type"] == "qwen_image_denoise")
     assert ("qwen_image_lora_loader", "transformer") in _linked(qwen, "qwen_image_denoise") and (denoise["steps"], denoise["cfg_scale"]) == (8, 1.0)
 
-    with pytest.raises(invoke_ai.InvokeError, match="Z-Image or FLUX.2"):
+    with pytest.raises(invoke_ai.InvokeError, match="Z-Image, FLUX.2 Klein or FLUX.3"):
         invoke_ai.create_graph(MODELS, "Juggernaut XL v9", "x", 1, 1024, 1024)
     with pytest.raises(invoke_ai.InvokeError, match="cannot edit"):
         invoke_ai.edit_graph(MODELS, "Z-Image Turbo (Q8)", "x", "face.png", 1)
@@ -94,3 +94,29 @@ def test_each_model_gets_the_qwen3_encoder_of_its_size():
     only_8b = [m for m in models if m["key"] != "e4"]
     with pytest.raises(invoke_ai.InvokeError, match="4B"):
         invoke_ai.create_graph(only_8b, "Z-Image Turbo (Q8)", "a footballer", 1, 1024, 1024)
+
+
+FLUX3 = [
+    {"key": "f3", "hash": "h", "name": "flux-3-image-klein-Q8_0.gguf", "base": "flux3", "type": "main", "variant": "flux3_klein"},
+    {"key": "f2v", "hash": "h", "name": "FLUX.2 VAE", "base": "flux2", "type": "vae"},
+    {"key": "vl3", "hash": "h", "name": "Qwen3-VL 4B Encoder (int8)", "base": "any", "type": "qwen3_vl_encoder"},
+]
+
+
+def test_flux3_draws_and_edits_with_one_graph():
+    """FLUX.3 Klein on InvokeAI 7 (11 Nov 2026): FLUX.2's VAE, a Qwen3-VL encoder, a reference picture as Kontext conditioning."""
+    graph, output = invoke_ai.create_graph(FLUX3, "flux-3-image-klein-Q8_0.gguf", "a footballer", 7, 1024, 1024)
+    assert _types(graph) == ["flux2_vae_decode", "flux3_denoise", "flux3_model_loader", "flux3_text_encoder"]
+    loader = next(n for n in graph["nodes"].values() if n["type"] == "flux3_model_loader")
+    assert loader["vae_model"]["key"] == "f2v" and loader["qwen3_vl_encoder_model"]["key"] == "vl3"
+    assert next(n for n in graph["nodes"].values() if n["type"] == "flux3_denoise")["steps"] == invoke_ai.FLUX3_STEPS
+    assert graph["nodes"][output]["type"] == "flux2_vae_decode"
+
+    edit, _ = invoke_ai.edit_graph(FLUX3, "flux-3-image-klein-Q8_0.gguf", "in action", "face.png", 5, 1216, 832)
+    assert ("collect", "collection") in _linked(edit, "flux3_denoise") and "flux_kontext" in _types(edit)
+    assert next(n for n in edit["nodes"].values() if n["type"] == "flux_kontext")["image"] == {"image_name": "face.png"}
+
+
+def test_flux3_is_offered_for_drawing_and_editing(monkeypatch):
+    monkeypatch.setattr(invoke_ai, "models", lambda url: FLUX3)
+    assert invoke_ai.main_models("http://x") == {"create": ["flux-3-image-klein-Q8_0.gguf"], "edit": ["flux-3-image-klein-Q8_0.gguf"]}
