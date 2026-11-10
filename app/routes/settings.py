@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 
 from app.extensions import db
 from app.models import AppSetting
@@ -12,7 +12,6 @@ from app.services.ai_settings import (
     CHECKER_MODEL_SETTING_KEY,
     OLLAMA_URL,
     lmstudio_url,
-    set_lmstudio_url,
     ai_provider_label,
     deepseek_model_label,
     get_deepseek_model,
@@ -56,7 +55,7 @@ def index():
     return render_template(
         "settings/index.html",
         selected_model=get_deepseek_model(),
-        model_options=model_options(), ollama_url=OLLAMA_URL, lmstudio_url=lmstudio_url(), selected_label=deepseek_model_label(get_deepseek_model()),
+        model_options=model_options(), ollama_url=OLLAMA_URL, lmstudio_url=lmstudio_url(), local_servers=_local_servers(), selected_label=deepseek_model_label(get_deepseek_model()),
         api_key_configured=bool(current_app.config.get("DEEPSEEK_API_KEY") or stored_key("DEEPSEEK_API_KEY")),
         openai_api_key_configured=bool(current_app.config.get("OPENAI_API_KEY") or stored_key("OPENAI_API_KEY")),
         wavespeed_key_configured=bool(stored_key("WAVESPEED_API_KEY")), picture_maker=picture_makers.maker(),
@@ -110,13 +109,29 @@ def checker_model_settings():
     return redirect(url_for("settings.index", _anchor="checker"))
 
 
+def _local_servers() -> list[dict]:
+    from app.services import ai_settings
+
+    return [{"provider": p, "name": s["name"], "url": ai_settings.server_url(p), "default": s["default"]} for p, s in ai_settings.LOCAL_SERVERS.items()]
+
+
 @settings_bp.post("/lmstudio")
 def lmstudio_settings():
     """The LM Studio server's address (this Mac or another machine of the network); its models join the choices."""
-    set_lmstudio_url(request.form.get("lmstudio_url"))
+    return local_server_settings("lmstudio")
+
+
+@settings_bp.post("/local-server/<provider>")
+def local_server_settings(provider: str):
+    """A local model server's address (LM Studio or oMLX, on this Mac or another machine of the network)."""
+    from app.services import ai_settings
+
+    if provider not in ai_settings.LOCAL_SERVERS:
+        abort(404)
+    ai_settings.set_server_url(provider, request.form.get(f"{provider}_url"))
     db.session.commit()
-    flash(f"LM Studio is looked for at {lmstudio_url()}.", "success")
-    return redirect(url_for("settings.index", _anchor="lmstudio"))
+    flash(f"{ai_settings.LOCAL_SERVERS[provider]['name']} is looked for at {ai_settings.server_url(provider)}.", "success")
+    return redirect(url_for("settings.index", _anchor=provider))
 
 
 @settings_bp.post("/voice")

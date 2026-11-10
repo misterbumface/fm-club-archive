@@ -106,7 +106,7 @@ def test_settings_page_rejects_unknown_model_without_changing_selection(settings
     )
 
     assert response.status_code == 200
-    assert b"Choose DeepSeek V4 Pro, DeepSeek V4.1 Flash, GPT-6 Luna or a local Ollama or LM Studio model" in response.data
+    assert b"Choose DeepSeek V4 Pro, DeepSeek V4.1 Flash, GPT-6 Luna or a local Ollama, LM Studio or oMLX model" in response.data
     assert get_deepseek_model() == "deepseek-flash"
 
 
@@ -309,3 +309,27 @@ def test_a_second_draw_things_address_is_saved_and_draws_when_chosen(settings_ap
     assert picture_makers.draw_things_second_address() == "http://192.168.1.20:7860"  # a bad address changes nothing
     with pytest.raises(ValueError):
         picture_makers.set_draw_things_server("", True)
+
+
+def test_an_omlx_server_is_a_second_local_writer(settings_app):
+    """10 Nov 2026: oMLX on a machine of the home network, beside LM Studio, at its own address (never in the code)."""
+    from app.services import ai_settings
+
+    client = settings_app.test_client()
+    assert ai_settings.server_url("omlx") == "http://127.0.0.1:8000"
+    client.post("/settings/local-server/omlx", data={"omlx_url": "mlx.example.test:8000/v1"})
+    assert ai_settings.server_url("omlx") == "http://mlx.example.test:8000" and ai_settings.lmstudio_url() == "http://127.0.0.1:1234"
+    model = "omlx:Qwen3.8-27B-oQ4e-mtp"
+    client.post("/settings/", data={"deepseek_model": model})
+    assert ai_settings.get_deepseek_model() == model and ai_settings.ai_model_provider(model) == "omlx"
+    url, headers, payload = ai_settings.ai_request_config(model=model, api_key="local", messages=[{"role": "user", "content": "Hi"}],
+                                                          max_tokens=50, response_format={"type": "json_object"})
+    assert url == "http://mlx.example.test:8000/v1/chat/completions" and payload["model"] == "Qwen3.8-27B-oQ4e-mtp" and "Authorization" not in headers
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False} and payload["response_format"]["type"] == "json_schema"
+    assert ai_settings.resolve_ai_api_key(model=model) == "local" and ai_settings.deepseek_model_label(model) == "oMLX · Qwen3.8-27B-oQ4e-mtp"
+    ai_settings.set_papers_model(model)
+    assert ai_settings.get_papers_model() == model and ai_settings.get_checker_model() == ai_settings.DEFAULT_DEEPSEEK_MODEL  # never checks facts
+    assert client.post("/settings/local-server/nothing").status_code == 404
+    page = client.get("/settings/").data.decode()
+    assert 'id="omlx"' in page and 'value="http://mlx.example.test:8000"' in page and 'id="lmstudio"' in page
+
