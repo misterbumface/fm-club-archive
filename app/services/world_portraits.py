@@ -995,19 +995,36 @@ LOCAL_MAKERS = {"draw_things": "Draw Things", "invoke": "InvokeAI"}  # the maker
 
 def league_without_pictures(world: sqlite3.Connection, league_uid: int, faces: dict[int, Path] | None = None,
                             old: dict[int, Path] | None = None) -> list[tuple[int, int]]:
-    """The active first-team players of a league's clubs who have no picture, as (person, team), most games first: league
-    games in the league's newest season for a club, and still on that club's books (not a player who left, not staff)."""
-    season = world.execute("select max(season_start) from player_seasons where league_uid = ? and kind = 1", (league_uid,)).fetchone()[0]
-    if season is None:
-        return []
+    """The active first-team players of a league's clubs who have no picture, as (person, team), most games first."""
+    return leagues_without_pictures(world, faces, old, league_uid).get(league_uid, {}).get("missing", [])
+
+
+def leagues_without_pictures(world: sqlite3.Connection, faces: dict[int, Path] | None = None, old: dict[int, Path] | None = None,
+                             league_uid: int | None = None) -> dict[int, dict]:
+    """For each league (or the one given): {"players": n, "missing": [(person, team), ...]}. The players are those with
+    league games in the league's newest season that is under way (at least half as many players with games as its
+    fullest season), still on that club's books (not a player who left, not
+    staff), most games first. Not simply the newest: a season just begun in the save has rows but (nearly) no games, and Argentina's 2064 showed "every one has a picture" with nobody in it (11 Nov 2026)."""
     faces = face_pack_index() if faces is None else faces
     old = old_portraits() if old is None else old
+    one = "and league_uid = ?" if league_uid is not None else ""
     rows = world.execute(
-        "select ps.person_uid, ps.team_uid, sum(ps.starts + ps.substitute_appearances) games from player_seasons ps "
-        "join people p on p.fm_uid = ps.person_uid and p.team_uid = ps.team_uid where ps.league_uid = ? and ps.season_start = ? "
-        "and ps.kind = 1 and p.staff_job is null group by ps.person_uid, ps.team_uid having games > 0 order by games desc",
-        (league_uid, season))
-    return [(uid, team) for uid, team, _ in rows if picture_of(uid, faces, old) is None]
+        "with counts as (select league_uid, season_start, count(*) n from player_seasons where kind = 1 and league_uid is not null "
+        f"{one} and starts + substitute_appearances > 0 group by league_uid, season_start), "
+        "seasons as (select c.league_uid, max(c.season_start) season from counts c "
+        "where c.n * 2 >= (select max(n) from counts m where m.league_uid = c.league_uid) group by c.league_uid) "
+        "select ps.league_uid, ps.person_uid, ps.team_uid, sum(ps.starts + ps.substitute_appearances) games from player_seasons ps "
+        "join seasons s on s.league_uid = ps.league_uid and s.season = ps.season_start "
+        "join people p on p.fm_uid = ps.person_uid and p.team_uid = ps.team_uid where ps.kind = 1 and p.staff_job is null "
+        "group by ps.league_uid, ps.person_uid, ps.team_uid having games > 0 order by ps.league_uid, games desc",
+        (league_uid,) if league_uid is not None else ())
+    found: dict[int, dict] = {}
+    for league, uid, team, _ in rows:
+        entry = found.setdefault(league, {"players": 0, "missing": []})
+        entry["players"] += 1
+        if picture_of(uid, faces, old) is None:
+            entry["missing"].append((uid, team))
+    return found
 
 
 def generate_team(

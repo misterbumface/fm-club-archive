@@ -104,6 +104,8 @@ def small_world(app):
 def pages(app, small_world, monkeypatch):
     monkeypatch.setattr(world_routes, "_pictures", {"at": time.monotonic(), "faces": {}, "old": {}})  # no face pack in tests
     monkeypatch.setattr(world_routes.world_portraits, "ARCHIVE_FACES", world_routes.world_portraits.ARCHIVE_FACES / "none")
+    monkeypatch.setattr(world_routes, "_picture_queue", {"current": None, "waiting": [], "text": "", "stop": False, "running": False,
+                                                         "last": set()})
     return app.test_client()
 
 
@@ -332,10 +334,10 @@ def test_a_leagues_pictures_are_made_one_after_another_and_fail_safely(pages, mo
     monkeypatch.setattr(world_routes.world_portraits, "generate_one", lambda world_db, uid: made.append(uid))
     pages.post(f"/competitions/{LEAGUE}/pictures")
     for _ in range(100):
-        if world_routes._league_jobs[LEAGUE]["text"].startswith("Done"):
+        if world_routes._picture_queue["text"].startswith("Done"):
             break
         time.sleep(0.02)
-    assert made == [MYERS] and world_routes._league_jobs[LEAGUE]["text"] == "Done (finished): 1 new pictures."
+    assert made == [MYERS] and world_routes._picture_queue["text"] == "Done (finished): 1 new pictures."
 
     def broken(world_db, uid):
         raise world_routes.world_portraits.PortraitError("InvokeAI does not answer")
@@ -344,10 +346,10 @@ def test_a_leagues_pictures_are_made_one_after_another_and_fail_safely(pages, mo
     monkeypatch.setattr(world_routes, "LEAGUE_FAILURES", 1)
     pages.post(f"/competitions/{LEAGUE}/pictures")
     for _ in range(100):
-        if world_routes._league_jobs[LEAGUE]["text"].startswith("Done"):
+        if world_routes._picture_queue["text"].startswith("Done"):
             break
         time.sleep(0.02)
-    assert world_routes._league_jobs[LEAGUE]["text"].startswith("Done, with an error: 0 new pictures, then 1 failed in a row")
+    assert world_routes._picture_queue["text"].startswith("Done, with an error: 0 new pictures, then 1 failed in a row")
 
 
 def test_a_squads_pictures_are_made_with_the_makers_setting(pages, monkeypatch):
@@ -576,3 +578,25 @@ def test_the_user_can_give_a_player_their_own_picture(pages, monkeypatch):
     assert given == [(MYERS, b"png")] and "Your picture is now his picture" in answer
     answer = pages.post(f"/people/{MYERS}/own-picture", data={}, content_type="multipart/form-data", follow_redirects=True)
     assert "Choose a picture first" in answer.get_data(as_text=True) and len(given) == 1
+
+
+def test_the_pictures_page_lists_the_leagues_with_missing_pictures_and_queues_them(pages, monkeypatch):
+    from app.services import picture_makers
+
+    with db.engines[world.BIND].begin() as c:
+        c.execute(world.WorldPerson.__table__.update().where(world.WorldPerson.__table__.c.fm_uid == MYERS).values(team_uid=CHELSEA))
+    monkeypatch.setattr(picture_makers, "maker", lambda: "invoke")
+    monkeypatch.setattr(picture_makers, "online", lambda: (True, ""))
+    monkeypatch.setattr(world_routes, "_forget_pictures", lambda: None)
+    page = pages.get("/pictures").get_data(as_text=True)
+    assert f'name="league" value="{LEAGUE}" data-missing="1"' in page and "with InvokeAI" in page
+    assert "Tick at least one league" in pages.post("/pictures", data={}, follow_redirects=True).get_data(as_text=True)
+    made = []
+    monkeypatch.setattr(world_routes.world_portraits, "generate_one", lambda world_db, uid: made.append(uid))
+    pages.post("/pictures", data={"league": [str(LEAGUE)]})
+    for _ in range(100):
+        if world_routes._picture_queue["text"].startswith("Done"):
+            break
+        time.sleep(0.02)
+    assert made == [MYERS] and world_routes._picture_queue["text"] == "Done (finished): 1 new pictures."
+    assert not world_routes._picture_queue["running"] and world_routes._picture_queue["last"] == {LEAGUE}

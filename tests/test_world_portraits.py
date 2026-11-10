@@ -295,3 +295,19 @@ def test_an_own_picture_is_made_square_and_loses_its_transparency(monkeypatch):
         pass
     else:
         raise AssertionError("a non-picture must be refused")
+
+
+def test_a_league_whose_new_season_has_just_begun_counts_the_last_one(monkeypatch):
+    """Argentina's 2064 season had begun in the save with rows and one game: "every one has a picture" with nobody in it."""
+    import sqlite3
+
+    world = sqlite3.connect(":memory:")
+    world.execute("create table player_seasons (person_uid, team_uid, season_start, kind, league_uid, starts, substitute_appearances)")
+    world.execute("create table people (fm_uid, team_uid, staff_job)")
+    world.executemany("insert into player_seasons values (?, ?, ?, ?, ?, ?, ?)",
+                      [(uid, 1, 2063, 1, 7, 20, 0) for uid in range(1, 11)] + [(1, 1, 2064, 1, 7, 1, 0), (2, 1, 2064, 1, 7, 0, 0)])
+    world.executemany("insert into people values (?, ?, ?)", [(uid, 1, None) for uid in range(1, 11)])
+    monkeypatch.setattr(wp, "picture_of", lambda uid, faces, old: faces.get(uid))
+    found = wp.leagues_without_pictures(world, faces={3: Path("face.png")}, old={})
+    assert found[7]["players"] == 10 and len(found[7]["missing"]) == 9
+    assert wp.league_without_pictures(world, 7, faces={}, old={})[0] == (1, 1)

@@ -1,0 +1,52 @@
+{% extends "world/base.html" %}
+{% block title %}Pictures{% endblock %}
+{% block body %}
+<div class="hero"><div><h1>Player pictures</h1>
+  <div class="sub">First-team players of every league who have no picture: {{ '{:,}'.format(total) }} in all.
+    Tick leagues and make them in one queue, one league after another{% if maker %}, with {{ maker }}{% endif %}.</div></div></div>
+
+<div class="card"><div class="actions">
+  {% if queue.text %}<span class="pill green">{{ queue.text }}</span>{% endif %}
+  {% if queue.running %}
+  <form class="inline" method="post" action="{{ url_for('world.stop_pictures') }}"><button class="btn" type="submit">Stop the queue</button></form>
+  <script>setTimeout(() => location.reload(), 15000);  // follow the queue</script>
+  {% elif not maker %}<span class="muted">Pictures for whole leagues are made only with a local maker: choose Draw Things or InvokeAI on the Settings page.</span>
+  {% endif %}
+  <a class="btn" href="{{ url_for('world.pictures', all=0 if show_all else 1) }}">{{ 'Only leagues with missing pictures' if show_all else 'Show every league' }}</a>
+</div></div>
+
+<form method="post" action="{{ url_for('world.make_pictures') }}" id="pictures-form">
+<div class="card"><div class="actions">
+  <button class="btn" type="submit" {{ 'disabled' if not maker }}>{{ 'Add the ticked leagues to the queue' if queue.running else 'Make the pictures of the ticked leagues' }}</button>
+  <span class="muted" id="ticked">0 leagues, 0 pictures ticked</span>
+</div></div>
+{% for nation, leagues in groups %}
+<h2><label><input type="checkbox" class="nation-tick"> {{ nation }}</label></h2>
+<div class="card"><table>
+  <tr><th></th><th>League</th><th class="n">Players</th><th class="n">Without a picture</th><th></th></tr>
+  {% for r in leagues %}<tr>
+    <td><input type="checkbox" name="league" value="{{ r.uid }}" data-missing="{{ r.missing }}" {{ 'disabled' if r.queued or not r.missing }}></td>
+    <td><a href="{{ url_for('world.competition', uid=r.uid) }}">{{ r.name }}</a></td>
+    <td class="n muted">{{ r.players }}</td>
+    <td class="n">{% if r.missing %}<b>{{ r.missing }}</b>{% else %}<span class="muted">0</span>{% endif %}</td>
+    <td>{% if r.queued %}<span class="pill">in the queue</span>{% endif %}</td>
+  </tr>{% endfor %}
+</table></div>
+{% else %}<p class="muted">Every first-team player has a picture.</p>{% endfor %}
+</form>
+<script>
+(() => {
+  const form = document.getElementById('pictures-form'), note = document.getElementById('ticked');
+  const count = () => {
+    const ticked = [...form.querySelectorAll('input[name=league]:checked')];
+    const pictures = ticked.reduce((sum, box) => sum + Number(box.dataset.missing), 0);
+    note.textContent = `${ticked.length} leagues, ${pictures.toLocaleString()} pictures ticked`;
+  };
+  form.querySelectorAll('.nation-tick').forEach(box => box.addEventListener('change', () => {
+    box.closest('h2').nextElementSibling.querySelectorAll('input[name=league]:not(:disabled)').forEach(b => { b.checked = box.checked; });
+    count();
+  }));
+  form.addEventListener('change', count);
+})();
+</script>
+{% endblock %}

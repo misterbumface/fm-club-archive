@@ -38,8 +38,10 @@ world_bp = Blueprint("world", __name__)
 
 _PICTURES_TTL = 300  # seconds; a new portrait clears the cache at once
 _pictures: dict = {"at": 0.0, "faces": {}, "old": {}, "stadiums": {}}
-_league_jobs: dict[int, dict] = {}  # league -> {"text": progress, "stop": asked to stop} of a running "missing pictures" batch
-LEAGUE_FAILURES = 3  # failed pictures in a row stop a league's batch: the maker has most likely gone away
+# One queue of leagues whose missing pictures are being made, one league after another (there is one picture maker):
+# the league in hand, the leagues waiting, the progress, and the leagues of the last finished run.
+_picture_queue: dict = {"current": None, "waiting": [], "text": "", "stop": False, "running": False, "last": set()}
+LEAGUE_FAILURES = 3  # failed pictures in a row stop the queue: the maker has most likely gone away
 _team_jobs: dict[tuple[int, int], str] = {}  # (team, season) -> progress text of a running "generate missing pictures"
 _bio_jobs: dict[tuple[int, int], str] = {}  # (team, season) -> progress text of a running "write missing bios"
 _photo_jobs: dict[int, str] = {}  # person -> progress text of a running "make an action photo"
@@ -668,10 +670,6 @@ def competition(uid: int):
                            league_pictures=_league_pictures(uid) if now["is_league"] else None)
 
 
-def _league_job_running(uid: int) -> bool:
-    return uid in _league_jobs and not _league_jobs[uid]["text"].startswith("Done")
-
-
 def _league_pictures(uid: int) -> dict | None:
     """The competition page's card: the league's first-team players without a picture, and whether the maker is local."""
     from app.services import picture_makers
@@ -680,75 +678,153 @@ def _league_pictures(uid: int) -> dict | None:
     with _connection() as c:
         missing = world_portraits.league_without_pictures(c.connection.driver_connection, uid, faces, old)
     maker = picture_makers.maker()
+    queue = _picture_queue
+    job = queue["text"] if uid == queue["current"] or (not queue["running"] and uid in queue["last"]) else \
+        f"Waiting: {queue['waiting'].index(uid)} other leagues first" if uid in queue["waiting"] else None
     return {"missing": len(missing), "maker": world_portraits.LOCAL_MAKERS.get(maker), "other_maker": maker,
-            "job": _league_jobs.get(uid, {}).get("text"), "running": _league_job_running(uid)}
+            "job": job, "running": uid == queue["current"] or uid in queue["waiting"]}
+
+
+def _start_pictures(leagues: list[int]) -> str | None:
+    """Put leagues in the pictures queue and start it when it is idle. Returns why nothing was queued, or None."""
+    from app.services import picture_makers
+
+    if picture_makers.maker() not in world_portraits.LOCAL_MAKERS:
+        return "A league's pictures are made only with a local maker: choose Draw Things or InvokeAI on the Settings page."
+    queue = _picture_queue
+    new = [uid for uid in dict.fromkeys(leagues) if uid != queue["current"] and uid not in queue["waiting"]]
+    if not new:
+        return "Those leagues are already in the queue."
+    if queue["running"]:
+        queue["waiting"].extend(new)
+        return None
+    ready, why = picture_makers.online()
+    if not ready:
+        return f"No pictures: {why}."
+    queue.update(current=None, waiting=list(new), text="Starting…", stop=False, running=True, last=set())
+    world_db = Path(current_app.config["SQLALCHEMY_BINDS"][world_models.BIND].removeprefix("sqlite:///"))
+    app = current_app._get_current_object()
+
+    def run() -> None:
+        made = failed = in_a_row = 0
+        done: set[int] = set()
+        with app.app_context():
+            try:
+                while queue["waiting"] and not queue["stop"]:
+                    league = queue["current"] = queue["waiting"].pop(0)
+                    done.add(league)
+                    with _connection() as c:
+                        wanted = world_portraits.league_without_pictures(c.connection.driver_connection, league, *_picture_sources())
+                        names = q.teams(c, {team for _, team in wanted})
+                        title = q.competitions(c, [league]).get(league, {}).get("name", "League")
+                    for number, (person, team) in enumerate(wanted, 1):
+                        if queue["stop"]:
+                            break
+                        later = f"; {len(queue['waiting'])} leagues waiting" if queue["waiting"] else ""
+                        queue["text"] = (f"{title}: picture {number} of {len(wanted)} ({names.get(team, {}).get('name', '')}); "
+                                         f"{made} made so far{later}")
+                        try:
+                            world_portraits.generate_one(world_db, person)  # keeps a picture made meanwhile
+                            made, in_a_row = made + 1, 0
+                        except world_portraits.PortraitError as exc:
+                            failed, in_a_row = failed + 1, in_a_row + 1
+                            app.logger.warning("league picture for %s: %s", person, exc)
+                            if in_a_row >= LEAGUE_FAILURES:
+                                queue["text"] = f"Done, with an error: {made} new pictures, then {in_a_row} failed in a row ({exc})"
+                                return
+                        finally:
+                            db.session.remove()
+                            if made and made % 10 == 0:
+                                _forget_pictures()
+                end = "stopped" if queue["stop"] else "finished"
+                queue["text"] = f"Done ({end}): {made} new pictures" + (f", {failed} failed (see the log)." if failed else ".")
+            except Exception as exc:  # noqa: BLE001 - the page must never wait for ever
+                app.logger.exception("league pictures failed")
+                queue["text"] = f"Done, with an error: {made} new pictures, then {type(exc).__name__}: {exc}"
+            finally:
+                queue.update(current=None, waiting=[], running=False, last=done)
+                _forget_pictures()
+
+    threading.Thread(target=run, name="league-pictures", daemon=True).start()
+    return None
 
 
 @world_bp.post("/competitions/<int:uid>/pictures")
 def generate_league_pictures(uid: int):
-    """Pictures for every first-team player of the league's clubs who has none, one after another in the background,
-    with a local maker only (Draw Things or InvokeAI): a few hundred pictures would cost real money online."""
+    """Pictures for every first-team player of the league's clubs who has none, in the background, with a local maker
+    only (Draw Things or InvokeAI): a few hundred pictures would cost real money online."""
     from app.services import picture_makers
 
-    back = redirect(url_for("world.competition", uid=uid))
-    if _league_job_running(uid):
-        flash("Pictures for this league are already being made.", "info")
-        return back
-    if picture_makers.maker() not in world_portraits.LOCAL_MAKERS:
-        flash("A league's pictures are made only with a local maker: choose Draw Things or InvokeAI on the Settings page.", "error")
-        return back
-    ready, why = picture_makers.online()
-    if not ready:
-        flash(f"No pictures: {why}.", "error")
-        return back
-    world_db = Path(current_app.config["SQLALCHEMY_BINDS"][world_models.BIND].removeprefix("sqlite:///"))
-    with _connection() as c:
-        wanted = world_portraits.league_without_pictures(c.connection.driver_connection, uid, *_picture_sources())
-        names = q.teams(c, {team for _, team in wanted})
-    app = current_app._get_current_object()
-    job = _league_jobs[uid] = {"text": "Starting…", "stop": False}
-
-    def run() -> None:
-        made = failed = in_a_row = 0
-        with app.app_context():
-            try:
-                for number, (person, team) in enumerate(wanted, 1):
-                    if job["stop"]:
-                        break
-                    job["text"] = f"Making picture {number} of {len(wanted)} ({names.get(team, {}).get('name', '')}); {made} made so far"
-                    try:
-                        world_portraits.generate_one(world_db, person)  # keeps a picture made meanwhile
-                        made, in_a_row = made + 1, 0
-                    except world_portraits.PortraitError as exc:
-                        failed, in_a_row = failed + 1, in_a_row + 1
-                        app.logger.warning("league picture for %s: %s", person, exc)
-                        if in_a_row >= LEAGUE_FAILURES:
-                            job["text"] = f"Done, with an error: {made} new pictures, then {in_a_row} failed in a row ({exc})"
-                            return
-                    finally:
-                        db.session.remove()
-                        if made and made % 10 == 0:
-                            _forget_pictures()
-                end = "stopped" if job["stop"] else "finished"
-                job["text"] = f"Done ({end}): {made} new pictures" + (f", {failed} failed (see the log)." if failed else ".")
-            except Exception as exc:  # noqa: BLE001 - the page must never wait for ever
-                app.logger.exception("league pictures failed")
-                job["text"] = f"Done, with an error: {made} new pictures, then {type(exc).__name__}: {exc}"
-            finally:
-                _forget_pictures()
-
-    threading.Thread(target=run, name=f"league-pictures-{uid}", daemon=True).start()
-    flash(f"Making {len(wanted)} pictures with {world_portraits.LOCAL_MAKERS[picture_makers.maker()]}, one after another. "
-          "Reload this page to follow it.", "info")
-    return back
+    why = _start_pictures([uid])
+    if why:
+        flash(why, "error" if "local maker" in why or why.startswith("No pictures") else "info")
+    else:
+        flash(f"The missing pictures are being made with {world_portraits.LOCAL_MAKERS[picture_makers.maker()]}, one after "
+              "another. Reload this page to follow it.", "info")
+    return redirect(url_for("world.competition", uid=uid))
 
 
 @world_bp.post("/competitions/<int:uid>/pictures/stop")
 def stop_league_pictures(uid: int):
-    if _league_job_running(uid):
-        _league_jobs[uid]["stop"] = True
-        flash("The pictures stop after the one being made now.", "info")
+    _stop_pictures(uid)
     return redirect(url_for("world.competition", uid=uid))
+
+
+def _stop_pictures(uid: int | None = None) -> None:
+    """Take a waiting league out of the queue; or stop the whole queue after the picture being made now."""
+    queue = _picture_queue
+    if uid is not None and uid in queue["waiting"]:
+        queue["waiting"].remove(uid)
+        flash("That league is out of the queue.", "info")
+    elif queue["running"]:
+        queue["stop"] = True
+        flash("The pictures stop after the one being made now; the leagues waiting are not made.", "info")
+
+
+@world_bp.get("/pictures")
+def pictures():
+    """Every league with players who have no picture: tick leagues and make their pictures in one queue."""
+    from app.services import picture_makers
+
+    with _connection() as c:
+        found = world_portraits.leagues_without_pictures(c.connection.driver_connection, *_picture_sources())
+        comps = q.competitions(c, found)
+        nations = {r[0]: r[1] for r in c.exec_driver_sql("select fm_uid, name from nations")}
+    groups: dict[str, list[dict]] = {}
+    for uid, entry in found.items():
+        comp = comps.get(uid, {})
+        groups.setdefault(nations.get(comp.get("nation_uid"), "Other"), []).append(
+            {"uid": uid, "name": comp.get("name", str(uid)), "level": comp.get("level") or 99, "reputation": comp.get("reputation") or 0,
+             "players": entry["players"], "missing": len(entry["missing"]),
+             "queued": uid == _picture_queue["current"] or uid in _picture_queue["waiting"]})
+    for leagues in groups.values():
+        leagues.sort(key=lambda r: (r["level"], -r["reputation"], r["name"]))
+    order = sorted(groups.items(), key=lambda item: (-max(r["reputation"] for r in item[1]), item[0]))
+    show_all = request.args.get("all") == "1"
+    if not show_all:
+        order = [(nation, [r for r in leagues if r["missing"]]) for nation, leagues in order]
+        order = [(nation, leagues) for nation, leagues in order if leagues]
+    maker = picture_makers.maker()
+    return render_template("world/pictures.html", groups=order, queue=_picture_queue, show_all=show_all,
+                           maker=world_portraits.LOCAL_MAKERS.get(maker),
+                           total=sum(len(e["missing"]) for e in found.values()))
+
+
+@world_bp.post("/pictures")
+def make_pictures():
+    leagues = [int(uid) for uid in request.form.getlist("league") if uid.isdigit()]
+    if not leagues:
+        flash("Tick at least one league.", "error")
+    else:
+        why = _start_pictures(leagues)
+        flash(why or f"{len(leagues)} leagues are in the queue.", "error" if why and "already" not in why else "info")
+    return redirect(url_for("world.pictures"))
+
+
+@world_bp.post("/pictures/stop")
+def stop_pictures():
+    _stop_pictures()
+    return redirect(url_for("world.pictures"))
 
 
 @world_bp.get("/competitions/<int:uid>/<int:year>")

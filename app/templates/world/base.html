@@ -11,7 +11,7 @@
 <body>
 <header class="top"><div class="wrap">
   <a class="brand" href="{{ url_for('news.newsstand') }}">FM World <b>Archive</b></a>
-  <nav class="nav"><a href="{{ url_for('news.newsstand') }}">News</a><a href="{{ url_for('world.home') }}">Today</a>{% if social_enabled() %}<a href="{{ url_for('social.feed') }}">Feed</a>{% endif %}<a href="{{ url_for('world.clubs') }}">Clubs</a><a href="{{ url_for('world.competitions') }}">Competitions</a><a href="{{ url_for('world.nations') }}">Nations</a><a href="{{ url_for('world.awards') }}">Awards</a><a href="{{ url_for('news.desk') }}">Desk</a><a href="{{ url_for('news.gallery') }}">Gallery</a><a href="{{ url_for('settings.index') }}">Settings</a></nav>
+  <nav class="nav"><a href="{{ url_for('news.newsstand') }}">News</a><a href="{{ url_for('world.home') }}">Today</a>{% if social_enabled() %}<a href="{{ url_for('social.feed') }}">Feed</a>{% endif %}<a href="{{ url_for('world.clubs') }}">Clubs</a><a href="{{ url_for('world.competitions') }}">Competitions</a><a href="{{ url_for('world.nations') }}">Nations</a><a href="{{ url_for('world.awards') }}">Awards</a><a href="{{ url_for('news.desk') }}">Desk</a><a href="{{ url_for('news.gallery') }}">Gallery</a><a href="{{ url_for('world.pictures') }}">Pictures</a><a href="{{ url_for('settings.index') }}">Settings</a></nav>
   <form class="search" action="{{ url_for('world.search') }}"><input name="q" value="{{ term or '' }}" placeholder="Search clubs, players, competitions…"></form>
   {% if today %}<div class="date">{{ today.strftime('%-d %b %Y') }}</div>{% endif %}
 </div></header>
