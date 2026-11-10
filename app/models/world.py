@@ -545,6 +545,21 @@ class WorldPersonFeeling(db.Model):
     as_of: Mapped[date] = mapped_column(Date, nullable=False)
 
 
+class WorldPersonClubFeeling(db.Model):
+    """A person's favourite or disliked club, in the newest save (fm_save.ClubFeeling, CLUB_FEELING_REASONS): Ferrer a
+    Vallecano supporter, Valera with no time for Real Madrid, Valencia or Barcelona."""
+
+    __bind_key__ = BIND
+    __tablename__ = "person_club_feelings"
+
+    person_uid: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    club_uid: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False, index=True)
+    likes: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)  # 1 a favourite, 0 disliked
+    reason: Mapped[int] = mapped_column(Integer, nullable=False)
+    level: Mapped[int] = mapped_column(Integer, nullable=False)  # 0-100
+    as_of: Mapped[date] = mapped_column(Date, nullable=False)
+
+
 class WorldSocialGroup(db.Model):
     """The human club's social groups (the game's Dynamics screen) in the newest save: group 1 is the game's first."""
 

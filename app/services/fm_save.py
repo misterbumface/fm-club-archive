@@ -3207,6 +3207,10 @@ RELATION_REASONS = {2: "family", 5: "team-mate", 6: "manager", 7: "a player he m
                     11: "a coach who brought him through"}  # 2, 7 and 11 read from the people they join (26 Oct 2026)
 RELATION_PERSON = 3
 FAVOURED_LEVEL = 50  # the game lists a liked person from this level on
+# A feeling about a club (10 Nov 2026, Ferrer's and Valera's editor tabs): the subject is the club's index + 1, the kind 1, then
+# 3 a favourite club or 4 a disliked one. The reasons in the editor's order: No Reason, Supporter, Player, Head Coach, Coaching Staff.
+RELATION_CLUB, FAVOURITE_CLUB, DISLIKED_CLUB = 1, 3, 4
+CLUB_FEELING_REASONS = {1: "supporter", 2: "played there", 3: "head coach there", 4: "on the coaching staff there"}
 
 
 CONCERN_ABOUT_PERSON = (19, 20)  # the kinds whose ref is a person (a team-mate, the manager)
@@ -3225,8 +3229,17 @@ class Concern:
 
 
 @dataclass(frozen=True, slots=True)
+class ClubFeeling:
+    """A person's favourite or disliked club (the game also keeps feelings about nations: not read)."""
+    club_index: int
+    reason: int  # CLUB_FEELING_REASONS
+    likes: bool  # False for a disliked club
+    level: int  # 0-100
+
+
+@dataclass(frozen=True, slots=True)
 class Feeling:
-    """How a person feels about another person (the game also keeps feelings about clubs and nations: not read)."""
+    """How a person feels about another person."""
     person: int  # FM uid
     reason: int  # RELATION_REASONS
     likes: bool  # False for a dislike
@@ -3262,14 +3275,41 @@ def _concerns(game_db: bytes, block: int, uid_of: dict[int, tuple[int, int]]) ->
     return []
 
 
-def _feelings(game_db: bytes, block: int, row: int, uid_of: dict[int, tuple[int, int]]) -> list[Feeling]:
-    """The longest run of 16-byte feelings between the mood block and the person row."""
-    runs = [m for m in _RELATION.finditer(game_db, block, row) if (m.end() - m.start()) % _RELATION_SIZE == 0]
-    if not runs:
-        return []
-    run = max(runs, key=lambda m: m.end() - m.start())
+def _is_feeling(game_db: bytes, at: int) -> bool:
+    return game_db[at] == 0xFF and game_db[at + 5:at + 9] == b"\x00\x00\x00\x00" and game_db[at + 10] == 0
+
+
+def _feeling_run(game_db: bytes, block: int, row: int) -> list[int]:
+    """The places of the 16-byte feelings between the mood block and the person row: every run, each with the entries just
+    before or after it that the pattern's own match stepped over (10 Nov 2026: a stray FF two bytes before Ferrer's first
+    entry, Vallecano, began a match there and hid it; Valera's disliked clubs stand in a run apart from his people)."""
+    found: set[int] = set()
+    for run in _RELATION.finditer(game_db, block, row):
+        if (run.end() - run.start()) % _RELATION_SIZE:
+            continue
+        start, end = run.start(), run.end()
+        while start - _RELATION_SIZE >= block and _is_feeling(game_db, start - _RELATION_SIZE):
+            start -= _RELATION_SIZE
+        while end + _RELATION_SIZE <= row and _is_feeling(game_db, end):
+            end += _RELATION_SIZE
+        found.update(range(start, end, _RELATION_SIZE))
+    return sorted(found)
+
+
+def _club_feelings(game_db: bytes, run: list[int]) -> list[ClubFeeling]:
     found = []
-    for at in range(run.start(), run.end(), _RELATION_SIZE):
+    for at in run:
+        if game_db[at + 11] == RELATION_CLUB and game_db[at + 12] in (FAVOURITE_CLUB, DISLIKED_CLUB) and game_db[at + 13] <= 100:
+            subject, = struct.unpack_from("<I", game_db, at + 1)
+            reason, = struct.unpack_from("<H", game_db, at + 9)
+            found.append(ClubFeeling(subject - 1, reason, game_db[at + 12] == FAVOURITE_CLUB, game_db[at + 13]))
+    return found
+
+
+def _feelings(game_db: bytes, block: int, row: int, uid_of: dict[int, tuple[int, int]], run: list[int] | None = None) -> list[Feeling]:
+    """The feelings about people in the run (_feeling_run)."""
+    found = []
+    for at in (run if run is not None else _feeling_run(game_db, block, row)):
         subject, = struct.unpack_from("<I", game_db, at + 1)
         if game_db[at + 11] == RELATION_PERSON and game_db[at + 12] in (1, 2) and subject in uid_of:  # 1 likes, 2 dislikes
             reason, = struct.unpack_from("<H", game_db, at + 9)
@@ -3288,6 +3328,7 @@ class StaffContract:
     concerns: tuple[Concern, ...] = ()
     feelings: tuple[Feeling, ...] = ()
     signed: date | None = None  # the current deal's start, the Contract screen's "Started" (Júnior 5 Jul 2062, Rogério José 16 Jun 2063)
+    club_feelings: tuple[ClubFeeling, ...] = ()
 
     @property
     def job_name(self) -> str:
@@ -3436,10 +3477,12 @@ def read_staff_contracts(game_db: bytes, teams: dict[int, Team], rows: dict[int,
         started = expires = happiness = None
         concerns: list[Concern] = []
         feelings: list[Feeling] = []
+        club_feelings: list[ClubFeeling] = []
         block = match.start() + _MOOD_BLOCK
         if block > 0 and game_db[block] == 0:
             happiness = struct.unpack_from("<b", game_db, block + _HAPPINESS)[0]
-            concerns, feelings = _concerns(game_db, block, rows), _feelings(game_db, block, row, rows)
+            run = _feeling_run(game_db, block, row)
+            concerns, feelings, club_feelings = _concerns(game_db, block, rows), _feelings(game_db, block, row, rows, run), _club_feelings(game_db, run)
         if game_db[match.start() - len(_CONTRACT_USUAL):match.start() - 1] == _CONTRACT_USUAL[:-1]:
             # the dates stand before the concerns: a player with concerns has them further back. The marker's last byte
             # is a count (0 for most; Júnior 1, 24 Oct 2063) that moves nothing: the dates sit at the same place.
@@ -3460,7 +3503,7 @@ def read_staff_contracts(game_db: bytes, teams: dict[int, Team], rows: dict[int,
                 signed = None
         wage = struct.unpack_from("<I", game_db, match.start() + _CONTRACT_WAGE)[0]
         found[uid] = StaffContract(team, job, started, wage if wage < 10_000_000 else None, expires, happiness,
-                                   tuple(concerns), tuple(feelings), signed)
+                                   tuple(concerns), tuple(feelings), signed, tuple(club_feelings))
     return found
 
 

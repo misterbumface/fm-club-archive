@@ -629,7 +629,7 @@ class _SaveReader:
             return
         reputations, contracts = self.parts["person_reputations"], self.parts["staff_contracts"]
         known = set(self.people)
-        moods, concerns, feelings = [], [], []
+        moods, concerns, feelings, club_feelings = [], [], [], []
         for uid in known:
             reputation, contract = reputations.get(uid), contracts.get(uid)
             morale = reputation.morale if reputation else None
@@ -654,12 +654,18 @@ class _SaveReader:
                 if feeling.person in known:
                     feelings.append({"person_uid": uid, "other_uid": feeling.person, "likes": int(feeling.likes), "reason": feeling.reason,
                                      "level": feeling.level, "as_of": self.game_date})
-        for model in (world.WorldPersonMood, world.WorldPersonConcern, world.WorldPersonFeeling):
+            for feeling in contract.club_feelings:
+                if feeling.club_index in self.club_uid:
+                    club_feelings.append({"person_uid": uid, "club_uid": self.club_uid[feeling.club_index], "likes": int(feeling.likes),
+                                          "reason": feeling.reason, "level": feeling.level, "as_of": self.game_date})
+        for model in (world.WorldPersonMood, world.WorldPersonConcern, world.WorldPersonFeeling, world.WorldPersonClubFeeling):
             connection.execute(model.__table__.delete())
         self._put(connection, world.WorldPersonMood, moods, ["person_uid"])
         self._put(connection, world.WorldPersonConcern, concerns, ["person_uid", "seq"])
         self._put(connection, world.WorldPersonFeeling, list(_unique(feelings, key=lambda r: (r["person_uid"], r["other_uid"], r["likes"]))),
                   ["person_uid", "other_uid", "likes"])
+        self._put(connection, world.WorldPersonClubFeeling, list(_unique(club_feelings, key=lambda r: (r["person_uid"], r["club_uid"], r["likes"]))),
+                  ["person_uid", "club_uid", "likes"])
         team, groups = self.parts.get("social_groups") or (None, [])
         team_uid = self.team_uid.get(team) if team is not None else None
         if team_uid in self.known_teams and groups:

@@ -1153,6 +1153,27 @@ def test_a_players_mood_block_has_his_happiness_concerns_and_feelings():
     assert [(f.person, f.likes, f.level) for f in found.feelings] == [(2002740221, True, 60), (2002740219, False, 50), (2002740221, True, 20)]
 
 
+def test_a_players_favourite_and_disliked_clubs_stand_among_his_feelings():
+    # Ferrer and Valera, 10 Nov 2026: a Vallecano supporter (100) whose entry a stray FF two bytes before it hid from the
+    # pattern, lesser favourites (U Craiova 21), and Valera's three disliked clubs at 100; a person among them as before
+    number, team = 759686, 541
+    block = b"\x00" + struct.pack("<HH", 191, 2055) + struct.pack("<b", 40) + b"\x07" * 14 + b"\x01\x00\x6c\x07\x00"
+    before = struct.pack("<HH", 181, 2065) + struct.pack("<HH", 191 | 0x3200, 2055) + b"\x07" * 6 + struct.pack("<I", 0) + block
+    contract = struct.pack("<II", number, team) + b"\x00" * 4 + struct.pack("<I", 90_000) + bytes([fm_save.PLAYER_JOB]) + b"\x00\x00"
+    feelings = (_feeling(1294, 1, 1, 3, 100) + _feeling(number + 1, 5, 3, 1, 60) + _feeling(52321, 2, 1, 3, 21)
+                + _feeling(67155, 0, 1, 106, 44))
+    apart = _feeling(1298, 0, 1, 4, 100) + _feeling(1283, 0, 1, 4, 100)  # Valera's: a run of their own further on
+    rows = _person_row(number - 1, 2002740219) + _person_row(number, 2002740220) + _person_row(number + 1, 2002740221)
+    buffer = (b"\x07" * 60 + before + contract + b"\x07" * 20 + b"\xff\x00" + feelings + b"\x07" * 30 + apart + b"\x07" * 100
+              + rows + b"\x07" * 20)
+
+    found = fm_save.read_staff_contracts(buffer, {team: fm_save.Team(team, 0, 630, None, "", "")})[2002740220]
+
+    assert [(f.club_index, f.reason, f.likes, f.level) for f in found.club_feelings] == [
+        (1293, 1, True, 100), (52320, 2, True, 21), (1297, 0, False, 100), (1282, 0, False, 100)]
+    assert [(f.person, f.likes, f.level) for f in found.feelings] == [(2002740221, True, 60)]
+
+
 def test_a_contract_without_a_mood_block_has_no_mood():
     number, team = 759686, 1507
     before = struct.pack("<HH", 181, 2065) + struct.pack("<HH", 191 | 0x3200, 2055) + b"\x07" * 30 + b"\x01\x00\x6c\x07\x00"

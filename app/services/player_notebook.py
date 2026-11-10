@@ -12,7 +12,7 @@ from collections import Counter, defaultdict
 
 from sqlalchemy.engine import Connection
 
-from app.services import world_queries as q
+from app.services import moods, world_queries as q
 
 EUROS_PER_POUND = 1.16  # the save keeps money in pounds; the game shows euros (1.1599 in the editor)
 TEAMMATE_GAMES = 10  # league games each, for a shared season to count
@@ -103,6 +103,9 @@ def player_notebook(connection: Connection, uid: int, old_bio: str | None = None
         "teammates": teammates,
         "milestones": _milestones(seasons, honours),
         "standing_with_clubs": _standing(connection, uid),
+        # what the game says he is like and whom and which clubs he loves or cannot stand: the drama of his story (10 Nov 2026)
+        "character": ", ".join(q.character_words((attributes or {}).get("traits"))) or None,
+        "people_in_his_life": moods.people_in_his_life(connection, uid),
     }
     if old_bio:
         notebook["old_bio"] = {"text": old_bio, "use": "colour only; every fact above wins where the two disagree"}

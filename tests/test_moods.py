@@ -158,3 +158,29 @@ def test_a_youth_team_player_is_no_dressing_room_story_and_no_team_mate_taking_s
     assert unsettled["Big Star"]["team_mates_who_think_he_is_treated_unfairly"] == "Chelsea 102, Chelsea 103, Chelsea 104"
     (side,) = found["taking_sides"]
     assert side.headline == "3 Chelsea players take Big Star's side"
+
+
+def test_a_players_favourite_and_disliked_clubs_reach_the_writers(small_world):
+    """10 Nov 2026: Ferrer a Vallecano supporter, Valera with no time for Real Madrid, Valencia or Barcelona: the drama the
+    papers and the bios may use, with the reason the game names; a passing fondness and a mild dislike are left out."""
+    from tests.test_world_pages import ARSENAL, LIVERPOOL, SPURS
+
+    from app.services import bio_writer, player_notebook, story_writer
+
+    _moods(small_world)
+    with small_world.begin() as c:
+        c.execute(world.WorldPersonClubFeeling.__table__.insert(), [
+            {"person_uid": STAR, "club_uid": CHELSEA, "likes": 1, "reason": 1, "level": 100, "as_of": SAVE_DAY},
+            {"person_uid": STAR, "club_uid": ARSENAL, "likes": 1, "reason": 2, "level": 21, "as_of": SAVE_DAY},
+            {"person_uid": STAR, "club_uid": SPURS, "likes": 1, "reason": 2, "level": 60, "as_of": SAVE_DAY},
+            {"person_uid": STAR, "club_uid": LIVERPOOL, "likes": 0, "reason": 0, "level": 100, "as_of": SAVE_DAY},
+            {"person_uid": STAR, "club_uid": ARSENAL, "likes": 0, "reason": 0, "level": 10, "as_of": SAVE_DAY}])
+    with small_world.connect() as c:
+        life = moods.people_in_his_life(c, STAR)
+        notebook = player_notebook.player_notebook(c, STAR)
+    assert life["clubs_he_dislikes"] == ["Liverpool"]
+    assert life["favourite_clubs"][0] == "Chelsea (supporter)" and life["favourite_clubs"][1].endswith(" (played there)")
+    assert notebook["people_in_his_life"] == life and "character" in notebook
+    for prompt in (story_writer.ARTICLE_RULES, bio_writer.SYSTEM_PROMPT):
+        assert "clubs_he_dislikes" in prompt and "snide remark" in prompt and "never go against the game" in prompt.lower()
+    assert "not friendship" not in bio_writer.SYSTEM_PROMPT and "no other relationship exists" not in story_writer.ARTICLE_RULES

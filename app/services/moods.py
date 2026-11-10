@@ -95,6 +95,7 @@ def backers(connection: Connection, uids) -> dict[int, list[dict]]:
 
 
 DISLIKE_LEVEL = 10  # a dislike this strong is worth a word (the game lists likes from FAVOURED on)
+CLUB_DISLIKE_LEVEL = 25  # a disliked club this strong is worth a dig; a favourite club from FAVOURED on
 PEOPLE_EACH = 6
 # the reasons worth a line first (Parkins' six at full strength were four backroom staff, and the coach who brought him through fell out)
 REASON_WEIGHT = {2: 0, 9: 1, 10: 2, 11: 3, 6: 4, 7: 5, 5: 6, 8: 7}
@@ -116,9 +117,25 @@ def people_in_his_life(connection: Connection, uid: int) -> dict[str, list[str]]
     found = {"close_to": words([r for r in his if r["likes"] and r["level"] >= FAVOURED]),
              "dislikes": words([r for r in his if not r["likes"] and r["level"] >= DISLIKE_LEVEL]),
              "liked_by": words([r for r in theirs if r["likes"] and r["level"] >= FAVOURED]),
-             "disliked_by": words([r for r in theirs if not r["likes"] and r["level"] >= DISLIKE_LEVEL])}
+             "disliked_by": words([r for r in theirs if not r["likes"] and r["level"] >= DISLIKE_LEVEL]),
+             **_clubs_he_feels_for(connection, uid)}
     found = {k: v for k, v in found.items() if v}
     return found or None
+
+
+def _clubs_he_feels_for(connection: Connection, uid: int) -> dict[str, list[str]]:
+    """His favourite clubs and the clubs he dislikes, the strongest first (none before the first import that reads them)."""
+    if not _rows(connection, "select 1 from sqlite_master where name = 'person_club_feelings'"):
+        return {}
+    rows = _rows(connection, "select t.name, f.likes, f.reason, f.level from person_club_feelings f join teams t on t.fm_uid = f.club_uid "
+                             "where f.person_uid = :u order by f.level desc, t.name", u=uid)
+
+    def words(found: list[dict]) -> list[str]:
+        return [r["name"] + (f" ({fm_save.CLUB_FEELING_REASONS[r['reason']]})" if r["reason"] in fm_save.CLUB_FEELING_REASONS else "")
+                for r in found[:PEOPLE_EACH]]
+
+    return {"favourite_clubs": words([r for r in rows if r["likes"] and r["level"] >= FAVOURED]),
+            "clubs_he_dislikes": words([r for r in rows if not r["likes"] and r["level"] >= CLUB_DISLIKE_LEVEL])}
 
 
 PRESS_DAYS = 60  # the press answers a person's background carries: this many game days back

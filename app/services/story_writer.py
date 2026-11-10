@@ -38,6 +38,20 @@ _CRAFT = (
 )
 # A fictional world told with life: the hard facts stay true to the save (so a text never contradicts the
 # archive's pages), and the colour around them is free.
+# The world is fiction grown from the game's numbers (10 Nov 2026: "Anchored in the game, but drama is fine"): what the game says a
+# person is like and whom he loves or cannot stand drives quotes, digs and feuds; nothing may go against it, and no hard event is made up.
+DRAMA_RULE = (
+    "The people in his life (people_in_his_life: whom he is close to and whom he dislikes, who likes or dislikes him, his "
+    "favourite_clubs and the clubs_he_dislikes) and his frame of mind (frame_of_mind) are the game's, and they are the "
+    "story's drama: use them. A man with no time for a club or a person can say so, a snide remark, a dig before the "
+    "game, a cold word afterwards; a supporter of a club speaks of it warmly. How far he goes follows his character: a "
+    "short fuse or a man who courts headlines says it out loud, a model professional keeps it to a measured line or "
+    "lets it show in what he does. Others speak of him the same way. Years side by side may be told as a bond. Never go "
+    "against the game (no friendship with a man he dislikes, no outburst from an unflappable professional), never "
+    "invent a fight, a fine, a ban or a transfer request, and give no relationship a number."
+)
+
+
 ARTICLE_RULES = (
     "The hard facts must come from the notebook and nothing may contradict it: every name, date, number, club, score, "
     "result, scorer, competition, fee and move. Do not invent goals, assists, injuries, transfers, line-ups or tactics, "
@@ -53,9 +67,7 @@ ARTICLE_RULES = (
     "background, like his character: let it colour a description lightly, at most one hint of it for a player in a "
     "piece and only where it fits the story (a winger 'always looking to come inside', a forward 'who likes the ball to "
     "feet'); never copy a trait's words, never list or stack them, never make it the point of a sentence, and never tell "
-    "it as how one goal or one move happened (a left-footer still scores with his right). The people in his life (people_in_his_life) and his frame "
-    "of mind (frame_of_mind) are facts of the same kind: a friend, a manager he is close to, a man he dislikes, an open "
-    "grievance may colour a quote or a line; no other relationship exists, and no number of them is given. What he said "
+    "it as how one goal or one move happened (a left-footer still scores with his right). " + DRAMA_RULE + " What he said "
     "at press conferences (in_the_press) is given as the game's headlines and tones: use their spirit in your own words. "
     "A player is injured, suspended or missing only when the notebook says so; a man absent from an expected line-up is "
     "simply not expected to start, and the reason is not known. A player is the leading scorer only when the notebook "

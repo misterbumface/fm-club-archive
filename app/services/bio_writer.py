@@ -21,7 +21,7 @@ from app.models import world as world_models
 from app.models.person_bio import GENERATED, PersonBio, PersonOldText
 from app.services.ai_settings import ai_request_config, ai_timeout, chat_content, check_ollama_answer, get_deepseek_model, resolve_ai_api_key
 from app.services.player_notebook import player_notebook
-from app.services.story_writer import hard_faults, number_faults, stock_phrases
+from app.services.story_writer import DRAMA_RULE, hard_faults, number_faults, stock_phrases
 from app.services.writing_voices import chosen as chosen_voice, voice_prompt
 
 TIMEOUT_SECONDS = 180
@@ -44,7 +44,7 @@ SYSTEM_PROMPT = (
     "honours and numbers that shape the story; never list them all. player.main_position is where he plays: never "
     "give him another position, and tell a goalkeeper's story through saves, clean sheets and goals conceded, not goals "
     "scored. teammates proves shared "
-    "seasons and trophies only, not friendship, assists or chemistry. goals_in_finals gives "
+    "seasons and trophies: a long time together may be told as a bond, but invent no assists and no private moments. goals_in_finals gives "
     "the score from the player's side; a goal there may be called a goal in the final, but "
     "never 'the winner' unless the score makes it one. club_league_position is the club's "
     "place in the table built from the results.\n\n"
@@ -59,7 +59,7 @@ SYSTEM_PROMPT = (
     "notebook shows the seasons before. Do not name stadiums, managers, chairmen, cities or "
     "other people and places that are not in the notebook, even when you know them. Around "
     "the facts, bring the career to life: emotion, atmosphere, character, the drama of the big "
-    "days and short quotes in character. The player's how_he_plays (the game's player traits) is background: let it "
+    "days and short quotes in character. His character and people_in_his_life are the game's: " + DRAMA_RULE + " The player's how_he_plays (the game's player traits) is background: let it "
     "colour how you describe his game, a hint or two in your own words where they fit; never copy a trait's words and "
     "never list them. The colour must add no new hard facts. Do not "
     "mention notebooks, saves, "
