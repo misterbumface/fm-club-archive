@@ -183,41 +183,41 @@ def _overwritten(face: Path) -> bool:
 # A look for each player, so the portraits do not all share one "average footballer" face. The
 # choices are random but seeded by the player's uid: his look stays his own, and "New picture"
 # draws a new one. Hair follows the save's hair length; its texture fits his background.
-_FACES = ("an oval face", "a round face", "a square face", "a long narrow face", "a heart-shaped face", "a diamond-shaped face",
-          "a broad angular face", "a rectangular face with a strong jaw")
-_JAWS = ("a strong square jaw", "a soft rounded jaw", "a pointed chin", "a cleft chin", "a small receding chin", "a wide prominent chin",
-         "a sharply defined jawline")
-_CHEEKS = ("high prominent cheekbones", "full rounded cheeks", "slightly hollow cheeks", "flat cheekbones", "wide cheekbones")
-_NOSES = ("a straight narrow nose", "a broad flat nose", "an aquiline nose with a slight hook", "a small button nose",
-          "a slightly crooked nose that has been broken before", "a long straight nose", "a wide nose with flared nostrils",
-          "a short upturned nose", "a large prominent nose", "a nose with a high bridge")
-_EYES = ("deep-set eyes", "wide-set eyes", "close-set eyes", "hooded eyes", "almond-shaped eyes", "large round eyes", "narrow eyes",
-         "heavy-lidded eyes", "slightly downturned eyes", "upturned eyes")
-_BROWS = ("thick straight eyebrows", "thin arched eyebrows", "bushy eyebrows", "sparse light eyebrows", "sharply angled eyebrows",
-          "heavy low eyebrows", "eyebrows nearly meeting in the middle")
-_LIPS = ("thin lips", "full lips", "a wide mouth", "a small mouth", "a pronounced cupid's bow", "slightly uneven lips")
-_EARS = ("ears that stick out a little", "small flat ears", "large ears", "")
+# Mild features only: FLUX.3 pushes a strong one ("hollow cheeks", "sharply angled eyebrows", "large ears") into a
+# gaunt, demonic face (10 Nov 2026).
+_FACES = ("an oval face", "a round face", "a square face", "a slightly long face", "a heart-shaped face", "a rectangular face")
+_JAWS = ("a square jaw", "a soft rounded jaw", "a cleft chin", "a defined jawline")
+_CHEEKS = ("high cheekbones", "full cheeks", "wide cheekbones")
+_NOSES = ("a straight nose", "a slightly broad nose", "a nose with a slight bump", "a small nose", "a slightly crooked nose",
+          "a long straight nose", "a short nose")
+_EYES = ("deep-set eyes", "almond-shaped eyes", "slightly wide-set eyes", "warm eyes", "slightly downturned eyes")
+_BROWS = ("thick straight eyebrows", "thin eyebrows", "full eyebrows", "light eyebrows")
+_LIPS = ("thin lips", "full lips", "a wide mouth", "a small mouth")
+_EARS = ("ears that stick out a little", "small ears", "")
 _MARKS = ("", "", "", "a few freckles across the nose", "a small mole on one cheek",
           "a light sunburn across the nose", "a dimple in one cheek")
 _EXPRESSIONS = ("a calm neutral expression", "a faint confident smile", "a serious determined look", "a relaxed half smile",
-                "an intense focused stare", "a broad friendly grin", "a slightly shy expression")
+                "a focused look", "a friendly smile", "a slightly shy expression")
 # His character from the game's mental attributes: (attribute, high or low, expressions). A trait far
 # from the middle of the 1-20 scale is likelier to show; chance still plays a part.
 _CHARACTER = (
-    ("Aggression", True, ("a fierce glare", "a hard stare with a clenched jaw", "a combative scowl", "narrowed eyes and a tight mouth")),
+    ("Aggression", True, ("a hard, serious look", "a tough, no-nonsense expression", "a slight frown")),
     ("Flair", True, ("a cheeky grin", "a playful smirk with one eyebrow raised", "a mischievous half smile", "laughing eyes and a crooked smile")),
     ("Leadership", True, ("a commanding look with the chin slightly raised", "a proud, assured expression", "the calm authority of a captain")),
     ("Composure", True, ("a cool, unruffled half smile", "a relaxed, composed expression", "calm, heavy-lidded confidence")),
     ("Determination", True, ("a steely, determined stare", "a set jaw and focused eyes", "a hungry, driven look")),
     ("Teamwork", True, ("a warm, open smile", "a friendly smile that reaches the eyes", "an easy-going grin")),
     ("Work Rate", True, ("an earnest, eager expression", "a no-nonsense look", "a tired but satisfied smile")),
-    ("Bravery", True, ("a fearless, direct look", "a defiant stare", "a steady, unflinching look")),
+    ("Bravery", True, ("a fearless, direct look", "a direct, confident look", "a steady, unflinching look")),
     ("Composure", False, ("a slightly nervous expression", "a guarded, uncertain look", "a tense half smile")),
     ("Aggression", False, ("a gentle, soft-eyed expression", "a mild, polite smile")),
 )
 _YOUNG_EXPRESSIONS = ("a boyish grin", "a shy smile", "a wide-eyed, eager expression", "a slightly awkward smile")
 _VETERAN_EXPRESSIONS = ("a wry, knowing smile", "a world-weary look", "the relaxed smile of a veteran")
-_SMILES = ("", "", "smiling with teeth showing", "a closed-mouth smile", "crow's feet at the corners of the eyes")
+FACE_FEATURES = 3  # of face, jaw, cheeks, nose, eyes, brows, lips, ears and marks, at random for each player
+# Photo words: "sharp eyes, realistic skin texture" and "not a generic model face" gave over-processed skin and exaggerated faces.
+_PHOTO = ("natural proportions, natural skin, shallow depth of field, candid editorial sports photography, "
+          "no text, no logos, no badges")
 
 
 def expression(facts: PortraitFacts, rng: random.Random) -> str:
@@ -235,7 +235,7 @@ def expression(facts: PortraitFacts, rng: random.Random) -> str:
     elif age >= 32:
         choices.append((2.5, _VETERAN_EXPRESSIONS))
     faces = rng.choices([faces for _, faces in choices], [weight for weight, _ in choices])[0]
-    return ", ".join(part for part in (rng.choice(faces), rng.choice(_SMILES)) if part)
+    return rng.choice(faces)  # one expression: a second ("smiling with teeth showing") fought a "steely stare"
 _EYE_COLOURS = {"light": ("blue", "grey", "green", "hazel", "light brown", "brown"), "dark": ("dark brown", "brown", "very dark brown", "hazel")}
 _HAIR_TEXTURES = {  # by the save's ethnicity code: texture weights
     0: {"straight": 6, "wavy": 3, "curly": 1}, 1: {"straight": 4, "wavy": 4, "curly": 2}, 2: {"wavy": 4, "curly": 4, "straight": 2},
@@ -282,9 +282,11 @@ def _weighted(rng: random.Random, weights: dict[str, int]) -> str:
 
 def appearance(facts: PortraitFacts, rng: random.Random) -> list[str]:
     """A face, hair, facial hair, build and expression for one player: varied, believable for his age and background."""
-    look = [rng.choice(_FACES), rng.choice(_JAWS), rng.choice(_CHEEKS), rng.choice(_NOSES),
-            f"{rng.choice(_EYES)} ({rng.choice(_EYE_COLOURS['light' if _light(facts) else 'dark'])})", rng.choice(_BROWS),
-            rng.choice(_LIPS), rng.choice(_EARS), rng.choice(_MARKS)]
+    # A few features, not all nine: given every one, FLUX draws each strongly and the face becomes a caricature (10 Nov 2026).
+    features = [rng.choice(_FACES), rng.choice(_JAWS), rng.choice(_CHEEKS), rng.choice(_NOSES), rng.choice(_EYES),
+                rng.choice(_BROWS), rng.choice(_LIPS), rng.choice(_EARS), rng.choice(_MARKS)]
+    look = rng.sample([part for part in features if part], FACE_FEATURES)
+    look.append(f"{rng.choice(_EYE_COLOURS['light' if _light(facts) else 'dark'])} eyes")
     age = facts.age or 25
     length = fm_save.HAIR_LENGTHS.get(facts.hair_length) or rng.choice(
         ("short", "short", "medium", "long") if age < 40 else ("short", "short", "short", "medium", "bald") if age < 55 else ("short", "short", "bald"))
@@ -374,13 +376,11 @@ def build_staff_prompt(facts: PortraitFacts, rng: random.Random | None = None) -
     return ", ".join([
         "Photorealistic professional sports press photograph of a football club staff member",
         *who, *looks, *appearance(facts, rng),
-        "a distinctive individual face, not a generic model face",
         rng.choice(outfits).format(club=club),
         rng.choice(places),
         rng.choice(_LIGHTS),
         "chest-up framing, the head in the upper middle of the frame and fully visible with a margin above the hair, body slightly "
-        "turned with the face towards the camera, natural relaxed pose, shallow depth of field, sharp eyes, "
-        "realistic skin texture, editorial sports photography, no text, no logos, no badges",
+        "turned with the face towards the camera, natural relaxed pose, " + _PHOTO,
     ])
 
 
@@ -411,13 +411,11 @@ def build_prompt(facts: PortraitFacts, rng: random.Random | None = None) -> str:
             *who,
             *looks,
             *appearance(facts, rng),
-            "a distinctive individual face, not a generic model face",
             rng.choice(_PLAYER_OUTFITS).format(club=club),
             rng.choice(_PLAYER_PLACES),
             rng.choice(_LIGHTS),
             "chest-up framing, the head in the upper middle of the frame and fully visible with a margin above the hair, body "
-            "slightly turned with the face towards the camera, natural relaxed pose, shallow depth of field, sharp eyes, "
-            "realistic skin texture, editorial sports photography, no text, no logos, no badges",
+            "slightly turned with the face towards the camera, natural relaxed pose, " + _PHOTO,
         ]
     )
 
@@ -641,6 +639,42 @@ def save_portrait(uid: int, png: bytes, faces_dir: Path = FACES_DIR) -> Path:
             cut.save(game_folder / f"{uid}.png", optimize=True)
             write_face_config(game_folder)
     return archive_copy
+
+
+def own_picture(data: bytes) -> bytes:
+    """A picture the user made elsewhere (PNG, JPEG, WebP, any size), as a square PNG for ``save_portrait``: a
+    transparent one is put on grey first, and a tall or wide one is cropped square round the face (the top centre
+    without one), so it is not squashed into the game's square frame."""
+    from PIL import Image, UnidentifiedImageError
+
+    try:
+        image = Image.open(io.BytesIO(data))
+        image.load()
+    except (UnidentifiedImageError, OSError) as exc:
+        raise PortraitError("That file is not a picture (use PNG, JPEG or WebP).") from exc
+    if image.mode in ("RGBA", "LA", "P"):
+        image = image.convert("RGBA")
+        grey = Image.new("RGBA", image.size, (128, 128, 128, 255))
+        image = Image.alpha_composite(grey, image)
+    image = image.convert("RGB")
+    width, height = image.size
+    if width != height:
+        side = min(width, height)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        face = face_box(buffer.getvalue())
+        centre_x, centre_y = (face[0] + face[2] / 2, face[1] + face[3] / 2) if face else (width / 2, side / 2)
+        left = min(max(round(centre_x - side / 2), 0), width - side)
+        top = min(max(round(centre_y - side / 2), 0), height - side)
+        image = image.crop((left, top, left + side, top + side))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def use_own_picture(uid: int, data: bytes, faces_dir: Path = FACES_DIR) -> Path:
+    """The user's own picture as his picture: kept in the archive and cut out (transparent) into the game's face pack."""
+    return save_portrait(uid, own_picture(data), faces_dir)
 
 
 def face_backup_path(face: Path, faces_dir: Path | None = None) -> Path:
@@ -921,7 +955,7 @@ def age_up_prompt(facts: PortraitFacts, rng: random.Random | None = None) -> str
         age, clothes,
         f"replace the background: photograph him {rng.choice(_AGE_UP_PLACES)}, in {rng.choice(_LIGHTS)}",
         "keep the camera distance of the picture: head and shoulders with the upper chest, the head about a quarter of the frame's "
-        "height, a clear margin above the hair, the face towards the camera, photorealistic sports portrait, shallow depth of field, sharp eyes, realistic skin texture, no text, no logos",
+        "height, a clear margin above the hair, the face towards the camera, photorealistic sports portrait, natural skin, shallow depth of field, no text, no logos",
     ])
 
 

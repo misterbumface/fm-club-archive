@@ -295,6 +295,24 @@ def generate_picture(uid: int):
     return redirect(url_for("world.person", uid=uid))
 
 
+@world_bp.post("/people/<int:uid>/own-picture")
+def own_picture(uid: int):
+    """Replace his picture with one the user made: kept in the archive, cut out and put in the game's face pack."""
+    upload = request.files.get("picture")
+    data = upload.read() if upload else b""
+    if not data:
+        flash("Choose a picture first.", "error")
+        return redirect(url_for("world.person", uid=uid))
+    try:
+        world_portraits.use_own_picture(uid, data)
+    except world_portraits.PortraitError as exc:
+        flash(f"No picture: {exc}", "error")
+    else:
+        flash("Your picture is now his picture. In the game, clear the cache and reload the skin to see it.", "success")
+    _forget_pictures()
+    return redirect(url_for("world.person", uid=uid))
+
+
 @world_bp.post("/people/<int:uid>/age-up")
 def age_up_picture(uid: int):
     """His picture brought up to date (his age now, his club's shirt now), made in the background from the current one."""

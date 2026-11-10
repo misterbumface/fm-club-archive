@@ -560,3 +560,19 @@ def test_the_person_page_shows_the_hidden_traits_as_character(pages, small_world
     assert "Important Matches" not in person  # the numbers are for the writers, not the page
     assert character_words({"Temperament": 4, "Versatility": 19, "Controversy": 9}) == ["a short fuse", "plays anywhere he is asked"]
     assert character_words(None) == [] and character_words({"Ambition": 12}) == []
+
+
+def test_the_user_can_give_a_player_their_own_picture(pages, monkeypatch):
+    import io
+
+    from app.services import world_portraits
+
+    given = []
+    monkeypatch.setattr(world_portraits, "use_own_picture", lambda uid, data: given.append((uid, data)))
+    monkeypatch.setattr(world_routes, "_forget_pictures", lambda: None)  # no real face pack in a test
+    assert "Use my picture" in pages.get(f"/people/{MYERS}").get_data(as_text=True)
+    answer = pages.post(f"/people/{MYERS}/own-picture", data={"picture": (io.BytesIO(b"png"), "me.png")},
+                        content_type="multipart/form-data", follow_redirects=True).get_data(as_text=True)
+    assert given == [(MYERS, b"png")] and "Your picture is now his picture" in answer
+    answer = pages.post(f"/people/{MYERS}/own-picture", data={}, content_type="multipart/form-data", follow_redirects=True)
+    assert "Choose a picture first" in answer.get_data(as_text=True) and len(given) == 1

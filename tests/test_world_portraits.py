@@ -117,6 +117,16 @@ def test_each_player_has_his_own_look_and_keeps_it():
     assert wp.build_prompt(_facts(), random.Random(7)) != wp.build_prompt(_facts(), random.Random(8))  # "New picture"
 
 
+def test_a_face_gets_a_few_features_not_all_of_them():
+    """FLUX drew all nine features strongly and the faces became caricatures (10 Nov 2026)."""
+    features = set(wp._FACES + wp._JAWS + wp._CHEEKS + wp._NOSES + wp._EYES + wp._BROWS + wp._LIPS + wp._EARS + wp._MARKS) - {""}
+    for seed in range(40):
+        look = wp.appearance(_facts(), random.Random(seed))
+        assert sum(part in features for part in look) == wp.FACE_FEATURES
+    prompt = wp.build_prompt(_facts())
+    assert "not a generic model face" not in prompt and "realistic skin texture" not in prompt
+
+
 def test_the_look_fits_age_hair_length_and_build():
     for seed in range(60):
         teen = ", ".join(wp.appearance(_facts(age=17), random.Random(seed)))
@@ -264,3 +274,24 @@ def test_age_up_keeps_the_face_and_changes_age_and_shirt():
     staff = wp.age_up_prompt(_facts(age=50, club=None, job="Manager", job_team="Reading"))
     assert "manager of Reading" in staff and "in his fifties" in staff and "match shirt" not in staff
     assert "keep his shirt" in wp.age_up_prompt(_facts(age=None, club=None)) and "keep his age" in wp.age_up_prompt(_facts(age=None, club=None))
+
+
+def test_an_own_picture_is_made_square_and_loses_its_transparency(monkeypatch):
+    import io
+
+    from PIL import Image
+
+    monkeypatch.setattr(wp, "face_box", lambda png: None)
+    wide = io.BytesIO()
+    Image.new("RGBA", (1600, 900), (0, 0, 0, 0)).save(wide, format="PNG")
+    square = Image.open(io.BytesIO(wp.own_picture(wide.getvalue())))
+    assert square.size == (900, 900) and square.mode == "RGB" and square.getpixel((10, 10)) == (128, 128, 128)
+    tall = io.BytesIO()
+    Image.new("RGB", (600, 1000), "white").save(tall, format="JPEG")
+    assert Image.open(io.BytesIO(wp.own_picture(tall.getvalue()))).size == (600, 600)
+    try:
+        wp.own_picture(b"not a picture")
+    except wp.PortraitError:
+        pass
+    else:
+        raise AssertionError("a non-picture must be refused")

@@ -14,6 +14,9 @@
       {% if picture %}<form class="inline" method="post" action="{{ url_for('world.age_up_picture', uid=p.fm_uid) }}">
         <button class="btn" type="submit" {{ 'disabled' if age_job and not age_job.startswith('Done') }}
                 title="The same face at his age now, in the shirt of his club now, with the editing model">Age up / change shirt</button></form>{% endif %}
+      <form class="inline" method="post" enctype="multipart/form-data" action="{{ url_for('world.own_picture', uid=p.fm_uid) }}">
+        <label class="btn" title="A picture you made elsewhere: it is cut out (transparent) and put in the game">Use my picture…
+          <input type="file" name="picture" accept="image/png,image/jpeg,image/webp" hidden onchange="this.form.submit()"></label></form>
     </div>
     {% if age_job %}<p class="muted">{{ age_job }}</p>
     {% if not age_job.startswith('Done') %}<script>setTimeout(() => location.reload(), 10000);  // show the picture when it is made</script>{% endif %}{% endif %}
