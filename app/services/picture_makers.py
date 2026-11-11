@@ -28,6 +28,7 @@ OPENAI_MODEL_KEY, OPENAI_QUALITY_KEY = "openai_image_model", "openai_image_quali
 # models, only the one selected in the app (/sdapi/v1/options), so the page offers the defaults and every model it has
 # seen selected there. An empty illustration model means "the one selected in Draw Things".
 DT_SECOND_ADDRESS_KEY, DT_ON_SECOND_KEY = "draw_things_second_address", "draw_things_on_second"
+DT_GRPC_KEY = "draw_things_grpc"  # "1": Draw Things' gRPC API (reference pictures for edits), else its HTTP API
 DT_ILLUSTRATION_KEY, DT_PORTRAIT_KEY, DT_EDIT_KEY, DT_SEEN_KEY = ("draw_things_illustration_model", "draw_things_portrait_model",
                                                                   "draw_things_edit_model", "draw_things_seen_models")
 MAKERS = {"draw_things": "Draw Things", "invoke": "InvokeAI (server)", "wavespeed": "WaveSpeed (API)", "openai": "OpenAI (API)"}
@@ -119,15 +120,22 @@ def draw_things_url() -> str:
     return draw_things_second_address() if draw_things_on_second() else world_portraits.DRAW_THINGS_URL
 
 
-def set_draw_things_server(address: str | None, on_second: bool) -> None:
-    """The second server's address (empty: none) and whether the pictures are drawn on it."""
+def draw_things_grpc() -> bool:
+    """Whether Draw Things is reached through its gRPC API: the address then names its gRPC port (https:// with TLS)."""
+    return _app_setting(DT_GRPC_KEY, "") == "1"
+
+
+def set_draw_things_server(address: str | None, on_second: bool, grpc: bool | None = None) -> None:
+    """The second server's address (empty: none), whether the pictures are drawn on it, and HTTP or gRPC."""
     address = (address or "").strip().rstrip("/")
     if address and not re.fullmatch(r"https?://[^\s/]+(:\d+)?", address):
-        raise ValueError("A Draw Things address looks like http://192.168.1.20:7860.")
+        raise ValueError("A Draw Things address looks like http://192.168.1.20:7860 (or https://192.168.1.20:7859 for gRPC with TLS).")
     if on_second and not address:
         raise ValueError("Enter the second Draw Things address before you choose it.")
     _set(DT_SECOND_ADDRESS_KEY, address)
     _set(DT_ON_SECOND_KEY, "1" if on_second else "")
+    if grpc is not None:
+        _set(DT_GRPC_KEY, "1" if grpc else "")
 
 
 def draw_things_illustration_model() -> str | None:
@@ -143,7 +151,9 @@ def draw_things_edit_model() -> str:
 
 
 def draw_things_selected() -> str | None:
-    """The model selected in the Draw Things app now, or None when it does not answer."""
+    """The model selected in the Draw Things app now, or None when it does not answer (gRPC does not say: None)."""
+    if draw_things_grpc():
+        return None
     try:
         with urllib.request.urlopen(f"{draw_things_url()}/sdapi/v1/options", timeout=3) as response:
             return json.load(response).get("model") or None

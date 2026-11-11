@@ -179,7 +179,8 @@
         </div>
         <div class="archive-fields">
             <label>Draw Things server <small>which one draws the pictures</small><select name="dt_server"><option value="this_mac" {{ 'selected' if not dt_on_second }}>This Mac</option><option value="second" {{ 'selected' if dt_on_second }}>Second address</option></select></label>
-            <label>Second Draw Things address <small>another machine on your network, with its API server on (HTTP)</small><input type="text" name="dt_second_address" value="{{ dt_second_address }}" placeholder="http://192.168.1.20:7860" autocomplete="off"></label>
+            <label>Second Draw Things address <small>another machine on your network, with its API server on; for gRPC its gRPC port, https:// with TLS</small><input type="text" name="dt_second_address" value="{{ dt_second_address }}" placeholder="http://192.168.1.20:7860" autocomplete="off"></label>
+            <label>Draw Things API <small>gRPC sends reference pictures, so edits keep the face; set the same in Draw Things' API server</small><select name="dt_protocol"><option value="http" {{ 'selected' if not dt_grpc }}>HTTP</option><option value="grpc" {{ 'selected' if dt_grpc }}>gRPC</option></select></label>
             <label>Draw Things illustration model <small>empty: the one selected in Draw Things</small><input type="text" name="dt_illustration" value="{{ dt_illustration }}" list="draw-things-models" autocomplete="off" placeholder="{{ dt_selected or 'as selected in Draw Things' }}"></label>
             <label>Draw Things portrait model <small>player portraits</small><input type="text" name="dt_portrait" value="{{ dt_portrait }}" list="draw-things-models" autocomplete="off"></label>
             <label>Draw Things edit model <small>action photos</small><input type="text" name="dt_edit" value="{{ dt_edit }}" list="draw-things-models" autocomplete="off"></label>

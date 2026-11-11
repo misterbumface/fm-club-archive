@@ -496,11 +496,25 @@ def _draw_things_url() -> str:
     return picture_makers.draw_things_url()
 
 
+def _grpc() -> bool:
+    from app.services import picture_makers
+
+    return picture_makers.draw_things_grpc()
+
+
 def draw(prompt: str, seed: int, url: str | None = None, timeout: int = 600, width: int = 1024, height: int = 1024,
          model: str | None = PORTRAIT_MODEL, negative: str | None = NEGATIVE_PROMPT) -> bytes:
     """One image from Draw Things (1024 x 1024 unless given), as PNG bytes. With ``model`` None the model selected in Draw
     Things draws it; its other settings (steps, guidance, sampler) stay as the user set them there."""
     url = url or _draw_things_url()
+    if _grpc():
+        from app.services import draw_things_grpc, picture_makers
+
+        try:
+            return draw_things_grpc.generate(url, prompt, model or picture_makers.draw_things_portrait_model(), seed, width, height,
+                                             negative=negative or "", timeout=timeout)
+        except draw_things_grpc.DrawThingsError as exc:
+            raise PortraitError(str(exc)) from exc
     request = {"prompt": prompt, "seed": seed % 2_147_483_647, "width": width, "height": height}
     if model:
         request["model"] = model
@@ -513,6 +527,13 @@ def draw_edit(prompt: str, reference: bytes, seed: int, url: str | None = None, 
               width: int = 1024, height: int = 1024) -> bytes:
     """A new picture from a reference picture and an instruction, with the editing model (the face is kept)."""
     url = url or _draw_things_url()
+    if _grpc():
+        from app.services import draw_things_grpc
+
+        try:
+            return draw_things_grpc.edit(url, prompt, model, reference, seed, width, height, negative=NEGATIVE_PROMPT, timeout=timeout)
+        except draw_things_grpc.DrawThingsError as exc:
+            raise PortraitError(str(exc)) from exc
     body = json.dumps({"prompt": prompt, "negative_prompt": NEGATIVE_PROMPT, "init_images": [base64.b64encode(reference).decode()],
                        "model": model, "steps": EDIT_STEPS, "strength": 1.0, "seed": seed % 2_147_483_647,
                        "width": width, "height": height}).encode()

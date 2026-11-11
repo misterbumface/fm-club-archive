@@ -112,8 +112,10 @@ _VIEWS = ("35mm lens, close to the action", "telephoto lens from the stands", "w
 
 def drawing_online() -> bool:
     """True when Draw Things answers on its API port."""
-    from app.services import picture_makers
+    from app.services import draw_things_grpc, picture_makers
 
+    if picture_makers.draw_things_grpc():
+        return draw_things_grpc.online(picture_makers.draw_things_url())
     try:
         with urllib.request.urlopen(f"{picture_makers.draw_things_url()}/sdapi/v1/options", timeout=3):
             return True

@@ -311,6 +311,30 @@ def test_a_second_draw_things_address_is_saved_and_draws_when_chosen(settings_ap
         picture_makers.set_draw_things_server("", True)
 
 
+def test_draw_things_over_grpc_sends_the_reference_where_the_model_reads_it(settings_app, monkeypatch):
+    """11 Nov 2026: over HTTP FLUX.3 drew a new man for an age-up; gRPC sends Kontext its canvas, the others a moodboard."""
+    from app.services import draw_things_grpc, picture_makers, world_portraits
+
+    sent = []
+    monkeypatch.setattr(draw_things_grpc, "generate", lambda url, prompt, model, seed, width=1024, height=1024, **kw:
+                        (sent.append((url, model, sorted(k for k, v in kw.items() if v and k in ("image", "references")))), b"png")[1])
+    client = settings_app.test_client()
+    client.post("/settings/pictures", data={"picture_maker": "draw_things", "dt_second_address": "https://192.168.1.20:7859",
+                                            "dt_server": "second", "dt_protocol": "grpc"})
+    assert picture_makers.draw_things_grpc() and picture_makers.draw_things_url() == "https://192.168.1.20:7859"
+    assert '<option value="grpc" selected>' in client.get("/settings/").data.decode()
+    world_portraits.draw("a face", 1, model="flux_3_klein_i8x.ckpt")
+    world_portraits.draw_edit("older", b"face", 1, model="flux_1_kontext_dev_q5p.ckpt")
+    world_portraits.draw_edit("older", b"face", 1, model="flux_3_klein_i8x.ckpt")
+    assert sent == [("https://192.168.1.20:7859", "flux_3_klein_i8x.ckpt", []),
+                    ("https://192.168.1.20:7859", "flux_1_kontext_dev_q5p.ckpt", ["image"]),
+                    ("https://192.168.1.20:7859", "flux_3_klein_i8x.ckpt", ["references"])]
+    assert draw_things_grpc.settings_for("flux_1_kontext_dev_q5p.ckpt")["steps"] == 20 and draw_things_grpc.settings_for("flux_3_klein_i8x.ckpt")["steps"] == 8
+    client.post("/settings/pictures", data={"picture_maker": "draw_things", "dt_second_address": "https://192.168.1.20:7859",
+                                            "dt_server": "second", "dt_protocol": "http"})
+    assert not picture_makers.draw_things_grpc()
+
+
 def test_an_omlx_server_is_a_second_local_writer(settings_app):
     """10 Nov 2026: oMLX on a machine of the home network, beside LM Studio, at its own address (never in the code)."""
     from app.services import ai_settings
