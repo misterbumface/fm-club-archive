@@ -157,6 +157,7 @@ class _SaveReader:
         self._write_national_squads(connection)
         self._write_point_deductions(connection)
         self._write_transfers(connection)
+        self._check_current_teams(connection)
         self._clear_retired_teams(connection, save_id)
         self._drop_unconfirmed_names(connection)
         self._write_competition_facts(connection)
@@ -297,6 +298,52 @@ class _SaveReader:
         result = connection.execute(text(f"delete from people where as_of <= :d and fm_uid in (select uid from nameless) {used}"),
                                     {"d": self.game_date})
         self.counts["people without a confirmed name (removed)"] += result.rowcount
+
+    def _check_current_teams(self, connection: Connection) -> None:
+        """A player's club from the save's team history, checked against what the archive knows. The history's newest
+        entry is not always a team number: for some players it holds the club's uid, and Monaghan United's uid, 595, is
+        Middlesbrough's team number, so half of Monaghan's squad showed as Middlesbrough players (11 Nov 2026). The club
+        stands when it agrees with the player's latest league season or latest transfer (by club: a reserve team agrees
+        with its first team). Otherwise: the club of a permanent move made since that season, or, with none, the club of
+        that season (the team he played most for; a season without games does not count)."""
+        club_of = dict(connection.execute(text("select fm_uid, coalesce(club_uid, fm_uid) from teams")).all())
+        players = dict(connection.execute(text(
+            "select fm_uid, team_uid from people where as_of = :today and staff_job is null and team_uid is not null"),
+            {"today": self.game_date}).all())
+        if not players:
+            return
+        latest_season: dict[int, tuple[int, list[int]]] = {}
+        for person, season, team, games in connection.execute(text(
+                "select ps.person_uid, ps.season_start, ps.team_uid, sum(ps.starts + ps.substitute_appearances) from player_seasons ps "
+                "join (select person_uid, max(season_start) season from player_seasons where kind = 1 and team_uid is not null "
+                "and starts + substitute_appearances > 0 group by person_uid) m on m.person_uid = ps.person_uid and m.season = ps.season_start "
+                "where ps.kind = 1 and ps.team_uid is not null group by ps.person_uid, ps.season_start, ps.team_uid having 4 > 0 "
+                "order by 4 desc")):
+            latest_season.setdefault(person, (season, []))[1].append(team)
+        latest_move = {person: (day, kind, to, source) for person, day, kind, to, source in connection.execute(text(
+            "select t.person_uid, t.date, t.kind, t.to_uid, t.from_uid from transfers t join (select person_uid, max(date) day from transfers "
+            "group by person_uid) m on m.person_uid = t.person_uid and m.day = t.date"))}
+        changes = []
+        for person, team in players.items():
+            club = club_of.get(team, team)
+            season = latest_season.get(person)
+            move = latest_move.get(person)
+            if season and club in {club_of.get(t, t) for t in season[1]}:
+                continue
+            if move and move[2] and club == club_of.get(move[2], move[2]):
+                continue
+            if move and move[1] == fm_save.LOAN and club == club_of.get(move[3], move[3]):
+                continue  # back from a loan: the save keeps no row for a loan's end (Verlhac, Chelsea's, loaned to Walsall in 2062)
+            season_began = date(season[0], 7, 1) - timedelta(days=200) if season else None  # a calendar-year league starts in spring
+            if move and move[1] != fm_save.LOAN and (season_began is None or date.fromisoformat(str(move[0])[:10]) >= season_began):
+                if move[2] and move[2] in club_of:
+                    changes.append({"uid": person, "team": move[2]})
+                continue
+            if season:
+                changes.append({"uid": person, "team": season[1][0]})
+        if changes:
+            connection.execute(text("update people set team_uid = :team where fm_uid = :uid"), changes)
+        self.counts["players whose club was corrected (the team history disagreed)"] += len(changes)
 
     def _clear_retired_teams(self, connection: Connection, save_id: int) -> None:
         """A retired player's record keeps the last club. A person still plays when this save

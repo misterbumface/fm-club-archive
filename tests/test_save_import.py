@@ -444,3 +444,45 @@ def test_a_national_squad_keeps_one_row_a_player_with_his_role():
     rows = national_squad_rows([fm_save.NationalSquad(765, (1, 2, 3), 2, 3)], day)
     assert sorted((r["person_uid"], r["role"]) for r in rows) == [(1, None), (2, "captain"), (3, "vice-captain")]
     assert {r["as_of"] for r in rows} == {day} and {r["team_uid"] for r in rows} == {765}
+
+
+def test_a_players_club_from_the_team_history_is_checked_against_his_seasons_and_moves(world_connection):
+    """Monaghan United's uid, 595, is Middlesbrough's team number: half of Monaghan's squad showed as Middlesbrough
+    players (11 Nov 2026). Chelsea's loanees, whose loans ended with no row, stay at Chelsea."""
+    today = date(2064, 5, 7)
+    teams = {595: "Monaghan United", 685: "Middlesbrough", 630: "Chelsea", 700: "Walsall", 800: "Ilkeston Town", 801: "Preston"}
+    world_connection.execute(world.WorldClub.__table__.insert(), [{"fm_uid": u, "name": n, "short_name": n, "as_of": today} for u, n in teams.items()])
+    world_connection.execute(world.WorldTeam.__table__.insert(), [{"fm_uid": u, "club_uid": u, "name": n, "age_limit": None, "as_of": today}
+                                                                  for u, n in teams.items()])
+    people = world.WorldPerson.__table__
+    world_connection.execute(people.insert(), [
+        {**_person(1, "Michael Gibson", today), "team_uid": 685},  # Monaghan's player, read as Middlesbrough
+        {**_person(2, "Thomas Verlhac", today), "team_uid": 630},  # back at Chelsea from a loan to Walsall
+        {**_person(3, "James Ingham", today), "team_uid": 801},  # left Preston, has played for Ilkeston since
+        {**_person(4, "A Chelsea regular", today), "team_uid": 630},
+        {**_person(5, "Moved in January", today), "team_uid": 685},  # the history wrong, a free transfer since his season
+    ])
+
+    def season(person, team, year, games):
+        return {"person_uid": person, "team_uid": team, "season_start": year, "kind": 1, "seq": 0, "league_uid": None, "starts": games,
+                "substitute_appearances": 0, "rated_appearances": games, "goals": 0, "assists": 0, "player_of_match": 0, "goals_conceded": 0,
+                "clean_sheets": 0, "yellow_cards": 0, "red_cards": 0, "minutes": 90 * games, "rating_total": 0, "as_of": today}
+
+    world_connection.execute(world.WorldPlayerSeason.__table__.insert(), [
+        season(1, 595, 2063, 26), season(1, 595, 2064, 0),  # a season begun without games does not count
+        season(2, 700, 2063, 0), season(2, 630, 2062, 3),
+        season(3, 800, 2062, 32), season(4, 630, 2063, 30), season(5, 595, 2063, 10)])
+
+    def move(person, day, kind, source, to):
+        return {"person_uid": person, "date": day, "kind": kind, "from_uid": source, "to_uid": to, "fee": 0, "fee_with_add_ons": 0}
+
+    world_connection.execute(world.WorldTransfer.__table__.insert(), [
+        move(1, date(2059, 7, 19), 4, 0, 595), move(2, date(2062, 8, 4), 3, 630, 700), move(3, date(2062, 1, 4), 4, 0, 800),
+        move(5, date(2064, 1, 3), 4, 595, 700)])
+    reader = _FakeReader(today, [], {})
+
+    reader._check_current_teams(world_connection)
+
+    clubs = dict(world_connection.execute(select(people.c.fm_uid, people.c.team_uid)).all())
+    assert clubs == {1: 595, 2: 630, 3: 800, 4: 630, 5: 700}
+    assert reader.counts["players whose club was corrected (the team history disagreed)"] == 3
