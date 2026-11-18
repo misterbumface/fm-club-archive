@@ -338,6 +338,16 @@ def test_two_weeks_before_a_tournament_each_group_and_the_field_get_a_preview(sm
     assert field.facts["sides"] == 4 and field.slug == "1301388:2063" and all("tournament" in x.beats for x in leads)
 
 
+def test_a_squad_is_rated_by_its_best_eleven_in_words():
+    """18 Nov 2026: a journalist knows which squads are monsters; the papers rank the field by the squads called up."""
+    from app.services import tournament_leads as tl
+
+    squad = [{"current_ability": a} for a in [190] * 11 + [100] * 12]
+    assert tl.squad_strength(squad) == 190 and tl.squad_class(190).startswith("a monster")
+    assert tl.squad_strength(squad[:10]) is None and tl.squad_class(None) is None  # too few known: the reputation decides
+    assert tl.squad_class(150) == "a decent squad" and tl.squad_class(120) == "a modest squad"
+
+
 def test_the_followed_clubs_every_game_gets_a_report_and_a_preview_for_its_own_paper(small_world):
     _season(small_world)
     with small_world.begin() as c:

@@ -373,7 +373,8 @@ def tournament(c: Connection, uid: int) -> dict | None:
         row["team"] = names.get(row["team_uid"], {})
     label = q.season_label(int(start[:4])) if not start.endswith("-01-01") else start[:4]
     return {"uid": uid, "name": comp["name"], "label": label, "groups": groups, "knockout": list(reversed(knockout)),
-            "recent": _games(c, now["recent"]), "upcoming": _games(c, now["upcoming"]), "scorers": scorers}
+            "recent": _games(c, [f for f in now["recent"] if start <= str(f["date"])[:10] <= end]),  # not the last edition's final
+            "upcoming": _games(c, [f for f in now["upcoming"] if start <= str(f["date"])[:10] <= end]), "scorers": scorers}
 
 
 SCORE_DAYS_BACK = 320  # the day pages reach back this far (a season); each day is one page of the export

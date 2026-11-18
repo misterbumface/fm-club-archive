@@ -281,11 +281,11 @@ def _slot(place: int, group: str) -> str:
     return {1: f"the winner of {group}", 2: f"the runner-up of {group}"}.get(place, "a third-placed side")
 
 
-def past_bracket(w, t: dict, groups: list[tuple[str, list[dict]]]) -> list[str] | None:
+def past_bracket(w, t: dict, groups: list[tuple[str, list[dict]]], order=None) -> list[str] | None:
     """Who meets whom after the groups, read from the tournament's last editions (18 Nov 2026: "they can examine the bracket and
     they'll know who they could potentially face"): each pairing of the first knockout round, by group place, that the game used
     in at least BRACKET_SEEN of its last BRACKET_EDITIONS editions, with the sides that can fill each place now."""
-    now = {name: sorted({x for f in games for x in (f["home_uid"], f["away_uid"])}, key=lambda x: -(w.rep(x) or 0)) for name, games in groups}
+    now = {name: sorted({x for f in games for x in (f["home_uid"], f["away_uid"])}, key=order or (lambda x: -(w.rep(x) or 0))) for name, games in groups}
     seen, rounds_named, editions = Counter(), Counter(), 0
     for e in w.rows("select year, decided_on from competition_editions where competition_uid = :c and year < :y and decided_on is not null "
                     "order by year desc limit :n", c=t["uid"], y=t["year"], n=BRACKET_EDITIONS):
@@ -320,9 +320,24 @@ def past_bracket(w, t: dict, groups: list[tuple[str, list[dict]]]) -> list[str] 
     return [f"{named}: {who(a)} against {who(b)}, as in {n} of the last {editions} editions" for (a, b), n in sorted(seen.items()) if n >= BRACKET_SEEN] or None
 
 
+SQUAD_CORE = 11  # a squad's strength: the mean current ability of its best eleven
+SQUAD_CLASSES = ((180, "a monster of a squad, world class all through"), (168, "a very strong squad"), (156, "a strong squad"),
+                 (145, "a decent squad"), (0, "a modest squad"))  # what a journalist would say of it, never the numbers (18 Nov 2026)
+
+
+def squad_strength(squad: list[dict]) -> float | None:
+    """The mean current ability of the squad's best SQUAD_CORE players; None when fewer of them have one."""
+    abilities = sorted((p["current_ability"] for p in squad if p.get("current_ability")), reverse=True)[:SQUAD_CORE]
+    return sum(abilities) / len(abilities) if len(abilities) >= SQUAD_CORE else None
+
+
+def squad_class(strength: float | None) -> str | None:
+    return next(words for floor, words in SQUAD_CLASSES if strength >= floor) if strength is not None else None
+
+
 def _squad(w, team: int) -> list[dict]:
-    """The team's latest squad: each player's name, club and world reputation."""
-    return w.rows("select p.fm_uid, p.name, p.team_uid, p.reputation_world from national_squads n join people p on p.fm_uid = n.person_uid "
+    """The team's latest squad: each player's name, club, world reputation and current ability."""
+    return w.rows("select p.fm_uid, p.name, p.team_uid, p.reputation_world, p.current_ability from national_squads n join people p on p.fm_uid = n.person_uid "
                   "where n.team_uid = :t and n.as_of = (select max(as_of) from national_squads where team_uid = :t)", t=team)
 
 
@@ -335,14 +350,18 @@ def build_up(w, t: dict, weight: float, label: str) -> list:
     if not groups:
         return []
     teams = {x for _, games in groups for f in games for x in (f["home_uid"], f["away_uid"])}
-    ranked = sorted(teams, key=lambda x: -(w.rep(x) or 0))
-    rank = {team: i + 1 for i, team in enumerate(ranked)}
     squads = {team: _squad(w, team) for team in teams}
+    strength = {team: squad_strength(squads[team]) for team in teams}  # 18 Nov 2026: the squads called up, not the name, make the favourites
+    by_name = {team: i + 1 for i, team in enumerate(sorted(teams, key=lambda x: -(w.rep(x) or 0)))}
+    ranked = sorted(teams, key=lambda x: (strength[x] is None, -(strength[x] or 0), by_name[x]))
+    rank = {team: i + 1 for i, team in enumerate(ranked)}
     followed = {r["fm_uid"] for r in w.rows(f"select fm_uid from teams where club_uid in ({','.join(str(u) for u in w.followed_clubs) or '0'})")}
 
     def side(team: int) -> str:
         stars = sorted((p for p in squads[team] if p["reputation_world"]), key=lambda p: -p["reputation_world"])[:3]
-        return (f"{w.name(team)}: number {rank[team]} of {len(teams)} in the field by standing"
+        words = squad_class(strength[team])
+        return (f"{w.name(team)}: number {rank[team]} of {len(teams)} in the field on the squads called up"
+                + (f" ({words})" if words else "") + f", number {by_name[team]} by reputation"
                 + (f"; best known: {', '.join(p['name'] + ' (' + w.name(p['team_uid']) + ')' for p in stars)}" if stars else ""))
 
     def ours(members) -> list[str]:
@@ -355,7 +374,7 @@ def build_up(w, t: dict, weight: float, label: str) -> list:
     holders = w.rows("select p.team_uid from competition_editions e join edition_places p using (competition_uid, year) "
                      "where e.competition_uid = :c and p.place = 1 and e.year < :y order by e.year desc limit 1", c=t["uid"], y=t["year"])
     group_games = sum(len(games) for _, games in groups)
-    bracket = past_bracket(w, t, groups) if group_games >= t["games"] else None
+    bracket = past_bracket(w, t, groups, rank.get) if group_games >= t["games"] else None
     after = ("only the group games are set: who goes through is not known yet, and the knockout games have no dates; a possible "
              "opponent may be named only from the_likely_bracket, as a possibility") if group_games >= t["games"] else None  # 18 Nov 2026
     leads = []
@@ -363,7 +382,7 @@ def build_up(w, t: dict, weight: float, label: str) -> list:
         members = sorted({x for f in games for x in (f["home_uid"], f["away_uid"])}, key=lambda x: rank[x])
         death = name == hardest
         facts = {"tournament": label, "group": name, "first_game_of_the_tournament": str(t["first"]),
-                 "the_sides_by_standing": [side(x) for x in members],
+                 "the_sides_by_squad_strength": [side(x) for x in members],
                  "the_group_of_death": "the hardest group of the tournament: its third-best side is the strongest of any group's" if death else None,
                  "the_holders_are_in_it": w.name(holders[0]["team_uid"]) if holders and holders[0]["team_uid"] in members else None,
                  "our_clubs_players_in_the_squads": ours(members) or None,
@@ -378,7 +397,7 @@ def build_up(w, t: dict, weight: float, label: str) -> list:
                           | ({"home"} if facts["our_clubs_players_in_the_squads"] else set()), slug=f"{t['uid']}:{t['year']}:{name}"))
     stars = sorted((dict(p, nation=team) for team in teams for p in squads[team] if p["reputation_world"]), key=lambda p: -p["reputation_world"])[:STARS]
     facts = {"tournament": label, "first_game": str(t["first"]), "sides": len(teams),
-             "the_favourites_by_standing": [side(x) for x in ranked[:6]],
+             "the_favourites_by_squad_strength": [side(x) for x in ranked[:6]],
              "the_holders": w.name(holders[0]["team_uid"]) if holders else None,
              "the_groups": [f"{name}: {', '.join(w.name(x) for x in sorted({y for f in games for y in (f['home_uid'], f['away_uid'])}, key=lambda x: rank[x]))}"
                             for name, games in groups],

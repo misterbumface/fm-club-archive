@@ -325,12 +325,13 @@ KIND_NOTES = {
                                  "in the games of the cycle (minutes, goals, assists, rating) and so far, and their nations' next "
                                  "games. Write it for the club's readers. Report only what is given.",
     "tournament_group": "This is the preview of one group of a major international tournament before it starts: the sides by "
-                        "their standing in the field and their best-known players, the games and their dates, our clubs' players "
+                        "the strength of the squads they called up (and their reputation, which can differ: a big name with a thin squad "
+                        "or a strong squad without the name is a story) and their best-known players, the games and their dates, our clubs' players "
                         "in the squads, and, when the facts say so, why it is the group of death or that the holders are in it. "
-                        "Say who should go through and who could slip, from the standing given. Do not invent results, line-ups, "
+                        "Say who should go through and who could slip, from the squad strength given; describe a squad in words, never as a number. Do not invent results, line-ups, "
                         "injuries or quotes: no game has been played.",
     "tournament_field": "This is the big preview of a major international tournament before it starts: the favourites by "
-                        "standing, the holders, the groups and the group of death, the best-known players to watch, and our clubs' "
+                        "the strength of their squads (described in words, never as numbers), the holders, the groups and the group of death, the best-known players to watch, and our clubs' "
                         "players in the squads. Set the scene like the first page of a tournament special. No game has been "
                         "played: do not invent results, line-ups, injuries or quotes.",
     "player_of_the_tournament": "This is the piece after the final of a major international tournament: who won it and how, the "
