@@ -417,10 +417,13 @@ def test_a_world_cup_in_play_puts_the_site_in_tournament_mode(site, monkeypatch)
             assert (t["name"], t["label"], t["phase"], t["day"], t["played"], t["games"]) == ("World Cup", "2064", "in play", 2, 2, 4)
     pages = site.test_client()
     front = pages.get("/").data.decode()
-    assert 'class="hub"' in front and "World Cup 2064" in front and "Yesterday" in front and "Our players there" in front and "Júnior" in front
+    assert 'class="thub"' in front and "World Cup 2064" in front and "Yesterday" in front and "Our players there" in front and "Júnior" in front
     page = pages.get("/tournaments/1301385/world-cup").data.decode()
     assert "Day 2" in page and "Our players at the tournament" in page and "Spain" in page
-    monkeypatch.setattr(football, "today_of", lambda c: date(2064, 6, 1))  # eleven days before: not yet
+    monkeypatch.setattr(football, "today_of", lambda c: date(2064, 6, 1))  # eleven days before: the build-up, as the tournament paper
+    front = pages.get("/").data.decode()
+    assert "starts in 11 days" in front and "Opening day, 12 June" in front and "Yesterday" not in front
+    monkeypatch.setattr(football, "today_of", lambda c: date(2064, 5, 28))  # fifteen days before: not yet
     with site.app_context():
         with db.engines[world.BIND].connect() as c:
             assert football.major_tournament(c) is None

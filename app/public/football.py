@@ -331,10 +331,15 @@ def tournament(c: Connection, uid: int) -> dict | None:
     """A competition as it stands this season: its rounds from its games (groups or a league phase with their tables, the
     knockout rounds), the latest results, the next games and the top scorers."""
     comp = q.competition(c, uid)
-    latest = q._one(c, "select max(date) d from fixtures where competition_uid = :c and home_goals is not null", c=uid)
+    today = today_of(c)
+    latest = q._one(c, "select max(date) d from fixtures where competition_uid = :c and (home_goals is not null or date <= :soon)",
+                    c=uid, soon=str((today or date.min) + timedelta(days=TOURNAMENT_LEAD_DAYS)))  # an edition about to start, not the last one
     if comp is None or not latest or not latest["d"]:
         return None
-    start, end = q.league_window(c, uid, _season_of(date.fromisoformat(str(latest["d"])[:10])))
+    day = date.fromisoformat(str(latest["d"])[:10])
+    start, end = q.league_window(c, uid, _season_of(day))
+    if start.endswith("-01-01"):  # editions of one year (a June tournament): the year of the day, not July to June
+        start, end = q.league_window(c, uid, day.year)
     rows = q._rows(c, "select * from fixtures where competition_uid = :c and date between :s and :e order by date, id", c=uid, s=start, e=end)
     stages: dict[int, list[dict]] = {}
     for f in rows:
@@ -433,7 +438,7 @@ def top_results(c: Connection) -> dict | None:
 # -- a major international tournament in play: the site's tournament mode ---------------------------------------------------
 MAJOR_TOURNAMENTS = ("World Cup", "European Football Championship", "Copa América", "Africa Cup of Nations", "Asian Cup", "Gold Cup",
                      "Confederations Cup", "Nations League Finals")
-TOURNAMENT_LEAD_DAYS, TOURNAMENT_TAIL_DAYS = 7, 3  # the mode starts a week before the first game and ends three days after the final
+TOURNAMENT_LEAD_DAYS, TOURNAMENT_TAIL_DAYS = 14, 3  # the mode starts two weeks (as the tournament paper) before the first game and ends three days after the final
 
 
 def major_tournament(c: Connection) -> dict | None:
@@ -526,7 +531,24 @@ def tournament_hub(c: Connection) -> dict | None:
     start, end = str(t["first"]), str(t["last"])
     return {**t, "board": board, "today_games": by_day.get(str(today), []), "yesterday": by_day.get(str(today - timedelta(days=1)), []),
             "tomorrow": by_day.get(str(today + timedelta(days=1)), []), "ours": our_players_at(c, t["uid"], start, end),
-            "scorers": board["scorers"][:5], "round": _round_now(board, today)}
+            "scorers": board["scorers"][:5], "round": _round_now(board, today),
+            "called_up": our_called_up(c, t["uid"], start, end) if t["phase"] == "about to start" else [],
+            "opening": _games(c, q._rows(c, "select * from fixtures where competition_uid = :c and date = :d order by id",
+                                         c=t["uid"], d=str(t["first"]))) if t["phase"] == "about to start" else []}
+
+
+def our_called_up(c: Connection, uid: int, start: str, end: str) -> list[dict]:
+    """Before a tournament: the followed clubs' players in the finals squads (each nation's latest squad), with the nation."""
+    clubs = ",".join(str(int(u)) for u in followed()) or "0"
+    teams = {t for f in q._rows(c, "select home_uid, away_uid from fixtures where competition_uid = :c and date between :s and :e",
+                                c=uid, s=start, e=end) for t in (f["home_uid"], f["away_uid"])}
+    if not teams:
+        return []
+    rows = q._rows(c, f"select p.fm_uid, p.name, n.team_uid from national_squads n join people p on p.fm_uid = n.person_uid "
+                      f"join teams t on t.fm_uid = p.team_uid where t.club_uid in ({clubs}) and n.team_uid in ({','.join(map(str, teams))}) "
+                      f"and n.as_of = (select max(as_of) from national_squads s where s.team_uid = n.team_uid) order by p.name")
+    nations = q.teams(c, {r["team_uid"] for r in rows})
+    return [{**r, "nation": nations.get(r["team_uid"], {}), "crest": crest(nations.get(r["team_uid"]))} for r in rows]
 
 
 def _round_now(board: dict, today: date) -> str | None:

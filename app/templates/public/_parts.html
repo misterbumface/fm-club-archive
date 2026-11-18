@@ -79,17 +79,19 @@
 
 {# The front page's box for a major tournament in play. #}
 {% macro tournament_hub(hub) -%}
-<section class="hub">
-  <div class="hub-head"><h2><a href="{{ tournament_url(hub.uid, hub.name) }}">{{ hub.name }} {{ hub.label }}</a>
+<section class="thub">
+  <div class="thub-head"><h2><a href="{{ tournament_url(hub.uid, hub.name) }}">{{ hub.name }} {{ hub.label }}</a>
     <small>{% if hub.phase == 'about to start' %}starts in {{ hub.days_to_go }} day{{ 's' if hub.days_to_go != 1 }}{% elif hub.phase == 'over' %}the final was played{% else %}day {{ hub.day }}{% if hub.round %} · {{ hub.round }}{% endif %}{% endif %} · {{ hub.played }} of {{ hub.games }} games played</small></h2>
     <a href="{{ tournament_url(hub.uid, hub.name) }}">Tables, rounds and scorers ›</a></div>
-  <div class="hub-cols">
-    <div>{% if hub.today_games %}<h3>Today</h3><ul class="games">{% for g in hub.today_games %}{{ game(g) }}{% endfor %}</ul>{% endif %}
+  <div class="thub-cols">
+    <div>{% if hub.opening %}<h3>Opening day, {{ hub.first.strftime('%-d %B') }}</h3><ul class="games">{% for g in hub.opening %}{{ game(g) }}{% endfor %}</ul>{% endif %}
+      {% if hub.today_games %}<h3>Today</h3><ul class="games">{% for g in hub.today_games %}{{ game(g) }}{% endfor %}</ul>{% endif %}
       {% if hub.yesterday %}<h3>Yesterday</h3><ul class="games">{% for g in hub.yesterday %}{{ game(g) }}{% endfor %}</ul>{% endif %}
       {% if hub.tomorrow and not hub.today_games %}<h3>Tomorrow</h3><ul class="games">{% for g in hub.tomorrow %}{{ game(g) }}{% endfor %}</ul>{% endif %}</div>
-    <div>{% if hub.ours %}<h3>Our players there</h3>{{ ours_table(hub.ours, limit=8) }}{% endif %}</div>
+    <div>{% if hub.ours %}<h3>Our players there</h3>{{ ours_table(hub.ours, limit=8) }}
+      {% elif hub.called_up %}<h3>Our players in the squads</h3><table class="ours">{% for o in hub.called_up %}<tr><td><a href="{{ player_url(o.fm_uid, o.name) }}">{{ o.name }}</a></td><td style="white-space:nowrap">{% if o.crest %}<img class="crest" src="{{ o.crest }}" alt="" style="display:inline;vertical-align:middle;margin-right:6px">{% endif %}{{ o.nation.name or '' }}</td></tr>{% endfor %}</table>{% endif %}</div>
     <div>{% if hub.scorers %}<h3>Top scorers</h3><table class="ours">{% for s in hub.scorers %}<tr><td><a href="{{ player_url(s.scorer_uid, s.name) }}">{{ s.name or 'Unknown' }}</a> <span style="color:var(--muted)">{{ s.team.name or '' }}</span></td><td class="n"><b>{{ s.goals }}</b></td></tr>{% endfor %}</table>{% endif %}
-      {% if hub.board.groups %}<h3 style="margin-top:12px">Groups</h3><p style="margin:0;font-size:14px">{% for g in hub.board.groups %}<a href="{{ tournament_url(hub.uid, hub.name) }}#tables">{{ g.name }}</a>: {{ g.table[0].team.name }}{% if g.table|length > 1 %}, {{ g.table[1].team.name }}{% endif %}{{ '; ' if not loop.last }}{% endfor %}</p>{% endif %}</div>
+      {% if hub.board.groups %}<h3 style="margin-top:12px">{{ "Leaders" if hub.played else "Groups" }}</h3><p style="margin:0;font-size:14px">{% for g in hub.board.groups %}<a href="{{ tournament_url(hub.uid, hub.name) }}#tables">{{ g.name }}</a>: {% if hub.played %}{{ g.table[0].team.name }}{% if g.table|length > 1 %}, {{ g.table[1].team.name }}{% endif %}{% else %}{{ g.table|map(attribute='team')|map(attribute='name')|join(', ') }}{% endif %}{{ '; ' if not loop.last }}{% endfor %}</p>{% endif %}</div>
   </div>
 </section>
 {%- endmacro %}
