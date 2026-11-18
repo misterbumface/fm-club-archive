@@ -39,6 +39,9 @@ log = logging.getLogger(__name__)
 
 FIRST_WINDOW_DAYS = 98  # the first cycle, when no edition exists yet
 CYCLE_DAYS = 14  # the papers come out after an import once this much game time has passed since the last editions
+# ... and every week while a major tournament is near or in play (18 Nov 2026: the papers of 31 May 2064 were next due on
+# 14 June, a day after the Euros began, and the build-up would have been lost)
+TOURNAMENT_CYCLE_DAYS = 7
 STANDARD_ARTICLES = 3  # after the lead
 FEATURE_BEATS = {"history"}  # outlets on these beats write features, not briefs
 WRITERS = 6  # articles written at the same time
@@ -178,13 +181,27 @@ def cycle_window(until: date | None = None, min_days: int = 0) -> tuple[date, da
     last = (db.session.query(db.func.max(WorldSoccerIssue.knowledge_cutoff))
             .filter(WorldSoccerIssue.knowledge_cutoff <= until).scalar())
     since = last or until - timedelta(days=FIRST_WINDOW_DAYS)
+    if last and min_days > TOURNAMENT_CYCLE_DAYS and tournament_near(last):
+        min_days = TOURNAMENT_CYCLE_DAYS
     return (since, until) if (until - since).days >= max(min_days, 1) else None
 
 
 def next_cycle_due(until: date | None = None) -> date | None:
     """The game date from which an import makes the next editions (None before the first ones)."""
     last = db.session.query(db.func.max(WorldSoccerIssue.knowledge_cutoff)).scalar()
-    return last + timedelta(days=CYCLE_DAYS) if last else None
+    return last + timedelta(days=TOURNAMENT_CYCLE_DAYS if tournament_near(last) else CYCLE_DAYS) if last else None
+
+
+def tournament_near(day: date) -> bool:
+    """A major international tournament has a game within CYCLE_DAYS after ``day`` (it is in play, or about to start)."""
+    from app.services.tournament_leads import MAJOR_TOURNAMENTS
+
+    names = " or ".join("(c.name like ? and c.name not like '%Qualif%')" for _ in MAJOR_TOURNAMENTS)
+    with db.engines[world_models.BIND].connect() as connection:
+        return bool(connection.exec_driver_sql(
+            f"select 1 from fixtures f join competitions c on c.fm_uid = f.competition_uid where c.scope = 'national_teams' "
+            f"and f.date > ? and f.date <= ? and ({names}) limit 1",
+            (str(day), str(day + timedelta(days=CYCLE_DAYS)), *(f"{name}%" for name in MAJOR_TOURNAMENTS))).first())
 
 
 REPEAT_DAYS = 14  # a story whose key carries the day it was found (a team's form "now") is not told again within this

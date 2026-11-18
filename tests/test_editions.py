@@ -447,3 +447,21 @@ def test_a_story_is_told_once_in_any_paper_and_a_day_stamped_one_not_again_withi
     assert {lead.key for lead, _ in plans[0].items} == {form.key, preview.key}
     nights = Lead("european_nights", "A night", until, 70, {}, ["nation:765"], {"world"}, slug=f"765:{until}")  # new games each cycle
     assert editions.plan_editions([nights], [world_soccer], {}, until=until, stories={"european_nights:765": date(2064, 2, 13)})
+
+
+def test_the_papers_come_every_week_while_a_major_tournament_is_near(app, small_world):
+    """18 Nov 2026: the papers of 31 May 2064 were next due on 14 June, a day after the Euros began."""
+    from app.models import world
+    from tests.test_world_pages import _fixture
+
+    db.session.add(WorldSoccerIssue(edition_name="World Soccer", publication_date=AS_OF, knowledge_cutoff=AS_OF, status="published"))
+    db.session.commit()
+    assert editions.next_cycle_due() == AS_OF + timedelta(days=editions.CYCLE_DAYS)
+    with small_world.begin() as c:
+        c.execute(world.WorldCompetition.__table__.insert(), [{"fm_uid": 1301388, "name": "European Football Championship", "short_name": "Euro",
+                                                                "abbreviation": "EC", "scope": "national_teams", "level": None, "reputation": 190}])
+        c.execute(world.WorldFixture.__table__.insert(), [_fixture(str(AS_OF + timedelta(days=13)), CHELSEA, LIVERPOOL, None, 1301388, 1)])
+    assert editions.next_cycle_due() == AS_OF + timedelta(days=editions.TOURNAMENT_CYCLE_DAYS)
+    week = AS_OF + timedelta(days=7)
+    assert editions.cycle_window(week, editions.CYCLE_DAYS) == (AS_OF, week)
+    assert editions.cycle_window(week - timedelta(days=1), editions.CYCLE_DAYS) is None
