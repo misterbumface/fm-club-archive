@@ -80,6 +80,46 @@ def ensure_outlets() -> list[Outlet]:
     return outlets
 
 
+# The paper of a major international tournament (18 Nov 2026: "a new paper dedicated to that tournament. Like in real life!"):
+# made the first time one is in play, named after the tournament in play ("Euro 2064"), and printed only while one is in play
+# (from two weeks before the first game, tournament_leads.LEAD_DAYS). Its stories are those on the tournament beat: the games,
+# the groups, the field, the finals squads.
+TOURNAMENT_SLUG = "tournament-special"
+TOURNAMENT_NAME_SETTING = "tournament_paper_for"  # the tournament the paper was last named for: a curator's rename stays
+SHORT_NAMES = {"European Football Championship": "Euro", "Africa Cup of Nations": "AFCON", "Confederations Cup": "Confed Cup"}
+_TOURNAMENT_VOICE = ("The daily paper of the {name}, from the build-up to the final, written in English for neutral fans everywhere. "
+                     "Every group, every squad, every game: who is in, who missed the cut, who can win it. Big-occasion energy "
+                     "and exact facts.")
+
+
+def tournament_paper(label: str | None) -> Outlet | None:
+    """The tournament's paper for this cycle (``label``: "European Football Championship 2064"), active only while a tournament
+    is in play; None when none is."""
+    outlet = Outlet.query.filter_by(slug=TOURNAMENT_SLUG).first()
+    if label is None:
+        if outlet is not None and outlet.active:
+            outlet.active = False
+            db.session.commit()
+        return None
+    name = next((label.replace(long, short, 1) for long, short in SHORT_NAMES.items() if label.startswith(long)), label)
+    if outlet is None:
+        last = db.session.query(db.func.max(Outlet.sort_order)).scalar() or 0
+        outlet = Outlet(slug=TOURNAMENT_SLUG, name=name, tagline="Every group, every squad, every game", voice=_TOURNAMENT_VOICE.format(name=name),
+                        beats=["tournament"], byline=f"{name} desk", articles_per_edition=8, min_score=30, sort_order=last + 1, active=True)
+        db.session.add(outlet)
+    setting = AppSetting.query.filter_by(key=TOURNAMENT_NAME_SETTING).first()
+    if setting is None or setting.value != label:  # a new tournament: its own name
+        outlet.name, outlet.byline, outlet.voice = name, f"{name} desk", _TOURNAMENT_VOICE.format(name=name)
+        if setting is None:
+            db.session.add(AppSetting(key=TOURNAMENT_NAME_SETTING, value=label))
+        else:
+            setting.value = label
+    outlet.active = True
+    db.session.commit()
+    ensure_outlets()  # its first staff
+    return outlet
+
+
 def outlets_for(lead: Lead, outlets: list[Outlet]) -> list[Outlet]:
     """The active outlets whose beat the lead is on and for whom its score is news."""
     return [o for o in outlets if o.active and o.takes(lead.beats) and lead.score >= o.min_score]
@@ -94,4 +134,4 @@ def set_followed_clubs(uids: list[int]) -> None:
         setting.value = value
 
 
-__all__ = ["DEFAULT_FOLLOWED", "DEFAULT_OUTLETS", "ensure_outlets", "followed_clubs", "outlets_for", "set_followed_clubs"]
+__all__ = ["DEFAULT_FOLLOWED", "DEFAULT_OUTLETS", "ensure_outlets", "followed_clubs", "outlets_for", "set_followed_clubs", "tournament_paper"]

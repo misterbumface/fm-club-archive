@@ -307,6 +307,37 @@ def test_a_world_cup_in_play_gets_reports_previews_a_round_up_and_our_players(sm
     assert round_up.facts["where_it_stands"] == "4 of 7 games played, in play" and len(round_up.facts["results_this_cycle"]) == 4
 
 
+def test_two_weeks_before_a_tournament_each_group_and_the_field_get_a_preview(small_world):
+    """18 Nov 2026: the build-up starts two weeks before the first game, with the groups and the favourites, for the tournament's paper."""
+    from app.services import tournament_leads
+    from tests.test_world_pages import ENGLAND
+
+    _season(small_world)
+    with small_world.begin() as c:
+        c.execute(world.WorldCompetition.__table__.insert(), [{"fm_uid": 1301388, "name": "European Football Championship", "short_name": "Euro",
+                                                                "abbreviation": "EC", "scope": "national_teams", "level": None, "reputation": 190}])
+        c.execute(world.WorldNation.__table__.insert(), [{"fm_uid": 800 + n, "name": name, "short_name": name, "abbreviation": name[:3].upper(), "adjective": name}
+                                                         for n, name in ((1, "Spain"), (2, "France"), (3, "Wales"))])
+        c.execute(world.WorldTeam.__table__.insert(), [{"fm_uid": 900 + n, "club_uid": None, "nation_uid": 800 + n, "name": name, "age_limit": None, "as_of": AS_OF}
+                                                       for n, name in ((1, "Spain"), (2, "France"), (3, "Wales"))])
+        c.execute(world.WorldFixture.__table__.insert(), [  # the first game 12 days after the cycle's end, 3 September
+            _fixture("2063-09-15", ENGLAND, 901, None, 1301388, 1), _fixture("2063-09-15", 902, 903, None, 1301388, 1),
+            _fixture("2063-09-19", ENGLAND, 902, None, 1301388, 1), _fixture("2063-09-19", 901, 903, None, 1301388, 1),
+            _fixture("2063-09-23", ENGLAND, 903, None, 1301388, 1), _fixture("2063-09-23", 901, 902, None, 1301388, 1)])
+        c.execute(world.WorldNationalSquad.__table__.insert(), [{"team_uid": ENGLAND, "as_of": AS_OF, "person_uid": SCORER, "role": None}])
+    with small_world.connect() as c:
+        w = _World(c, SINCE, UNTIL, (CHELSEA,))
+        assert tournament_leads.major_tournament(w)["phase"] == "about to start"
+        leads = tournament_leads.tournament_coverage(w)
+    kinds = {lead.kind: [x for x in leads if x.kind == lead.kind] for lead in leads}
+    assert set(kinds) == {"tournament_group", "tournament_field", "tournament_preview"}  # the opening games' previews; no empty round-up
+    (group,) = kinds["tournament_group"]
+    assert "not known yet" in group.facts["after_the_groups"] and "not known yet" in kinds["tournament_field"][0].facts["after_the_groups"]
+    assert len(group.facts["the_games"]) == 6 and group.facts["our_clubs_players_in_the_squads"] == ["Sam Scorer (Chelsea, England)"]
+    (field,) = kinds["tournament_field"]
+    assert field.facts["sides"] == 4 and field.slug == "1301388:2063" and all("tournament" in x.beats for x in leads)
+
+
 def test_the_followed_clubs_every_game_gets_a_report_and_a_preview_for_its_own_paper(small_world):
     _season(small_world)
     with small_world.begin() as c:
@@ -916,3 +947,35 @@ def test_a_club_with_points_taken_off_makes_the_sum_unsafe(small_world):
         c.execute(world.WorldPointDeduction.__table__.insert(), [{"competition_uid": LEAGUE, "team_uid": CHELSEA, "as_of": date(2063, 8, 15), "points": 9, "played": 5}])
     with small_world.connect() as c:
         assert title.settled(c, LEAGUE, date(2063, 8, 16)) is None
+
+
+def test_the_likely_bracket_comes_from_the_pairings_of_the_last_editions(small_world):
+    """18 Nov 2026: "they can examine the bracket and they'll know who they could potentially face"."""
+    from app.services import tournament_leads
+
+    teams = list(range(950, 958))  # Group A: 950-953, Group B: 954-957; the first named of each wins it, the second is runner-up
+    with small_world.begin() as c:
+        c.execute(world.WorldCompetition.__table__.insert(), [{"fm_uid": 1301388, "name": "European Football Championship", "short_name": "Euro",
+                                                                "abbreviation": "EC", "scope": "national_teams", "level": None, "reputation": 190}])
+        c.execute(world.WorldTeam.__table__.insert(), [{"fm_uid": u, "club_uid": None, "nation_uid": None, "name": f"Side {u}", "age_limit": None, "as_of": AS_OF}
+                                                       for u in teams])
+
+        def group(year: int, day: int, stage: int, sides: list[int], played: bool) -> list[dict]:
+            pairs = [(0, 1), (2, 3), (0, 2), (1, 3), (0, 3), (1, 2)]
+            return [_fixture(f"{year}-06-{day + i // 2:02d}", sides[a], sides[b], (2, 0) if played else None, 1301388, stage) for i, (a, b) in enumerate(pairs)]
+
+        rows = []
+        for year in (2056, 2060):  # the semi-finals: the winner of A against the runner-up of B, and the other way
+            rows += group(year, 10, 1908, teams[:4], True) + group(year, 11, 1955, teams[4:], True)
+            rows += [_fixture(f"{year}-06-25", 950, 955, (1, 0), 1301388, 367), _fixture(f"{year}-06-25", 954, 951, (1, 0), 1301388, 367),
+                     _fixture(f"{year}-06-30", 950, 954, (1, 0), 1301388, 370)]
+        rows += group(2064, 13, 1908, teams[:4], False) + group(2064, 14, 1955, teams[4:], False)
+        c.execute(world.WorldFixture.__table__.insert(), rows)
+        c.execute(world.WorldEdition.__table__.insert(), [{"competition_uid": 1301388, "year": y, "season_label": str(y), "decided_on": date(y, 6, 30)}
+                                                          for y in (2056, 2060)])
+    with small_world.connect() as c:
+        w = _World(c, date(2064, 5, 24), date(2064, 5, 31), (CHELSEA,))
+        t = tournament_leads.major_tournament(w)
+        lines = tournament_leads.past_bracket(w, t, tournament_leads._groups(w, t))
+    assert len(lines) == 2 and all(line.endswith("as in 2 of the last 2 editions") for line in lines)
+    assert lines[0].startswith("Semi-finals: the winner of Group A (") and "against the runner-up of Group B (" in lines[0]

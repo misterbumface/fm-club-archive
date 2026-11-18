@@ -424,6 +424,26 @@ def _request(model: str, key: str, messages: list[dict]) -> str:
     return text
 
 
+KEY_PROBLEM = "The AI key"  # the start of the refusal when the provider refuses the key itself: every article fails alike
+
+
+def api_error(response) -> StoryError:
+    """The refusal for an answer that is not 200: a refused or expired key, or an empty account, said as such (18 Nov 2026: an
+    expired OpenAI key refused 31 articles and the import said only "31 articles refused"). Never the provider's text, which
+    can quote a part of the key."""
+    try:
+        error = response.json().get("error") or {}
+    except (ValueError, AttributeError):
+        error = {}
+    code = str((error.get("code") or error.get("type") or "") if isinstance(error, dict) else "")
+    if response.status_code in (401, 403):
+        why = "has expired" if "expired" in code else "was refused"
+        return StoryError(f"{KEY_PROBLEM} {why} ({response.status_code}): make a new key and enter it in Settings, API keys.")
+    if code == "insufficient_quota":
+        return StoryError(f"{KEY_PROBLEM}'s account has no credit left ({response.status_code}).")
+    return StoryError(f"The AI model answered with an error ({response.status_code}).")
+
+
 def request_json(model: str, key: str, messages: list[dict], temperature: float = 0.5, retry: bool = True) -> dict:
     """The model's answer, a JSON object; an answer that is not JSON is asked for once more."""
     url, headers, payload = ai_request_config(model=model, api_key=key, messages=messages, max_tokens=MAX_TOKENS,
@@ -434,7 +454,7 @@ def request_json(model: str, key: str, messages: list[dict], temperature: float 
         raise StoryError(f"The AI model could not be reached: {exc}") from exc
     if response.status_code != 200:
         current_app.logger.warning("story request failed: %s %s", response.status_code, response.text[:500])
-        raise StoryError(f"The AI model answered with an error ({response.status_code}).")
+        raise api_error(response)
     content, finish = "", None
     try:
         check_ollama_answer(response.json(), payload)
@@ -477,7 +497,7 @@ def request_with_questions(model: str, key: str, messages: list[dict], tools: li
             current_app.logger.warning("questions request failed: %s %s", response.status_code, response.text[:500])
             if not asked:  # the provider takes no tools: write without questions
                 return request_json(model, key, messages, temperature), []
-            raise StoryError(f"The AI model answered with an error ({response.status_code}).")
+            raise api_error(response)
         data = response.json()
         message = data["choices"][0]["message"] if "choices" in data else data.get("message") or {}
         calls = message.get("tool_calls") or []

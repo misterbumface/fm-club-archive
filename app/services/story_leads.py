@@ -43,6 +43,13 @@ YOUTH_NAMES = re.compile(r"\b(U ?1\d|U ?2[0-3]|Under ?\d+|Youth|Young|Reserves?|
 YOUTH_WEIGHT = 0.5  # youth competitions and awards are small news
 UPSET_GAP = 1500  # a reputation gap (0-10 000) that makes a win a giant-killing
 UPSET_LOSER = 5000  # ... when the loser's reputation is at least this
+# A title's stature (18 Nov 2026: Chelsea won the Champions League and the FA Cup, and neither was front-page news; the
+# Champions League title scored 60, below a vacancy at Lazio): the competition's reputation (0-200) above OCCASION_FROM
+# multiplies the score, one more for each OCCASION_STEP (Champions League 3.7, FA Cup 2.2, a small cup 1); a league title
+# counts half of that, and only at the top level. Two big teams in the final make it bigger still.
+OCCASION_FROM, OCCASION_STEP = 120, 30
+BIG_OCCASION = 150  # from this reputation a title or a final is a big occasion: it leads the site's front page
+BIG_FINALISTS = 6000  # the smaller finalist's reputation (0-10 000) above which the final grows, up to 1.4 at 10 000
 
 
 def followed_clubs() -> tuple[int, ...]:
@@ -295,12 +302,26 @@ def _titles(w: _World) -> list[Lead]:
             rarity *= 1 + (usual - winner_rep) / 5000  # far below the usual winner's stature
             angle += ", an underdog"
             facts["underdog"] = True
-        score = (w.weight(e["competition_uid"]) * 10 * rarity * (1.2 if comp["scope"] in ("continental", "national_teams") else 1))
+        stature = occasion(comp)
+        if comp["scope"] != "league" and winner_rep and facts["runner_up_reputation"]:
+            stature *= 1 + max(0, min(winner_rep, facts["runner_up_reputation"]) - BIG_FINALISTS) / 10_000
+        facts["big_occasion"] = (comp.get("reputation") or 0) >= BIG_OCCASION and (comp["scope"] != "league" or (comp.get("level") or 1) == 1)
+        score = (w.weight(e["competition_uid"]) * 10 * rarity * stature * (1.2 if comp["scope"] in ("continental", "national_teams") else 1))
         leads.append(Lead("title", f"{winner} {angle}: {comp['name']} {e['season_label']}", e["decided_on"] if isinstance(e["decided_on"], date)
                           else date.fromisoformat(str(e["decided_on"])), score, facts,
                           [f"edition:{e['competition_uid']}:{e['year']}", f"club:{e['winner']}"],
                           w.beats_for(e["winner"], e["runner_up"], competition_uid=e["competition_uid"])))
     return leads
+
+
+def occasion(comp: dict) -> float:
+    """How much a title of this competition counts for its stature (see OCCASION_FROM): 1 for small, youth and lower-level ones."""
+    reputation = comp.get("reputation") or 0
+    if reputation <= OCCASION_FROM or comp.get("scope") == "youth" or YOUTH_NAMES.search(comp.get("name") or ""):
+        return 1.0
+    if comp.get("scope") == "league":
+        return 1.0 if (comp.get("level") or 1) > 1 else 1 + (reputation - OCCASION_FROM) / OCCASION_STEP / 2
+    return 1 + (reputation - OCCASION_FROM) / OCCASION_STEP
 
 
 def _ordinal(n: int) -> str:

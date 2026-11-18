@@ -248,7 +248,7 @@ def squads(w) -> list:
                  "the_old_captain": people[captain_was]["name"] if captain_changed and people.get(captain_was) else None,
                  "the_shape": shape}
         refs = [f"club:{team}", f"nation:{w.team(team).get('nation_uid') or team}"]
-        beats = w.beats_for(team) | ({"home"} if followed else set())
+        beats = w.beats_for(team) | ({"home"} if followed else set()) | ({"tournament"} if matters == FINALS else set())  # the tournament paper's too
         boost = 1.3 if followed else 1.0
         score = weight * 10 * SQUAD_SIZE * fame * matters * boost * (1 + len(known) / 20)
         headline = f"{name}: the new squad, {len(came)} in and {len(went)} out" + (f", {known[0]['name']} left out" if known else "")

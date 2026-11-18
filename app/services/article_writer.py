@@ -324,6 +324,15 @@ KIND_NOTES = {
     "our_players_at_tournament": "This is about the followed clubs' players at a major international tournament: what each did "
                                  "in the games of the cycle (minutes, goals, assists, rating) and so far, and their nations' next "
                                  "games. Write it for the club's readers. Report only what is given.",
+    "tournament_group": "This is the preview of one group of a major international tournament before it starts: the sides by "
+                        "their standing in the field and their best-known players, the games and their dates, our clubs' players "
+                        "in the squads, and, when the facts say so, why it is the group of death or that the holders are in it. "
+                        "Say who should go through and who could slip, from the standing given. Do not invent results, line-ups, "
+                        "injuries or quotes: no game has been played.",
+    "tournament_field": "This is the big preview of a major international tournament before it starts: the favourites by "
+                        "standing, the holders, the groups and the group of death, the best-known players to watch, and our clubs' "
+                        "players in the squads. Set the scene like the first page of a tournament special. No game has been "
+                        "played: do not invent results, line-ups, injuries or quotes.",
     "player_of_the_tournament": "This is the piece after the final of a major international tournament: who won it and how, the "
                                 "best-rated players over the tournament, the top scorers, and how our clubs' players did. Name a "
                                 "player of the tournament from the ratings and goals given, and say why. Report only what is given.",

@@ -116,8 +116,12 @@ def competition_articles(where: str) -> set[int]:
 # Chelsea site's front page). The world's big events come first (the World Cup, the Club World Championship, the major
 # tournament in play), then the home continent, then the rest of the world; inside each, the bigger competition first, by
 # the game's own competition reputation in steps of ten (a club counts as its league); see front_order. A far story keeps its section row and the latest
-# list, but leads the front only when there is nothing nearer.
+# list, but leads the front only when there is nothing nearer. A big occasion (18 Nov 2026: Chelsea's Champions League and
+# FA Cup were not on the front) is a big event too: the title or the final of a competition of story_leads.BIG_OCCASION
+# reputation or more (a league's only at the top level), wherever it is played.
 BIG, HOME, FAR = 0, 1, 2
+OCCASION_KINDS = {"title", "title_clinched"}
+FINAL_KINDS = {"knockout_round", "tie_report"}  # ... when their round is the final
 REPUTATION_STEP = 10  # the leagues inside a step (Premier Division 184, La Liga 183) are equals: the story's importance decides
 UNKNOWN_REPUTATION = 150  # a story that names no competition and no club in a league: a middling one
 
@@ -148,6 +152,7 @@ def story_reach(articles) -> dict[int, tuple[int, int]]:
     reputation is the biggest of the competitions it names and the leagues of the clubs it names."""
     from app.models.world_soccer_entity_link import WorldSoccerEntityLink
     from app.services import world_queries as q
+    from app.services.story_leads import BIG_OCCASION
 
     ids = [a.id for a in articles]
     if not ids:
@@ -161,6 +166,7 @@ def story_reach(articles) -> dict[int, tuple[int, int]]:
             "select t.fm_uid, coalesce(k.nation_uid, t.nation_uid) from teams t left join clubs k on k.fm_uid = t.club_uid")}
         team_nation.update({r[0]: r[1] for r in c.exec_driver_sql("select fm_uid, nation_uid from clubs")})
         competition = {r[0]: (q._continent_by_name(r[1]), r[2] or 0) for r in c.exec_driver_sql("select fm_uid, name, reputation from competitions")}
+        lower = {r[0] for r in c.exec_driver_sql("select fm_uid from competitions where scope = 'league' and coalesce(level, 1) > 1")}
         people = {link.entity_id for found in links.values() for link in found if link.entity_type == "person"}
         person_team = {r[0]: r[1] for r in c.exec_driver_sql(
             f"select fm_uid, coalesce(team_uid, staff_team_uid) from people where fm_uid in ({','.join(map(str, people)) or 0})")}
@@ -171,9 +177,15 @@ def story_reach(articles) -> dict[int, tuple[int, int]]:
             f"where home_uid in ({marks}) union all select away_uid, competition_uid, date from fixtures where away_uid in ({marks})) "
             f"join competitions c on c.fm_uid = competition_uid where c.scope = 'league' group by team")}
     home = {continents.get(team_nation.get(team)) for team in football.followed()} - {None}
+
+    def size_of(competition_uid: int) -> int:  # a lower league's title is never a big occasion
+        return 0 if competition_uid in lower else competition.get(competition_uid, (None, 0))[1]
     major = (_major_tournament() or {}).get("uid")
     reach = {}
-    for article_id in ids:
+    for article in articles:
+        article_id = article.id
+        lead = article.lead or {}
+        occasion = lead.get("kind") in OCCASION_KINDS or (lead.get("kind") in FINAL_KINDS and ", Final" in (lead.get("headline") or ""))
         places, sizes, big = [], [], False
         for link in links.get(article_id, []):
             uid = link.entity_id
@@ -181,10 +193,10 @@ def story_reach(articles) -> dict[int, tuple[int, int]]:
             if team:
                 places.append(continents.get(team_nation.get(team)))
                 sizes.append(league.get(team))
-            elif link.entity_type in ("competition", "competition_edition") and str(link.world_ref or "").count(":"):
+            elif link.entity_type in ("competition", "competition_edition", "edition") and str(link.world_ref or "").count(":"):
                 competition_uid = int(str(link.world_ref).split(":")[1])
                 place, size = competition.get(competition_uid, (None, None))
-                big |= place == "World" or competition_uid == major
+                big |= place == "World" or competition_uid == major or (occasion and size_of(competition_uid) >= BIG_OCCASION)
                 places.append(place)
                 sizes.append(size)
             elif link.entity_type == "nation":

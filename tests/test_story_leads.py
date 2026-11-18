@@ -1,6 +1,7 @@
 # ruff: noqa: F811  (pytest fixtures imported from test_world_pages)
 """The story finder (docs/media-plan.md), on the small world of the page tests."""
 
+import pytest
 from datetime import date
 
 from app.models import world
@@ -226,3 +227,32 @@ def test_a_scouting_report_lists_the_games_he_was_in_and_those_he_sat_out(small_
                                                      "2063-09-02, Chelsea U21 v Spurs U21: 10 minutes, 0 goals, 1 assists, rating 7.3"]
     assert report.facts["games_he_sat_out_as_an_unused_substitute"] == 2
     assert report.facts["his_teams_newest_game"] == "2063-09-20, Chelsea U21 v Spurs U21: he was unused"
+
+
+def test_a_title_counts_for_the_stature_of_its_competition():
+    """18 Nov 2026: Chelsea's Champions League scored 60, below a vacancy; a big title or final now counts its competition's stature."""
+    from app.services.story_leads import occasion
+
+    assert occasion({"scope": "continental", "reputation": 200}) == pytest.approx(1 + 80 / 30)
+    assert occasion({"scope": "cup", "reputation": 156}) == pytest.approx(2.2)
+    assert occasion({"scope": "league", "reputation": 180, "level": 1}) == pytest.approx(2.0)
+    assert occasion({"scope": "league", "reputation": 180, "level": 2}) == occasion({"scope": "cup", "reputation": 110}) == 1.0
+    assert occasion({"scope": "cup", "reputation": 190, "name": "FA Youth Cup"}) == 1.0
+
+
+def test_a_refused_key_is_named_and_never_quoted():
+    """18 Nov 2026: an expired OpenAI key refused 31 articles and the import said only "31 articles refused"."""
+    from app.services.story_writer import KEY_PROBLEM, api_error
+
+    class Answer:
+        def __init__(self, status, body):
+            self.status_code, self.body = status, body
+
+        def json(self):
+            return self.body
+
+    expired = str(api_error(Answer(401, {"error": {"code": "expired_secret_key", "message": "Your key sk-abc1 has expired."}})))
+    assert expired.startswith(f"{KEY_PROBLEM} has expired (401)") and "sk-" not in expired
+    assert "was refused" in str(api_error(Answer(401, {"error": {"code": "invalid_api_key"}})))
+    assert "no credit" in str(api_error(Answer(429, {"error": {"code": "insufficient_quota"}})))
+    assert str(api_error(Answer(500, "not json"))) == "The AI model answered with an error (500)."

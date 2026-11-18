@@ -49,6 +49,29 @@ def test_the_plan_gives_each_outlet_its_beat_new_leads_and_their_prominence(app)
     assert "transfer-wire" not in plans  # no transfer leads
 
 
+def test_the_tournament_paper_prints_its_stories_and_other_papers_carry_chelsea_at_most_a_third(app):
+    """18 Nov 2026: a paper for the tournament from two weeks before it, named after it; and less Chelsea in the other papers."""
+    from app.models import AppSetting
+
+    outlets.ensure_outlets()
+    paper = outlets.tournament_paper("European Football Championship 2064")
+    assert (paper.name, paper.beats, paper.active, len(paper.staff)) == ("Euro 2064", ["tournament"], True, 3)
+    paper.name = "The Euro Daily"  # a curator's name stays for the same tournament...
+    db.session.commit()
+    assert outlets.tournament_paper("European Football Championship 2064").name == "The Euro Daily"
+    assert outlets.tournament_paper("World Cup 2066").name == "World Cup 2066"  # ... and the next one gets its own
+    all_outlets = outlets.ensure_outlets()
+    groups = [_lead("tournament_group", 200 - i, {"world", "tournament"}, i) for i in range(4)]
+    ours = [_lead("title", 150 - i, {"world", "home"}, 100 + i) for i in range(16)]  # more than the English Daily takes
+    others = [_lead("title", 100 - i, {"world"}, 20 + i) for i in range(6)]
+    plans = {plan.outlet.slug: plan for plan in editions.plan_editions(groups + ours + others, all_outlets, {})}
+    assert {lead.kind for lead, _ in plans["tournament-special"].items} == {"tournament_group"} and len(plans["tournament-special"].items) == 4
+    world_soccer = [lead for lead, _ in plans["world-soccer"].items]
+    assert sum("home" in lead.beats for lead in world_soccer) == 2  # a third of 8 pages
+    assert outlets.tournament_paper(None) is None and not db.session.get(Outlet, paper.id).active
+    assert AppSetting.query.filter_by(key=outlets.TOURNAMENT_NAME_SETTING).first().value == "World Cup 2066"
+
+
 def test_a_cycle_makes_published_editions_with_links_and_skips_refused_articles(app, small_world, fake_writer):
     _prepare(small_world)
     result = editions.make_editions(date(2063, 3, 24), AS_OF, progress=lambda text: None)

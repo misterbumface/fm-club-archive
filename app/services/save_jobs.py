@@ -325,6 +325,10 @@ def _finish(cycle, set_status, prefix: str = "", after_import: bool = False) -> 
         from app.services import social_feed
 
         social_feed.post_articles(cycle.editions)  # the writers post their lead stories on the Feed
-        set_status(f"Done: {prefix}{len(cycle.editions)} editions, {cycle.written} articles"
+        from app.services.story_writer import KEY_PROBLEM
+
+        # a refused key fails every article alike: say it first, not only "31 articles refused" (18 Nov 2026)
+        key = next((why[why.index(KEY_PROBLEM):].removesuffix(")").rstrip(".") for why in cycle.refused if KEY_PROBLEM in why), None)
+        set_status((f"{key}. " if key else "") + f"Done: {prefix}{len(cycle.editions)} editions, {cycle.written} articles"
                    + (f", {cycle.illustrated} pictures" if cycle.illustrated else "")
                    + (f", {len(cycle.refused)} articles refused" if cycle.refused else "") + ".")

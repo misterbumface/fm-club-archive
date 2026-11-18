@@ -7,20 +7,27 @@ notebooks carry the game's full report while the save keeps it and the followed 
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date, timedelta
 
 from app.services import world_queries as q
 
 MAJOR_TOURNAMENTS = ("World Cup", "European Football Championship", "Copa América", "Africa Cup of Nations", "Asian Cup", "Gold Cup",
                      "Confederations Cup", "Nations League Finals")
-LEAD_DAYS, TAIL_DAYS = 7, 3  # in play from a week before the first game to three days after the last
+LEAD_DAYS, TAIL_DAYS = 14, 3  # in play from two weeks before the first game (18 Nov 2026: "like in real life") to three days after the last
 PREVIEW_DAYS = 14
 REPORT_SIZE, PREVIEW_SIZE = 1.0, 0.9
 OURS_BONUS, KNOCKOUT_BONUS, FINAL_BONUS = 0.5, 0.5, 1.0
 ROUND_UP_SIZE, OURS_SIZE, BEST_SIZE = 2.0, 1.6, 2.5
 BEST_GAMES = 3  # games played before a player is in the running for player of the tournament
 TOP_PLAYERS = 8
+# The build-up (18 Nov 2026: "coverage of the groups, groups of death, people missing out on squads"): before the first game,
+# a preview of each group and one of the whole field. The group of death is the group whose third-best side is the strongest,
+# when that side is in the top half of the field.
+GROUP_SIZE, DEATH_BONUS, FIELD_SIZE = 1.3, 0.6, 2.2
+STARS = 10  # the best-known players named in the field's preview
+BRACKET_EDITIONS, BRACKET_SEEN = 3, 2  # a first-knockout-round pairing the game used in this many of its last editions is "the bracket"
+TOURNAMENT_BEAT = "tournament"  # the beat of the tournament's own paper (outlets.tournament_paper)
 
 
 def major_tournament(w) -> dict | None:
@@ -219,7 +226,9 @@ def tournament_coverage(w) -> list:
                           [f"match:{f['date']}:{f['home_uid']}:{f['away_uid']}", f"competition:{t['uid']}", f"club:{f['home_uid']}", f"club:{f['away_uid']}"],
                           w.beats_for(f["home_uid"], f["away_uid"], competition_uid=t["uid"]) | {"world"}
                           | ({"home"} if facts.get("our_players_in_the_squads") else set())))
-    if played or coming:  # the cycle's round-up
+    if t["phase"] == "about to start":
+        leads += build_up(w, t, weight, label)
+    if played or (coming and t["phase"] != "about to start"):  # the cycle's round-up (before the start, the field's preview is it)
         teams = {x for f in played for x in (f["home_uid"], f["away_uid"])}
         facts = {"tournament": label, "where_it_stands": f"{t['played']} of {t['games']} games played, {t['phase']}",
                  "results_this_cycle": _results(w, t, played, rounds) or None, "groups_now": _group_lines(w, t, teams) if played else None,
@@ -252,4 +261,132 @@ def tournament_coverage(w) -> list:
         leads.append(Lead("player_of_the_tournament", f"The {label}: the players who made it", date.fromisoformat(str(final["date"])[:10]),
                           weight * 10 * BEST_SIZE, {k: v for k, v in facts.items() if v is not None}, [f"competition:{t['uid']}", f"club:{winner}"],
                           {"world"}, slug=f"{t['uid']}:{t['year']}"))
+    for lead in leads:
+        lead.beats.add(TOURNAMENT_BEAT)
+    return leads
+
+
+def _groups(w, t: dict) -> list[tuple[str, list[dict]]]:
+    """The tournament's groups, each with its games: [("Group A", games), ...]."""
+    rows = w.rows("select * from fixtures where competition_uid = :c and date between :s and :e order by date, id",
+                  c=t["uid"], s=str(t["first"]), e=str(t["last"]))
+    stages: dict[int, list[dict]] = defaultdict(list)
+    for f in rows:
+        stages[f["stage"]].append(f)
+    return [(r["name"], r["games"]) for r in q.round_names(sorted(stages.values(), key=lambda games: str(games[0]["date"])))
+            if (r.get("name") or "").startswith("Group")]
+
+
+def _slot(place: int, group: str) -> str:
+    return {1: f"the winner of {group}", 2: f"the runner-up of {group}"}.get(place, "a third-placed side")
+
+
+def past_bracket(w, t: dict, groups: list[tuple[str, list[dict]]]) -> list[str] | None:
+    """Who meets whom after the groups, read from the tournament's last editions (18 Nov 2026: "they can examine the bracket and
+    they'll know who they could potentially face"): each pairing of the first knockout round, by group place, that the game used
+    in at least BRACKET_SEEN of its last BRACKET_EDITIONS editions, with the sides that can fill each place now."""
+    now = {name: sorted({x for f in games for x in (f["home_uid"], f["away_uid"])}, key=lambda x: -(w.rep(x) or 0)) for name, games in groups}
+    seen, rounds_named, editions = Counter(), Counter(), 0
+    for e in w.rows("select year, decided_on from competition_editions where competition_uid = :c and year < :y and decided_on is not null "
+                    "order by year desc limit :n", c=t["uid"], y=t["year"], n=BRACKET_EDITIONS):
+        end = date.fromisoformat(str(e["decided_on"])[:10])
+        rows = w.rows("select * from fixtures where competition_uid = :c and date between :s and :e and home_goals is not null order by date, id",
+                      c=t["uid"], s=str(end - timedelta(days=60)), e=str(end))
+        stages: dict[int, list[dict]] = defaultdict(list)
+        for f in rows:
+            stages[f["stage"]].append(f)
+        rounds = q.round_names(sorted(stages.values(), key=lambda games: str(games[0]["date"])))
+        past_groups = [r for r in rounds if (r.get("name") or "").startswith("Group")]
+        knockout = next((r for r in rounds if r not in past_groups), None)
+        if len(past_groups) != len(groups) or knockout is None:
+            continue  # another format then
+        by_stage = {games[0]["stage"]: name for name, games in groups}  # the game keeps a group's stage from edition to edition;
+        names = [by_stage.get(r["games"][0]["stage"], name) for (name, _), r in zip(groups, past_groups)]  # two starting the same day swap
+        place = {row["team_uid"]: (pos, name) for name, r in zip(names, past_groups) for pos, row in enumerate(q.table_from(r["games"]), 1)}
+        editions += 1
+        rounds_named[knockout.get("name") or "the first knockout round"] += 1
+        for pair in {frozenset((f["home_uid"], f["away_uid"])) for f in knockout["games"]}:  # a second leg once
+            a, b = sorted((place.get(x) for x in pair), key=lambda p: p or (9, ""))
+            if a and b and a[0] <= 2:
+                seen[(a, b if b[0] <= 2 else (3, ""))] += 1
+    if editions < BRACKET_SEEN:
+        return None
+    named = rounds_named.most_common(1)[0][0]
+
+    def who(slot) -> str:
+        pos, group = slot
+        return f"{_slot(pos, group)} ({' or '.join(w.name(x) for x in now[group])})" if group in now else _slot(pos, group)
+
+    return [f"{named}: {who(a)} against {who(b)}, as in {n} of the last {editions} editions" for (a, b), n in sorted(seen.items()) if n >= BRACKET_SEEN] or None
+
+
+def _squad(w, team: int) -> list[dict]:
+    """The team's latest squad: each player's name, club and world reputation."""
+    return w.rows("select p.fm_uid, p.name, p.team_uid, p.reputation_world from national_squads n join people p on p.fm_uid = n.person_uid "
+                  "where n.team_uid = :t and n.as_of = (select max(as_of) from national_squads where team_uid = :t)", t=team)
+
+
+def build_up(w, t: dict, weight: float, label: str) -> list:
+    """Before the first game: a preview of each group (its sides by stature, the best-known players, our clubs' players in
+    the squads, the games) and one of the whole field (the favourites, the holders, the stars)."""
+    from app.services.story_leads import Lead
+
+    groups = _groups(w, t)
+    if not groups:
+        return []
+    teams = {x for _, games in groups for f in games for x in (f["home_uid"], f["away_uid"])}
+    ranked = sorted(teams, key=lambda x: -(w.rep(x) or 0))
+    rank = {team: i + 1 for i, team in enumerate(ranked)}
+    squads = {team: _squad(w, team) for team in teams}
+    followed = {r["fm_uid"] for r in w.rows(f"select fm_uid from teams where club_uid in ({','.join(str(u) for u in w.followed_clubs) or '0'})")}
+
+    def side(team: int) -> str:
+        stars = sorted((p for p in squads[team] if p["reputation_world"]), key=lambda p: -p["reputation_world"])[:3]
+        return (f"{w.name(team)}: number {rank[team]} of {len(teams)} in the field by standing"
+                + (f"; best known: {', '.join(p['name'] + ' (' + w.name(p['team_uid']) + ')' for p in stars)}" if stars else ""))
+
+    def ours(members) -> list[str]:
+        return [f"{p['name']} ({w.name(p['team_uid'])}, {w.name(team)})" for team in members for p in squads[team] if p["team_uid"] in followed]
+
+    third = {name: sorted((rank[x] for x in {y for f in games for y in (f["home_uid"], f["away_uid"])}))[2:3] for name, games in groups}
+    hardest = min((name for name in third if third[name]), key=lambda name: third[name][0], default=None)
+    if hardest and third[hardest][0] > len(teams) / 2:
+        hardest = None
+    holders = w.rows("select p.team_uid from competition_editions e join edition_places p using (competition_uid, year) "
+                     "where e.competition_uid = :c and p.place = 1 and e.year < :y order by e.year desc limit 1", c=t["uid"], y=t["year"])
+    group_games = sum(len(games) for _, games in groups)
+    bracket = past_bracket(w, t, groups) if group_games >= t["games"] else None
+    after = ("only the group games are set: who goes through is not known yet, and the knockout games have no dates; a possible "
+             "opponent may be named only from the_likely_bracket, as a possibility") if group_games >= t["games"] else None  # 18 Nov 2026
+    leads = []
+    for name, games in groups:
+        members = sorted({x for f in games for x in (f["home_uid"], f["away_uid"])}, key=lambda x: rank[x])
+        death = name == hardest
+        facts = {"tournament": label, "group": name, "first_game_of_the_tournament": str(t["first"]),
+                 "the_sides_by_standing": [side(x) for x in members],
+                 "the_group_of_death": "the hardest group of the tournament: its third-best side is the strongest of any group's" if death else None,
+                 "the_holders_are_in_it": w.name(holders[0]["team_uid"]) if holders and holders[0]["team_uid"] in members else None,
+                 "our_clubs_players_in_the_squads": ours(members) or None,
+                 "the_games": [f"{str(f['date'])[:10]}: {w.name(f['home_uid'])} v {w.name(f['away_uid'])}" for f in games],
+                 "after_the_groups": after,
+                 "the_likely_bracket": [line for line in bracket or [] if f"of {name} (" in line] or None}
+        size = GROUP_SIZE + (DEATH_BONUS if death else 0) + (OURS_BONUS if facts["our_clubs_players_in_the_squads"] else 0)
+        leads.append(Lead("tournament_group", f"{label}, {name}: {', '.join(w.name(x) for x in members)}" + (" (the group of death)" if death else ""),
+                          w.until, weight * 10 * size, {k: v for k, v in facts.items() if v is not None},
+                          [f"competition:{t['uid']}"] + [f"club:{x}" for x in members],
+                          {"world"} | {f"nation:{n}" for n in (w.team(x).get("nation_uid") for x in members) if n}
+                          | ({"home"} if facts["our_clubs_players_in_the_squads"] else set()), slug=f"{t['uid']}:{t['year']}:{name}"))
+    stars = sorted((dict(p, nation=team) for team in teams for p in squads[team] if p["reputation_world"]), key=lambda p: -p["reputation_world"])[:STARS]
+    facts = {"tournament": label, "first_game": str(t["first"]), "sides": len(teams),
+             "the_favourites_by_standing": [side(x) for x in ranked[:6]],
+             "the_holders": w.name(holders[0]["team_uid"]) if holders else None,
+             "the_groups": [f"{name}: {', '.join(w.name(x) for x in sorted({y for f in games for y in (f['home_uid'], f['away_uid'])}, key=lambda x: rank[x]))}"
+                            for name, games in groups],
+             "the_group_of_death": hardest,
+             "the_best_known_players": [f"{p['name']} ({w.name(p['nation'])}, {w.name(p['team_uid'])})" for p in stars] or None,
+             "our_clubs_players_in_the_squads": ours(ranked) or None, "after_the_groups": after,
+             "the_likely_bracket": bracket}
+    leads.append(Lead("tournament_field", f"{label}: the field, the favourites and the groups", w.until, weight * 10 * FIELD_SIZE,
+                      {k: v for k, v in facts.items() if v is not None}, [f"competition:{t['uid']}"] + [f"club:{x}" for x in ranked[:4]],
+                      {"world", "home"} if facts["our_clubs_players_in_the_squads"] else {"world"}, slug=f"{t['uid']}:{t['year']}"))
     return leads

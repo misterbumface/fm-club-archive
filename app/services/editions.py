@@ -32,6 +32,7 @@ from app.models.world_soccer_thread import WorldSoccerStoryThread
 from app.services import features, article_writer, outlets as outlet_service, story_leads, world_queries as q
 from app.services.story_leads import Lead
 from app.services.story_writer import StoryError
+from app.services.tournament_leads import TOURNAMENT_BEAT
 from app.services.world_soccer import world_ref_context
 
 log = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ SECTIONS = {"title": "Champions", "title_clinched": "Champions", "giant_killing"
             "promised_report": "Results", "transfer_interest": "Transfers", "transfer_bid": "Transfers",
             "tournament_report": "Tournament", "tournament_preview": "Tournament", "tournament_round_up": "Tournament",
             "our_players_at_tournament": "Tournament", "player_of_the_tournament": "Tournament",
+            "tournament_group": "Tournament", "tournament_field": "Tournament",
             "club_report": "Results", "club_preview": "Coming up", "scouting_follow_up": "Scouting",
             "kings_wage": "Transfers", "contract_running_down": "Transfers", "manager_out": "Appointments",
             "travel_log": "Away days", "interview": "Interviews", "war_of_words": "War of words",
@@ -243,6 +245,7 @@ KIND_LIMITS = {"title_clinched": 2, "club_accounts": 1, "points_docked": 1, "nat
                "partnership": 1, "tactical_trend": 1, "big_win": 2, "unsettled": 2, "dressing_room": 1, "settled": 1, "expected_points": 1, "continental_round": 2,
                "tie_report": 2, "tie_preview": 2, "knockout_round": 2, "knockout_preview": 2, "european_nights": 1, "international_round": 2, "national_team": 1, "promised_report": 4, "transfer_interest": 2, "transfer_bid": 2,
                "tournament_report": 6, "tournament_preview": 4, "tournament_round_up": 1, "our_players_at_tournament": 1, "player_of_the_tournament": 1,
+               "tournament_group": 8, "tournament_field": 1,
                "club_report": 8, "club_preview": 8, "scouting_follow_up": 3, "kings_wage": 1, "contract_running_down": 2, "manager_out": 2,
                "travel_log": 1, "interview": 1, "war_of_words": 1,
                "under_pressure": 2, "crisis": 2, "crisis_over": 1, "vacancy": 1, "transfer_rumour": 2, "loan_offer": 2}
@@ -255,6 +258,7 @@ SEASON_NEWS = {"title_clinched", "club_accounts", "points_docked", "league_round
                "position_change", "dropped", "breakthrough", "partnership", "unsettled", "dressing_room", "settled", "expected_points",
                "continental_round", "tie_report", "tie_preview", "knockout_round", "knockout_preview", "european_nights", "international_round", "national_team", "national_squad", "squad_dropped", "promised_report", "transfer_interest", "transfer_bid",
                "tournament_report", "tournament_preview", "tournament_round_up", "our_players_at_tournament", "player_of_the_tournament",
+               "tournament_group", "tournament_field",
                "club_report", "club_preview", "contract_running_down", "manager_out", "war_of_words",
                "under_pressure", "crisis", "crisis_over", "vacancy", "transfer_rumour", "loan_offer"}
 SEASON_NEWS_BOOST = 1.25
@@ -271,6 +275,9 @@ NUMBERS_IN_NEWS = 0.7
 # A kind (or a tag of a lead) printed anywhere within this many game days is not printed again: once a month for a king's
 # wage and for a story of a club shopping widely ('Cash is king' every cycle, 14 to 19 Dec 2063).
 COOLDOWN_DAYS = {"kings_wage": 28, "shopping": 28, "contract_running_down": 14}
+# The followed clubs' stories fill at most this share of any paper but their own (18 Nov 2026: "it's all a little
+# Chelsea-centric"; half of the 31 May 2064 papers named Chelsea).
+FOLLOWED_SHARE = 1 / 3
 NEWS_MIN_PAGES = 4  # a news paper in season prints at least this many pages, however short the cycle
 IN_SEASON_LIMITS = {"scouting": 1, "transfer": 3, "spending": 1}
 NOSTALGIA_IN_SEASON = 1
@@ -371,17 +378,21 @@ def plan_editions(leads: list[Lead], outlets: list[Outlet], printed: dict[int, s
         room = edition_size(outlet, days, in_season)
         season_rules = in_season and news_paper(outlet)
         printed_games = {(game, _story_class(key.split(":")[0])) for key in printed.get(outlet.id, set()) if (game := _match_of_key(key))}
+        special = TOURNAMENT_BEAT in outlet.beats  # the tournament's paper prints its stories whoever else prints them
         candidates = sorted((lead for lead in leads if outlet_service.outlets_for(lead, [outlet]) and lead.outlet_id in (None, outlet.id)
                              and lead.key not in printed.get(outlet.id, set()) and not _printed_already(lead, printed_games)
-                             and (lead.key not in taken or lead.outlet_id is not None)),
+                             and (special or lead.key not in taken or lead.outlet_id is not None)),
                             key=lambda lead: -outlet_score(lead, outlet, in_season))
         one_kind = len({lead.kind for lead in candidates}) == 1
         limits = {**KIND_LIMITS, **IN_SEASON_LIMITS} if season_rules else KIND_LIMITS
         chosen, per_kind = [], Counter()
+        ours_at_most = room if "home" in outlet.beats or special else max(1, int(room * FOLLOWED_SHARE))
         for lead in candidates:
             if len(chosen) == room:
                 break
             if not one_kind and per_kind[lead.kind] >= limits.get(lead.kind, room):
+                continue
+            if "home" in lead.beats and sum("home" in c.beats for c in chosen) >= ours_at_most:
                 continue
             if _same_game(lead, chosen):  # one story of a game per paper: the best of its preview and report leads
                 continue
@@ -400,7 +411,8 @@ def plan_editions(leads: list[Lead], outlets: list[Outlet], printed: dict[int, s
                 per_kind[kind] += 1
         if not chosen:
             continue
-        taken.update(lead.key for lead in chosen)
+        if not special:
+            taken.update(lead.key for lead in chosen)
         front = next((lead for lead in chosen if lead.kind in SEASON_NEWS and lead.kind not in TRANSFER_KINDS), None) if season_rules else None
         if "home" in outlet.beats:  # the club's own paper leads with its game's report when there is one
             front = next((lead for lead in chosen if lead.kind == "club_report"), front)
@@ -500,6 +512,8 @@ def make_editions(since: date | None = None, until: date | None = None, progress
     progress(f"Finding the stories from {since} to {until}")
     with db.engines[world_models.BIND].connect() as connection:
         leads = story_leads.find_leads(connection, since, until)
+    outlet_service.tournament_paper(next((lead.facts["tournament"] for lead in leads
+                                          if TOURNAMENT_BEAT in lead.beats and lead.facts.get("tournament")), None))
     outlets = outlet_service.ensure_outlets()
     plans = plan_editions(leads, outlets, {o.id: printed_keys(o) for o in outlets}, days=(until - since).days,
                           last_printed=last_printed_tags(until), until=until, stories=printed_stories(until))

@@ -648,22 +648,32 @@ def test_the_front_leads_with_big_events_then_home_and_far_stories_last(site, mo
                                                             "as_of": date(2063, 10, 1)}])
             c.execute(world.WorldClub.__table__.update().where(world.WorldClub.fm_uid.in_((630, 662))).values(nation_uid=765))
             c.execute(world.WorldCompetition.__table__.insert(), [{"fm_uid": 9, "name": "World Cup", "short_name": "World Cup",
-                                                                    "abbreviation": "WC", "scope": "national_teams", "reputation": 200}])
+                                                                    "abbreviation": "WC", "scope": "national_teams", "reputation": 200},
+                                                                   {"fm_uid": 31, "name": "UEFA Champions League", "short_name": "Champions League",
+                                                                    "abbreviation": "UCL", "scope": "continental", "reputation": 200},
+                                                                   {"fm_uid": 32, "name": "Small Cup", "short_name": "Small Cup",
+                                                                    "abbreviation": "SC", "scope": "cup", "reputation": 100}])
 
-        def article(headline: str, order: int, kind: str, uid: int, ref: str) -> WorldSoccerArticle:
+        def article(headline: str, order: int, kind: str, uid: int, ref: str, lead: dict | None = None) -> WorldSoccerArticle:
             made = WorldSoccerArticle(headline=headline, section="Transfers", lead_key=f"key:{order}", prominence="lead" if order == 0 else "standard",
-                                      body="Text.", byline="Desk", article_type="report", sort_order=order)
+                                      body="Text.", byline="Desk", article_type="report", sort_order=order, lead=lead)
             made.entity_links.append(WorldSoccerEntityLink(entity_type=kind, entity_id=uid, world_ref=ref, label=headline))
             return made
 
         far, near = article("Corinthians sign a midfielder", 0, "club", 319, "club:319"), article("Liverpool new man", 1, "club", 662, "club:662")
         big = article("The World Cup draw", 2, "competition", 9, "competition:9")
         made = WorldSoccerIssue(publication_date=date(2063, 10, 28), knowledge_cutoff=date(2063, 10, 28), status="published", edition_name="The Transfer Wire")
-        made.articles.extend([far, near, big])
+        # 18 Nov 2026: a big title or final is a big event (the edition link); a small cup's, or the same competition's news, is not
+        crown = article("Chelsea crown Europe", 3, "edition", 31, "edition:31:2064", {"kind": "title"})
+        small = article("A small cup is won", 4, "edition", 32, "edition:32:2064", {"kind": "title"})
+        talk = article("Champions League talk", 5, "edition", 31, "edition:31:2064", {"kind": "preview"})
+        made = WorldSoccerIssue(publication_date=date(2063, 10, 28), knowledge_cutoff=date(2063, 10, 28), status="published", edition_name="The Transfer Wire")
+        made.articles.extend([far, near, big, crown, small, talk])
         db.session.add(made)
         db.session.commit()
         reach = story_reach(stories())
         assert (reach[far.id][0], reach[near.id], reach[big.id][0]) == (FAR, (HOME, 190), BIG)
+        assert (reach[crown.id][0], reach[small.id][0], reach[talk.id][0]) == (BIG, HOME, HOME)
     page = site.test_client().get("/").data.decode()
     assert page.index("The World Cup draw") < page.index("Liverpool new man") < page.index("Corinthians sign a midfielder")
 
