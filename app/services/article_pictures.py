@@ -106,6 +106,9 @@ _DEFAULT_SCENES = ("a soccer stadium under floodlights on a big match night, a p
 _LIGHTS = ("dramatic floodlights at night", "low golden evening sun", "grey drizzle and wet reflections",
            "a crisp cold winter afternoon", "bright midday sun and hard shadows", "mist and soft diffused light",
            "a stormy sky over the stadium", "warm spring light")
+SCENE_STEPS = 16  # a busy scene (crowds, flags, a stadium) needs more than a portrait's 8 steps (19 Nov 2026: 8 gave slop)
+_SUMMER_LIGHTS = ("dramatic floodlights on a warm summer night", "low golden evening sun", "bright midday sun and hard shadows",
+                  "a hazy summer afternoon", "a warm dusk, the sky still blue")  # a tournament is played in summer
 _VIEWS = ("35mm lens, close to the action", "telephoto lens from the stands", "wide-angle lens, low angle",
           "85mm lens, shallow focus", "high angle from the roof of the stand", "photographed from pitch level")
 
@@ -158,7 +161,7 @@ def illustration_prompt(article: WorldSoccerArticle, rng: random.Random | None =
 def _draw(prompt: str, seed: int) -> bytes:
     from app.services import picture_makers
 
-    return picture_makers.draw(prompt, seed, WIDTH, HEIGHT, model=picture_makers.draw_things_illustration_model())
+    return picture_makers.draw(prompt, seed, WIDTH, HEIGHT, model=picture_makers.draw_things_illustration_model(), steps=SCENE_STEPS)
 
 
 def _team_name(club_uid: int) -> str | None:
@@ -246,12 +249,12 @@ NATIONAL_SCENES = (
 )
 # A major tournament's finals (the World Cup, a continental championship): the whole world in one country for a month
 TOURNAMENT_SCENES = (
-    "an opening ceremony in a vast stadium, dancers in bright costumes on the pitch, flags of every nation around the bowl",
+    "a giant flag of a nation unfurled across a packed stand before a tournament game, the players lining up below",
     "a sea of fans in the colours of two countries filling a huge stadium at night, flags, drums, faces painted",
     "a national team walking out through a tunnel of flags for a knockout game, the stadium a wall of light and noise",
     "a fan zone on a city square at dusk, a giant screen, thousands of fans of many countries watching, flags waving",
     "a goal celebration in a tournament knockout game, the scorer sliding on his knees to a corner full of his country's flags",
-    "a captain lifting a golden trophy on a podium, confetti falling, his team and the stadium lit up behind him",
+    "a national team's fans marching through an old town square to the stadium, scarves, flags and songs",
     "two sets of fans sharing a stand, scarves of both countries, a close game under floodlights",
     "penalty shoot-out, the goalkeeper on his line, the taker walking up, both benches on their feet, a full stadium holding its breath",
     "fans of a small nation celebrating in a packed stadium, flags and tears, their team applauding them after the game",
@@ -317,7 +320,8 @@ def competition_prompt(name: str, scope: str | None, rng: random.Random, nation:
     ground = _ground_words(reputation) if not finals else ""
     if ground:
         mood = f"{mood} {ground.capitalize()}.".strip()
-    return scene, f"{scene[0].upper()}{scene[1:]}. {rng.choice(_LIGHTS).capitalize()}, {rng.choice(_VIEWS)}. {mood} {_STYLE}".replace("  ", " ")
+    light = rng.choice(_SUMMER_LIGHTS if finals else _LIGHTS)
+    return scene, f"{scene[0].upper()}{scene[1:]}. {light.capitalize()}, {rng.choice(_VIEWS)}. {mood} {_STYLE}".replace("  ", " ")
 
 
 def club_prompt(name: str, rng: random.Random) -> tuple[str, str]:

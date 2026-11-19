@@ -270,7 +270,8 @@ def gallery():
 
     images = [{"image": image, "label": ", ".join(label(link.world_ref) for link in image.links) or "—"} for image in world_images.library()]
     stories = article_pictures.illustrated_articles()
-    return render_template("news/gallery.html", images=images, stories=stories, kinds=sorted({i["image"].kind for i in images}))
+    days = sorted({i["image"].created_at.strftime("%Y-%m-%d") for i in images if i["image"].created_at}, reverse=True)
+    return render_template("news/gallery.html", images=images, stories=stories, kinds=sorted({i["image"].kind for i in images}), days=days)
 
 
 @news_bp.post("/desk/gallery/delete")

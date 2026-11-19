@@ -19,18 +19,21 @@
 <section class="card" style="margin-top:18px">
   <h3>Library <span class="muted">({{ images|length }})</span></h3>
   <div class="bar">
-    <label>Kind <select onchange="document.querySelectorAll('.gallery.lib figure').forEach(f => f.style.display = (!this.value || f.dataset.kind === this.value) ? '' : 'none')">
-      <option value="">all</option>{% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}</select></label>
-    <label>Search <input type="search" placeholder="club, competition, caption" oninput="const q=this.value.toLowerCase(); document.querySelectorAll('.gallery.lib figure').forEach(f => f.style.display = f.dataset.text.includes(q) ? '' : 'none')"></label>
-    <button class="btn" type="button" onclick="document.querySelectorAll('.gallery.lib figure:not([style*=none]) .pick').forEach(c => c.checked = true)">Tick all shown</button>
-    <button class="btn danger" type="submit" onclick="return confirm('Delete the ticked pictures?')">Delete ticked</button>
+    <label>Kind <select id="f-kind"><option value="">all</option>{% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}</select></label>
+    <label>Made <select id="f-day"><option value="">any day</option>{% for d in days %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select></label>
+    <label>Search <input id="f-text" type="search" placeholder="club, competition, caption"></label>
+    <span class="muted" id="f-shown"></span>
+    <button class="btn" type="button" id="tick-shown">Tick all shown</button>
+    <button class="btn" type="button" id="untick">Untick all</button>
+    <button class="btn danger" type="submit" id="delete-ticked" onclick="return confirm('Delete the ' + document.querySelectorAll('.pick:checked').length + ' ticked pictures?')">Delete ticked</button>
   </div>
+  <p class="note" style="margin:0 0 6px">Click a picture's subject to show only that subject's pictures. Shift-click a box to tick every box between it and the last one.</p>
   <div class="gallery lib">
   {% for item in images %}{% set i = item.image %}
-    <figure class="{{ '' if i.is_active else 'hidden' }}" data-kind="{{ i.kind }}" data-text="{{ (item.label ~ ' ' ~ (i.caption or '') ~ ' ' ~ i.kind ~ ' ' ~ i.source)|lower }}">
+    <figure class="{{ '' if i.is_active else 'hidden' }}" data-kind="{{ i.kind }}" data-day="{{ i.created_at.strftime('%Y-%m-%d') if i.created_at else '' }}" data-text="{{ (item.label ~ ' ' ~ (i.caption or '') ~ ' ' ~ i.kind ~ ' ' ~ i.source)|lower }}">
       <input class="pick" type="checkbox" name="image" value="{{ i.id }}">
       <a href="{{ i.url }}" target="_blank"><img src="{{ i.url }}" alt="" loading="lazy"></a>
-      <figcaption><b>{{ item.label }}</b> · {{ i.kind }} · {{ i.source }}{% if not i.is_active %} · hidden{% endif %}
+      <figcaption><a href="#" class="subject" data-subject="{{ item.label }}"><b>{{ item.label }}</b></a> · {{ i.kind }} · {{ i.source }}{% if not i.is_active %} · hidden{% endif %}
         {% if i.caption %}<br><span class="muted">{{ i.caption }}</span>{% endif %}
         <div class="act"><span class="muted">#{{ i.id }}</span>
           {% if i.is_active %}<button class="btn" type="submit" formaction="{{ url_for('world.hide_world_image', image_id=i.id) }}" formnovalidate name="back" value="{{ url_for('news.gallery') }}">Hide</button>{% endif %}</div>
@@ -51,4 +54,43 @@
   </div>
 </section>
 </form>
+<script>
+(() => {
+  const figures = [...document.querySelectorAll('.gallery.lib figure')];
+  const kind = document.getElementById('f-kind'), day = document.getElementById('f-day'), text = document.getElementById('f-text');
+  const shownNote = document.getElementById('f-shown'), del = document.getElementById('delete-ticked');
+  const count = () => {
+    const ticked = document.querySelectorAll('.pick:checked').length;
+    del.textContent = ticked ? `Delete ${ticked} ticked` : 'Delete ticked';
+  };
+  const filter = () => {
+    const q = text.value.toLowerCase();
+    let shown = 0;
+    figures.forEach(f => {
+      const on = (!kind.value || f.dataset.kind === kind.value) && (!day.value || f.dataset.day === day.value) && f.dataset.text.includes(q);
+      f.style.display = on ? '' : 'none';
+      shown += on;
+    });
+    shownNote.textContent = `${shown} shown`;
+  };
+  [kind, day].forEach(x => x.addEventListener('change', filter));
+  text.addEventListener('input', filter);
+  document.getElementById('tick-shown').onclick = () => { figures.forEach(f => { if (f.style.display !== 'none') f.querySelector('.pick').checked = true; }); count(); };
+  document.getElementById('untick').onclick = () => { document.querySelectorAll('.pick').forEach(c => c.checked = false); count(); };
+  document.querySelectorAll('.subject').forEach(a => a.onclick = e => { e.preventDefault(); text.value = a.dataset.subject.toLowerCase(); filter(); text.scrollIntoView({block: 'center'}); });
+  let last = null;  // shift-click: tick or untick every shown box between this one and the last one clicked
+  document.querySelectorAll('.gallery').forEach(g => g.addEventListener('click', e => {
+    const box = e.target.closest('.pick');
+    if (!box) return;
+    const boxes = [...g.querySelectorAll('.pick')].filter(c => c.closest('figure').style.display !== 'none');
+    if (e.shiftKey && last && boxes.includes(last)) {
+      const [a, b] = [boxes.indexOf(last), boxes.indexOf(box)].sort((x, y) => x - y);
+      boxes.slice(a, b + 1).forEach(c => c.checked = box.checked);
+    }
+    last = box;
+    count();
+  }));
+  filter();
+})();
+</script>
 {% endblock %}

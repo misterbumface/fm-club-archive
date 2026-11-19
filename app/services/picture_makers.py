@@ -297,8 +297,8 @@ def online() -> tuple[bool, str]:
     return (True, "") if drawing_online() else (False, "Draw Things is not running")
 
 
-def draw(prompt: str, seed: int, width: int, height: int, model: str | None = None) -> bytes:
-    """A picture from the chosen maker, as PNG or JPEG bytes."""
+def draw(prompt: str, seed: int, width: int, height: int, model: str | None = None, steps: int | None = None) -> bytes:
+    """A picture from the chosen maker, as PNG or JPEG bytes. ``steps`` is for Draw Things only (the others keep theirs)."""
     if maker() == "invoke":
         return invoke_draw(prompt, seed, width, height)
     if maker() == "wavespeed":
@@ -306,7 +306,7 @@ def draw(prompt: str, seed: int, width: int, height: int, model: str | None = No
     if maker() == "openai":
         return openai_draw(prompt, width, height)
     try:
-        return world_portraits.draw(prompt, seed=seed, width=width, height=height, model=model)
+        return world_portraits.draw(prompt, seed=seed, width=width, height=height, model=model, steps=steps)
     except world_portraits.PortraitError as exc:
         raise PictureError(str(exc)) from exc
 

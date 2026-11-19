@@ -503,7 +503,7 @@ def _grpc() -> bool:
 
 
 def draw(prompt: str, seed: int, url: str | None = None, timeout: int = 600, width: int = 1024, height: int = 1024,
-         model: str | None = PORTRAIT_MODEL, negative: str | None = NEGATIVE_PROMPT) -> bytes:
+         model: str | None = PORTRAIT_MODEL, negative: str | None = NEGATIVE_PROMPT, steps: int | None = None) -> bytes:
     """One image from Draw Things (1024 x 1024 unless given), as PNG bytes. With ``model`` None the model selected in Draw
     Things draws it; its other settings (steps, guidance, sampler) stay as the user set them there."""
     url = url or _draw_things_url()
@@ -512,10 +512,12 @@ def draw(prompt: str, seed: int, url: str | None = None, timeout: int = 600, wid
 
         try:
             return draw_things_grpc.generate(url, prompt, model or picture_makers.draw_things_portrait_model(), seed, width, height,
-                                             negative=negative or "", timeout=timeout)
+                                             negative=negative or "", steps=steps, timeout=timeout)
         except draw_things_grpc.DrawThingsError as exc:
             raise PortraitError(str(exc)) from exc
     request = {"prompt": prompt, "seed": seed % 2_147_483_647, "width": width, "height": height}
+    if steps:
+        request["steps"] = steps
     if model:
         request["model"] = model
     if negative:
