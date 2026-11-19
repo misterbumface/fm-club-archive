@@ -33,9 +33,8 @@ SAVED_WIDTH = 1200
 
 # One plain sentence of style, the way the newer models (Z-Image, FLUX, Qwen-Image) read a prompt: they draw what is named,
 # so nothing is named that must not appear (no "no helmets"); "soccer" because "football" alone reads as the American game.
-_STYLE = ("A press photograph from a soccer match, full frame: natural colour, a real stadium with its advertising boards, "
-          "real players in sponsored kits as at a real match, sharp on the subject with the background softly out of focus. "
-          "One single photograph of one moment, the whole image one continuous frame from edge to edge.")
+_STYLE = ("Sports agency press photograph of soccer, natural colour, sharp focus on the subject, shallow depth of field, real faces and "
+          "hands, photojournalism.")  # 19 Nov 2026: short; the long style and busy scenes gave slop
 _TROPHY = ("soccer players lifting a silver trophy under floodlights, ticker tape and confetti in the air, a packed stadium",
            "a captain kissing a silver trophy, team-mates jumping behind him, streamers falling",
            "an open-top bus parade through crowded city streets, a silver trophy held high, flares and scarves",
@@ -229,36 +228,36 @@ def illustrate_editions(issue_ids: list[int], again: bool = False, progress=log.
 # Without one, every story about a competition showed its logo. A pool of a few pictures in its mood, drawn once and kept in
 # the image library, gives each story one of them: chosen by the story's number, so two stories differ and a story keeps its.
 COMPETITION_SCENES = (
-    "a packed soccer stadium at night as the teams walk out, the anthem moment, a giant banner unfurled in the stands",
-    "a wall of fans behind a goal with flags, flares and scarves, singing, floodlights above",
-    "a goal celebration in front of the away end, players piled on the scorer, the crowd a blur",
-    "two captains and the referee at the coin toss on the centre circle, the ball on its plinth, a full stadium",
-    "a stadium exterior at dusk, crowds streaming towards the lit gates, scarves and programmes",
-    "a goalkeeper flying across goal to tip a shot over, the net and the crowd behind",
-    "a crowded penalty box as a corner comes in, players rising for the header",
-    "a silver trophy on a plinth before kick-off, the teams lined up behind it",
-    "a long exposure of a stadium bowl at night, a sea of phone lights in the stands",
-    "a winger sprinting down the touchline past the dugouts, the bench on its feet",
+    "two teams walking out of the tunnel side by side before kick-off, the captains in front, a full stadium behind, blurred",
+    "fans behind a goal on their feet singing, scarves held up above their heads, one fan in the front row shouting",
+    "a goal celebration, the scorer running towards the camera with his arms out, two team-mates chasing him, the crowd blurred behind",
+    "a goalkeeper diving full stretch to tip a shot round the post, the ball at his fingertips",
+    "a striker rising above a defender to head the ball in the penalty box, both off the ground",
+    "a winger sprinting with the ball at his feet past a defender near the touchline, the dugouts behind",
+    "a manager in a dark jacket shouting instructions from the touchline, one arm pointing, the bench behind him",
+    "fans walking along a street towards a lit stadium at dusk, in their club's scarves, seen from behind",
+    "two players challenging for the ball in midfield, the ball in the air between them, the crowd blurred behind",
+    "a player sinking to his knees at the final whistle, hands on his head, an opponent offering him a hand",
 )
 NATIONAL_SCENES = (
-    "two national teams lined up for the anthems, a sea of flags of many countries in the stands",
-    "fans painted in their country's colours in a packed stadium, flags and drums",
-    "a national team huddle before kick-off, a huge stadium bowl behind, the pitch lit bright",
-    "a goal celebration in an international, players running to a corner flag, flags waving in the stands",
-    "a fan zone on a city square, a giant screen, thousands watching an international at night",
+    "one national team in matching kits standing in a line on the pitch for the anthem, players with hands on hearts, a full stadium behind",
+    "fans in their national team's shirts with painted faces singing in the stand, scarves held up",
+    "a national team in a huddle on the pitch before kick-off, arms round each other's shoulders, the stadium blurred behind",
+    "a footballer in his national team's kit celebrating a goal, sliding on his knees towards the corner flag, the crowd on its feet behind",
+    "a crowd seen from behind watching a giant screen on a city square at dusk, arms raised at a goal",
 )
 # A major tournament's finals (the World Cup, a continental championship): the whole world in one country for a month
 TOURNAMENT_SCENES = (
-    "a giant flag of a nation unfurled across a packed stand before a tournament game, the players lining up below",
-    "a sea of fans in the colours of two countries filling a huge stadium at night, flags, drums, faces painted",
-    "a national team walking out through a tunnel of flags for a knockout game, the stadium a wall of light and noise",
-    "a fan zone on a city square at dusk, a giant screen, thousands of fans of many countries watching, flags waving",
-    "a goal celebration in a tournament knockout game, the scorer sliding on his knees to a corner full of his country's flags",
-    "a national team's fans marching through an old town square to the stadium, scarves, flags and songs",
-    "two sets of fans sharing a stand, scarves of both countries, a close game under floodlights",
-    "penalty shoot-out, the goalkeeper on his line, the taker walking up, both benches on their feet, a full stadium holding its breath",
-    "fans of a small nation celebrating in a packed stadium, flags and tears, their team applauding them after the game",
-    "a stadium exterior before a tournament game, crowds of many countries in their shirts streaming in, banners on the walls",
+    "a footballer in his national team's kit celebrating a goal, sliding on his knees on the grass towards the corner flag, mouth open, arms wide; behind him a packed stand of fans on their feet, blurred",
+    "one national team in matching white kits standing in a line on the pitch for the anthem before a tournament game, players with hands on hearts, a huge stadium full to the roof behind them",
+    "football fans in their national team's shirts with painted faces singing in the stand of a big stadium, scarves held up, one fan in the front row shouting with joy",
+    "a goalkeeper in a bright kit diving full stretch to save a shot, the ball at his fingertips, the net and a blurred crowd behind",
+    "a captain with the armband shouting encouragement to his team-mates in a huddle before kick-off, a huge stadium behind",
+    "a national team coach in a suit on the touchline, arms folded, watching intently, the bench behind him",
+    "fans in national team shirts walking towards a big modern stadium before a game, seen from behind, the stadium rising ahead",
+    "a crowd seen from behind watching a giant screen on a city square at dusk, arms raised at a goal",
+    "a player in his national team's kit sinking to his knees at the final whistle, hands on his face, an opponent consoling him",
+    "a striker in his national team's kit striking the ball on the volley, the ball leaving his boot, defenders closing in",
 )
 # A club's generic pictures: any week's story about the club can carry one (the club's colours, never its crest or name)
 CLUB_SCENES = (
