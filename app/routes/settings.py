@@ -45,7 +45,7 @@ def index():
                 "New AI jobs will use it immediately.",
                 "success",
             )
-        return redirect(url_for("settings.index"))
+        return redirect(url_for("settings.index", _anchor="model"))
 
     from config import ARCHIVE_DIR, read_archive_settings
 

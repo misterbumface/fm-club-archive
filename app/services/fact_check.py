@@ -19,7 +19,8 @@ from flask import current_app
 from app.services import world_queries as q
 
 KINDS = ("result", "record", "form", "place", "fixture", "player_game", "goal_kind", "player_season", "player_age", "player_club",
-         "meetings", "title_run", "tie", "goal_minute", "game_day", "other")
+         "meetings", "title_run", "tie", "goal_minute", "goal_order", "half_time", "clean_sheet", "game_day", "other")
+GOAL_ORDER = ("opened", "equaliser", "pulled_back", "lead")
 GAME_STATS = ("goals", "assists", "shots", "shots_on_target", "passes", "passes_completed", "key_passes", "tackles", "tackles_won",
               "interceptions", "headers_won", "dribbles", "fouls", "yellow_cards", "minutes", "conceded")
 TIE_DAYS = 45  # a "through" or "out" is about a tie of these last weeks
@@ -68,6 +69,14 @@ PROMPT = (
     '- "goal_minute": when a goal was scored. team (that scored), opponent, player (the scorer) when named, and minute (a number: '
     '"the 37th minute", "after 37 minutes" are 37) or half ("first" or "second": "before the break", "after the interval"). '
     '"A late goal" without a minute is colour.\n'
+    '- "goal_order": where a goal came in the run of the game. team (that scored), opponent, player (the scorer) when named, '
+    'and order: "opened" (the first goal of the game: "struck first", "opened the scoring", "took the lead"), "equaliser" '
+    '(made it level), "pulled_back" (made it closer while still behind: "pulled one back", "a consolation"), "lead" (put the '
+    'team ahead: "restored the lead", "the winner"); or score_after, the score just after the goal ("2-1", team\'s goals first).\n'
+    '- "half_time": the score at half-time. team, opponent, and score ("2-1", team\'s goals first) or state ("ahead", "level" '
+    'or "behind", for team). "Led at the break through two goals" is state "ahead", and goals 2 when it counts them.\n'
+    '- "clean_sheet": team, opponent, kept (true when the sentence says the team or its goalkeeper conceded nothing, false '
+    'when it says they did concede).\n'
     '- "game_day": the day of the week of a game, played or to come. team, opponent when named, weekday ("Monday" to '
     '"Sunday"), when ("past" or "future"). "On Wednesday, Napoli went to Cluj" is team Napoli, weekday Wednesday, past.\n'
     '- "title_run": league titles won in a row. team, won_in_a_row (the titles already won one after another up to now; '
@@ -408,6 +417,86 @@ class Checker:
         return "wrong", f"the goals of {self._line(f)}: " + ", ".join(
             f"{g['name'] or 'unknown'} {g['minute']}{'+' + str(g['added_time']) if g['added_time'] else ''}' "
             f"({self.w.name(f['home_uid'] if g['side'] == 0 else f['away_uid'])})" for g in goals)
+
+    def _run_of_goals(self, claim):
+        """The game a sentence tells and its goals in order, each with the score before and after it for the claim's team
+        (19 Nov 2026: "Ponferrada pulled one back through Juan José", who had opened the scoring; "led at the break
+        through Valera's first two", whose second came after it). None when the archive lacks a goal of the score."""
+        team, other = self._team(claim.get("team")), self._team(claim.get("opponent"))
+        if not team:
+            return None
+        f = self._recent_game(team, other)
+        if f is None or f["home_goals"] is None:
+            return None
+        goals = q._rows(self.c, "select g.minute, g.added_time, g.side, g.scorer_uid, p.name from goals g left join people p on "
+                                "p.fm_uid = g.scorer_uid where g.fixture_id = :f and g.kind in (0, 1, 2) "
+                                "order by g.minute, coalesce(g.added_time, 0), g.seq", f=f["id"])
+        if len(goals) != sum(self._goals(f, team)):
+            return None
+        side, mine, theirs, run = (0 if f["home_uid"] == team else 1), 0, 0, []
+        for g in goals:
+            before = (mine, theirs)
+            mine, theirs = (mine + 1, theirs) if g["side"] == side else (mine, theirs + 1)
+            run.append({**g, "ours": g["side"] == side, "before": before, "after": (mine, theirs)})
+        return team, f, run
+
+    def _goal_list(self, team: int, f: dict, run: list) -> str:
+        return f"the goals of {self._line(f)}, in order: " + ", ".join(
+            f"{g['name'] or 'unknown'} {g['minute']}{'+' + str(g['added_time']) if g['added_time'] else ''}' "
+            f"({self.w.name(f['home_uid'] if g['side'] == 0 else f['away_uid'])}, "
+            f"{self.w.name(team)} {g['after'][0]}-{g['after'][1]})" for g in run)
+
+    def _goal_order(self, claim):
+        order, score = str(claim.get("order") or "").lower(), str(claim.get("score_after") or "").replace(" ", "")
+        if order not in GOAL_ORDER and not re.fullmatch(r"\d+-\d+", score):
+            return "unknown", ""
+        game = self._run_of_goals(claim)
+        if game is None:
+            return "unknown", ""
+        team, f, run = game
+        person = self.archive.person(str(claim["player"]), claim.get("team")) if claim.get("player") else None
+        if claim.get("player") and person is None:
+            return "unknown", ""
+
+        def fits(i: int, g: dict) -> bool:
+            (m0, t0), (m1, t1) = g["before"], g["after"]
+            if score and f"{m1}-{t1}" != score:
+                return False
+            return {"opened": i == 0, "equaliser": m1 == t1, "pulled_back": m0 < t0 and m1 < t1,
+                    "lead": m0 <= t0 and m1 > t1}.get(order, True)
+
+        if any(g["ours"] and (person is None or g["scorer_uid"] == person) and fits(i, g) for i, g in enumerate(run)):
+            return "right", ""
+        return "wrong", self._goal_list(team, f, run)
+
+    def _half_time(self, claim):
+        score, state = str(claim.get("score") or "").replace(" ", ""), str(claim.get("state") or "").lower()
+        told_goals = claim.get("goals")
+        if not re.fullmatch(r"\d+-\d+", score) and state not in ("ahead", "level", "behind") and not isinstance(told_goals, int):
+            return "unknown", ""
+        game = self._run_of_goals(claim)
+        if game is None:
+            return "unknown", ""
+        team, f, run = game
+        first = [g for g in run if g["minute"] <= 45]
+        mine, theirs = first[-1]["after"] if first else (0, 0)
+        real_state = "ahead" if mine > theirs else "level" if mine == theirs else "behind"
+        if (not score or score == f"{mine}-{theirs}") and (state not in ("ahead", "level", "behind") or state == real_state) \
+                and (not isinstance(told_goals, int) or told_goals == mine):
+            return "right", ""
+        return "wrong", f"half-time: {self.w.name(team)} {mine}-{theirs}; " + self._goal_list(team, f, run)
+
+    def _clean_sheet(self, claim):
+        team, other = self._team(claim.get("team")), self._team(claim.get("opponent"))
+        if not team or not isinstance(claim.get("kept"), bool):
+            return "unknown", ""
+        f = self._recent_game(team, other)
+        if f is None or f["home_goals"] is None:
+            return "unknown", ""
+        conceded = self._goals(f, team)[1]
+        if (conceded == 0) == claim["kept"]:
+            return "right", ""
+        return "wrong", f"{self.w.name(team)} conceded {conceded} in {self._line(f)}"
 
     def _recent_game(self, team: int, other: int | None) -> dict | None:
         """The game a sentence tells: the article's own game when the team played in it, else the team's last game against

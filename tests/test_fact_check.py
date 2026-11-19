@@ -236,3 +236,23 @@ def test_a_place_in_another_countrys_league_is_wrong(small_world):
     assert _check(small_world, {**place, "league": "English Premier Division"}).verdict == "right"
     assert _check(small_world, {**place, "league": "the Premier League"}).verdict == "right"  # a common name passes
     assert _check(small_world, place).verdict == "right"
+
+
+def test_the_run_of_goals_half_time_and_a_clean_sheet_are_checked(small_world):
+    """19 Nov 2026: "Ponferrada pulled one back through Juan José" (he opened the scoring), "led at the break through
+    Valera's first two" (his second came after it) and a clean sheet in a 5-2 win."""
+    _season(small_world)  # Chelsea 1-0 Arsenal, Sam Scorer after 10 minutes
+    game = {"team": "Chelsea", "opponent": "Arsenal"}
+    assert _check(small_world, {"kind": "goal_order", **game, "player": "Sam Scorer", "order": "opened"}).verdict == "right"
+    assert _check(small_world, {"kind": "goal_order", **game, "order": "lead", "score_after": "1-0"}).verdict == "right"
+    back = _check(small_world, {"kind": "goal_order", "team": "Arsenal", "opponent": "Chelsea", "order": "pulled_back"})
+    assert back.verdict == "wrong" and back.truth.endswith("Sam Scorer 10' (Chelsea, Arsenal 0-1)")
+    assert _check(small_world, {"kind": "goal_order", **game, "order": "equaliser"}).verdict == "wrong"
+    assert _check(small_world, {"kind": "half_time", **game, "state": "ahead", "score": "1-0"}).verdict == "right"
+    level = _check(small_world, {"kind": "half_time", **game, "state": "level"})
+    assert level.verdict == "wrong" and level.truth.startswith("half-time: Chelsea 1-0")
+    assert _check(small_world, {"kind": "half_time", **game, "state": "ahead", "goals": 2}).verdict == "wrong"
+    assert _check(small_world, {"kind": "clean_sheet", **game, "kept": True}).verdict == "right"
+    leaky = _check(small_world, {"kind": "clean_sheet", "team": "Arsenal", "opponent": "Chelsea", "kept": True})
+    assert leaky.verdict == "wrong" and leaky.truth.startswith("Arsenal conceded 1 in")
+    assert _check(small_world, {"kind": "goal_order", **game}).verdict == "unknown"  # no order told

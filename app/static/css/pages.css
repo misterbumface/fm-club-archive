@@ -812,3 +812,37 @@
 
 /* a person's character (the game's hidden traits in words) on a person page */
 .character { font-size: .9rem; margin: .4rem 0 1rem; }
+
+/* -- Settings in tabs (19 Nov 2026): one row per setting, a dropdown for each choice -------------------------- */
+.settings-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-bottom: .9rem; }
+.settings-top h1 { margin: 0; font-size: 1.8rem; color: var(--settings-ink); }
+.settings-top p { margin: .2rem 0 0; color: #6d7871; font-size: .9rem; }
+.settings-pills { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0; padding: 0; list-style: none; }
+.settings-pills li { padding: .2rem .6rem; border-radius: 999px; font-size: .75rem; background: #f3d3d3; color: #7a2e2e; }
+.settings-pills li.is-ready { background: #dcefe4; color: var(--settings-green); }
+.settings-tabs { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: 1rem; border-bottom: 1px solid #d2dad4; }
+.settings-tabs button { padding: .5rem .95rem; border: 0; border-bottom: 3px solid transparent; background: none; color: #6d7871; font: inherit; font-weight: 600; cursor: pointer; }
+.settings-tabs button.is-active { color: var(--settings-ink); border-bottom-color: var(--settings-green); }
+.settings-tab { display: grid; gap: 1rem; max-width: 52rem; }
+.settings-tab[hidden] { display: none; }
+.settings-tabbed .settings-panel { margin: 0; padding: 1rem 1.2rem .9rem; border-radius: 1rem; box-shadow: 0 .4rem 1.2rem rgba(15,40,30,.05); }
+.settings-tabbed .settings-panel h2 { margin: 0 0 .7rem; font-size: 1.15rem; color: var(--settings-ink); }
+.settings-tabbed .settings-panel h2 a { color: inherit; text-decoration: none; border-bottom: 2px solid #c9d8cf; }
+.settings-tabbed h2 small, .setting-row small, .maker summary small { display: block; margin-top: .15rem; font-size: .78rem; font-weight: 400; color: #6d7871; }
+.setting-row { display: grid; grid-template-columns: 13rem minmax(0, 1fr) auto; align-items: center; gap: .5rem .9rem; padding: .55rem 0; border-top: 1px solid #e6ebe7; font-size: .9rem; }
+.setting-row:first-of-type { border-top: 0; }
+.setting-row > span:first-child { font-weight: 600; color: var(--settings-ink); }
+.setting-row select, .setting-row input:not([type="checkbox"]) { width: 100%; }
+.setting-row > select:last-child, .setting-row > strong:nth-last-child(2) { grid-column: span 1; }
+.setting-row .row-buttons { display: flex; gap: .4rem; flex-wrap: wrap; justify-content: flex-end; }
+.setting-row .row-buttons form { display: inline; }
+.setting-row .inline-check { display: flex; gap: .3rem; align-items: center; font-size: .8rem; color: #6d7871; }
+.settings-tabbed small.is-ok { color: var(--settings-green); }
+.settings-tabbed small.is-bad { color: #9a3b3b; }
+.settings-hint { margin: .4rem 0 0; font-size: .78rem; color: #6d7871; }
+.maker { margin-top: .5rem; border: 1px solid #e0e6e2; border-radius: .7rem; padding: .5rem .8rem; }
+.maker summary { cursor: pointer; font-weight: 600; color: var(--settings-ink); }
+.maker summary small { display: inline; margin-left: .4rem; }
+.maker .archive-fields { margin: .7rem 0 .3rem; }
+.archive-fields .span-two { grid-column: 1 / -1; }
+@media (max-width: 700px) { .setting-row { grid-template-columns: 1fr; } .setting-row .row-buttons { justify-content: flex-start; } }
