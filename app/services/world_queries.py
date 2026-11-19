@@ -874,6 +874,24 @@ def league_table(connection: Connection, competition_uid: int, start: str, end: 
     return table_from(fixtures)
 
 
+PLAY_OFF_SHARE = 0.03  # a league stage with under this share of the league's games is a play-off (the game keeps stage ids
+# from season to season, so the shares hold; each half of Scotland's split, about 6% of the games, stays the league)
+
+
+def play_off_stages(connection: Connection, competition_uids) -> set[tuple[int, int]]:
+    """The (league, stage) pairs that are play-offs, not the league itself (19 Nov 2026: Lens v Guingamp, the Ligue 1
+    relegation play-off, showed as a Ligue 1 game): a league's stages with under PLAY_OFF_SHARE of its games."""
+    leagues = set(competition_uids) & league_uids(connection)
+    if not leagues:
+        return set()
+    sizes: dict[int, dict[int, int]] = {}
+    for r in _rows(connection, f"select competition_uid c, stage, count(*) n from fixtures where competition_uid in "
+                               f"({','.join(str(int(u)) for u in leagues)}) group by competition_uid, stage"):
+        sizes.setdefault(r["c"], {})[r["stage"]] = r["n"]
+    return {(comp, stage) for comp, stages in sizes.items() for stage, n in stages.items()
+            if n < PLAY_OFF_SHARE * sum(stages.values())}
+
+
 def table_from(fixtures: list[dict]) -> list[dict]:
     """A table from games in date order (3 points a win); unplayed games do not count."""
     rows: dict[int, dict] = {}

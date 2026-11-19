@@ -1,6 +1,6 @@
 """The public site (app/public): published stories only, each story once, and none of the archive's own pages."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -101,6 +101,26 @@ def _league(app) -> None:
                      "clean_sheets": 0, "yellow_cards": 0, "red_cards": 0, "minutes": 0, "rating_total": 0, "as_of": day, "seq": 0}
             c.execute(world.WorldPlayerSeason.__table__.insert(), [{**stats, "person_uid": 1, "team_uid": 630, "season_start": 2063, "kind": 1,
                                                                     "league_uid": 11, "starts": 2}])  # makes it a league
+
+
+def test_a_league_play_off_is_named_as_one(site):
+    """19 Nov 2026: Lens v Guingamp, the Ligue 1 relegation play-off, showed as a Ligue 1 game."""
+    from app.models import world
+    from app.public import football
+
+    _league(site)
+    with site.app_context():
+        with db.engines[world.BIND].begin() as c:
+            c.execute(world.WorldFixture.__table__.insert(), [{"date": date(2063, 8, 1) + timedelta(days=n), "home_uid": 630, "away_uid": 662, "competition_uid": 11,
+                                                               "stage": 1, "home_goals": 1, "away_goals": 0, "as_of": date(2063, 10, 1)} for n in range(40)])
+            c.execute(world.WorldFixture.__table__.insert(), [{"date": date(2063, 11, 30), "home_uid": 650, "away_uid": 662, "competition_uid": 11,
+                                                               "stage": 99, "home_goals": 2, "away_goals": 1, "as_of": date(2063, 10, 1)}])
+        with db.engines[world.BIND].connect() as c:
+            assert football.q.play_off_stages(c, [11]) == {(11, 99)}
+    with site.test_request_context():
+        with db.engines[world.BIND].connect() as c:
+            names = [x["name"] for x in football.day_results(c, date(2063, 11, 30), [11])]
+    assert names == ["English Premier Division play-off"]
 
 
 def test_the_scores_tables_and_club_pages(site):

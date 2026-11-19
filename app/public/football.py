@@ -61,6 +61,7 @@ def _games(c: Connection, rows: list[dict]) -> list[dict]:
     """Fixtures with their teams' names, crests and the score in words."""
     names = q.teams(c, {t for f in rows for t in (f["home_uid"], f["away_uid"])})
     comps = q.competitions(c, {f["competition_uid"] for f in rows})
+    play_offs = q.play_off_stages(c, comps)
     games = []
     for f in rows:
         home, away = names.get(f["home_uid"], {}), names.get(f["away_uid"], {})
@@ -74,7 +75,8 @@ def _games(c: Connection, rows: list[dict]) -> list[dict]:
             note = "aet"
         games.append({"id": f["id"], "date": date.fromisoformat(str(f["date"])[:10]), "home": home, "away": away, "home_uid": f["home_uid"], "away_uid": f["away_uid"],
                       "home_crest": crest(home), "away_crest": crest(away), "score": score, "note": note,
-                      "competition": comps.get(f["competition_uid"], {}).get("name"), "competition_uid": f["competition_uid"]})
+                      "competition": (comps.get(f["competition_uid"], {}).get("name") or "") + (" play-off" if (f["competition_uid"], f.get("stage")) in play_offs else ""),
+                      "competition_uid": f["competition_uid"], "play_off": (f["competition_uid"], f.get("stage")) in play_offs})
     return games
 
 
@@ -413,10 +415,14 @@ def day_results(c: Connection, day: date, order: list[int] | None = None, per_co
     reputation = {r["fm_uid"]: r["reputation"] or 0 for r in q._rows(c, f"select fm_uid, reputation from teams where fm_uid in "
                                                                      f"({','.join(str(t) for f in rows for t in (f['home_uid'], f['away_uid'])) or '0'})")}
     found = []
+    play_offs = q.play_off_stages(c, order)
     for uid in order:
         games = sorted((f for f in rows if f["competition_uid"] == uid), key=lambda f: -(reputation.get(f["home_uid"], 0) + reputation.get(f["away_uid"], 0)))
-        if games:
-            found.append({"uid": uid, "name": (q.competition(c, uid) or {}).get("name"), "games": _games(c, games[:per_competition]), "more": max(0, len(games) - per_competition)})
+        name = (q.competition(c, uid) or {}).get("name")
+        for label, part in ((name, [f for f in games if (uid, f["stage"]) not in play_offs]),
+                            (f"{name} play-off", [f for f in games if (uid, f["stage"]) in play_offs])):  # not a league game
+            if part:
+                found.append({"uid": uid, "name": label, "games": _games(c, part[:per_competition]), "more": max(0, len(part) - per_competition)})
     return found
 
 

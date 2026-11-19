@@ -1292,12 +1292,25 @@ def _nth_place(n: int) -> str:
     return q._place(n)
 
 
+def _play_offs(w, league: int) -> set[tuple[int, int]]:
+    """The league's play-off stages, once per world."""
+    cache = w.__dict__.setdefault("_play_off_stages", {})
+    if league not in cache:
+        cache[league] = q.play_off_stages(w.c, [league])
+    return cache[league]
+
+
 def _drama(w, f: dict, table: list[dict], place: dict[int, int]) -> tuple[float, dict]:
     """The bonus and the facts of a game's drama: a title decider, a relegation six-pointer, a cup final or semi-final, a
     run at stake, a manager's or a player's return to his old club, a scoring record or a hundredth cap within reach."""
     home, away, league = f["home_uid"], f["away_uid"], f["competition_uid"]
     facts: dict = {}
     bonus = 0.0
+    if f.get("stage") is not None and (league, f["stage"]) in _play_offs(w, league):  # 19 Nov 2026: Lens v Guingamp
+        facts["round"] = (f"the {w.comp(league).get('name')} play-off: not a league game, it does not count in the table "
+                          "(a promotion, relegation or European place is at stake)")
+        bonus += DRAMA["final"]
+        table = []  # the table's clashes are not this game's
     if home in place and away in place and table:
         total = 2 * (len(table) - 1)
         played = min(table[place[home] - 1]["played"], table[place[away] - 1]["played"])
