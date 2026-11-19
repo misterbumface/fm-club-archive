@@ -74,9 +74,11 @@ def delete_image(image_id: int) -> ArchiveImage | None:
     return image
 
 
-def library(limit: int = 400) -> list[ArchiveImage]:
-    """Every picture in the library, newest first, hidden ones too (the gallery shows them greyed)."""
-    return ArchiveImage.query.order_by(ArchiveImage.id.desc()).limit(limit).all()
+def library(limit: int | None = None) -> list[ArchiveImage]:
+    """Every picture in the library, newest first, hidden ones too (the gallery shows them greyed). No cap by default
+    (19 Nov 2026: the gallery stopped at 400 of 881); the pictures load as they scroll into view."""
+    found = ArchiveImage.query.order_by(ArchiveImage.id.desc())
+    return (found.limit(limit) if limit else found).all()
 
 
 def pictures(ref: str, kinds: tuple[str, ...] | None = None) -> list[ArchiveImage]:

@@ -512,10 +512,11 @@ def remove_illustration(article: WorldSoccerArticle) -> None:
         path.unlink(missing_ok=True)
 
 
-def illustrated_articles(limit: int = 400) -> list[WorldSoccerArticle]:
-    """The stories with a drawn picture, newest first."""
-    return (WorldSoccerArticle.query.join(WorldSoccerIssue).filter(WorldSoccerArticle.image_url.like(f"{ILLUSTRATION_URL}/%"))
-            .order_by(WorldSoccerIssue.publication_date.desc(), WorldSoccerArticle.id.desc()).limit(limit).all())
+def illustrated_articles(limit: int | None = None) -> list[WorldSoccerArticle]:
+    """The stories with a drawn picture, newest first; no cap by default, as the gallery's library."""
+    found = (WorldSoccerArticle.query.join(WorldSoccerIssue).filter(WorldSoccerArticle.image_url.like(f"{ILLUSTRATION_URL}/%"))
+             .order_by(WorldSoccerIssue.publication_date.desc(), WorldSoccerArticle.id.desc()))
+    return (found.limit(limit) if limit else found).all()
 
 
 def is_illustration(url: str | None) -> bool:
