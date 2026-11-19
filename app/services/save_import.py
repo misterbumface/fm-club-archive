@@ -26,7 +26,9 @@ from sqlalchemy.engine import Connection
 from app.extensions import db
 from app.models import world
 from app.services import fm_save, fm_tactics, manager_history, save_reading, season_from_reports
-from config import ARCHIVE
+from config import ARCHIVE, ARCHIVE_DIR
+
+OWN_LANG_DB = ARCHIVE_DIR / "game" / "lang_db.dat"  # the archive's own copy of the game's names (a Mac without the game)
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +43,13 @@ class ImportResult:
     counts: Counter = field(default_factory=Counter)  # rows written, and rows skipped as "<table> skipped"
 
 
+def language_database() -> Path | None:
+    """The game's lang_db.dat (the installed game's newest), else the archive's own copy: an archive moved to a Mac
+    without the game brings one (macapp/move.py), as only this file of the game is read."""
+    found = fm_save.find_language_database(ARCHIVE.game_database_dir)
+    return found or (OWN_LANG_DB if OWN_LANG_DB.is_file() else None)
+
+
 class SaveImportError(Exception):
     """The save or the game database cannot be read."""
 
@@ -48,9 +57,10 @@ class SaveImportError(Exception):
 def import_save(path: str | Path, lang_db: str | Path | None = None, progress: Callable[[str], None] = log.info) -> ImportResult:
     """Read the save at ``path`` and upsert everything into the ``world`` database."""
     path = Path(path)
-    lang_db = Path(lang_db) if lang_db else fm_save.find_language_database(ARCHIVE.game_database_dir)
+    lang_db = Path(lang_db) if lang_db else language_database()
     if lang_db is None or not lang_db.exists():
-        raise SaveImportError("The game's lang_db.dat was not found; competition and award names come from it.")
+        raise SaveImportError("The game's lang_db.dat was not found; competition and award names come from it. Install "
+                              f"Football Manager 2024, or put a copy of lang_db.dat in {OWN_LANG_DB.parent}.")
     engine = db.engines[world.BIND]
     create_tables(engine)
     reader = _SaveReader(path, lang_db, progress)

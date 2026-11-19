@@ -58,11 +58,38 @@ class ArchiveSettings:
 
 
 def read_archive_settings(folder: Path = ARCHIVE_DIR) -> ArchiveSettings:
-    """The archive's settings file, with the defaults for anything it leaves out."""
+    """The archive's settings file, with the defaults for anything it leaves out. A game folder that is not on this
+    Mac (an archive moved from another Mac) is looked for in the usual places, so a move needs no path changes."""
     path = folder / SETTINGS_FILE
     stored = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     known = {key: value for key, value in stored.items() if key in ArchiveSettings.__dataclass_fields__}
+    if known.get("fm_user_dir"):
+        known["fm_user_dir"] = find_here(known["fm_user_dir"], _fm_user_dirs())
+    if known.get("game_dir"):
+        known["game_dir"] = find_here(known["game_dir"], [_STEAM])
     return ArchiveSettings(**known)
+
+
+def _fm_user_dirs() -> list[Path]:
+    """Where FM's user folder usually is: in a synced folder (Dropbox, iCloud) or the game's own place."""
+    home = Path.home()
+    synced = sorted((home / "Library" / "CloudStorage").glob("*/Football Manager 2024"))
+    return [*synced, home / "Dropbox" / "Football Manager 2024",
+            home / "Library/Mobile Documents/com~apple~CloudDocs/Football Manager 2024", _SI]
+
+
+def find_here(stored: str, usual: list[Path]) -> str:
+    """The stored folder when this Mac has it; else the same folder under this Mac's home folder (a different user
+    name), else the first usual place that exists; else the stored folder (the import then says what is missing)."""
+    path = Path(stored).expanduser()
+    if path.is_dir():
+        return stored
+    parts = path.parts
+    if len(parts) > 3 and parts[1] == "Users":
+        moved = Path.home().joinpath(*parts[3:])
+        if moved.is_dir():
+            return str(moved)
+    return next((str(place) for place in usual if place.is_dir()), stored)
 
 
 def write_archive_settings(settings: ArchiveSettings, folder: Path = ARCHIVE_DIR) -> Path:

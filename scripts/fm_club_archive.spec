@@ -42,6 +42,7 @@ exe = EXE(  # noqa: F821
     name="FM Club Archive",
     console=False,
     target_arch="arm64",
+    argv_emulation=True,  # a double-clicked .fmarchive arrives in sys.argv
     # Ad hoc here; the build script then signs the whole bundle with the local certificate. Signing with
     # it here signs in a stricter mode that refuses the bundled Python ("different Team IDs").
     codesign_identity=None,
@@ -59,5 +60,11 @@ app = BUNDLE(  # noqa: F821
         "NSHighResolutionCapable": True,
         # The window shows the archive's own server on 127.0.0.1.
         "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
+        # An exported archive (File → Export Archive…): a double-click opens it in the app (argv_emulation passes it).
+        "CFBundleDocumentTypes": [{"CFBundleTypeName": "FM Club Archive", "CFBundleTypeRole": "Editor",
+                                   "LSHandlerRank": "Owner", "LSItemContentTypes": ["com.fmclubarchive.archive"]}],
+        "UTExportedTypeDeclarations": [{"UTTypeIdentifier": "com.fmclubarchive.archive", "UTTypeDescription": "FM Club Archive",
+                                        "UTTypeConformsTo": ["public.data", "public.zip-archive"],
+                                        "UTTypeTagSpecification": {"public.filename-extension": ["fmarchive"]}}],
     },
 )

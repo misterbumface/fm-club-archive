@@ -45,6 +45,7 @@ MODEL_SETTINGS = (
     ("flux_3", {"steps": 8}),
     ("flux_2_klein", {"steps": 8}),
     ("z_image", {"steps": 8}),
+    ("krea_2", {"steps": 16}),  # Krea 2 Turbo: the pitch, the goal and the players in their places; 16 as sharp as 25 (19 Nov 2026)
 )
 DEFAULT_STEPS = 20
 

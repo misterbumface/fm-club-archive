@@ -14,13 +14,14 @@ import fcntl
 import json
 import logging
 import multiprocessing
+import sys
 import threading
 import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from macapp import server, state
+from macapp import move, server, state
 from macapp.state import APP_NAME
 
 JOB_CHECKS, JOB_CHECK_PAUSE = 5, 0.12  # a job holds its lock for minutes; a check holds it for an instant
@@ -66,6 +67,10 @@ class ArchiveApp:
         self.stop()
 
     def _first(self) -> None:
+        opened = [Path(arg) for arg in sys.argv[1:] if arg.endswith(move.SUFFIX)]  # a double-clicked .fmarchive
+        if opened:
+            self.import_file(opened[0])
+            return
         last = Path(self.state.last) if self.state.last else None
         if last and state.is_archive(last):
             self.open(last)
@@ -187,7 +192,10 @@ class ArchiveApp:
             Menu("File", [
                 MenuAction("New Archive…", self.show_launcher),
                 MenuAction("Open Archive Folder…", self._open_folder),
+                MenuAction("Open Archive File…", self._open_file),
                 Menu("Switch To", switch_menu() or [MenuAction("(no other archive)", lambda: None)]),
+                MenuSeparator(),
+                MenuAction("Export Archive…", self.export),
                 MenuSeparator(),
                 MenuAction("Show Archive in Finder", self._reveal),
                 MenuAction("Show Logs in Finder", lambda: _reveal(state.LOG_DIR)),
@@ -206,6 +214,54 @@ class ArchiveApp:
                 MenuAction("Reload", lambda: self.window.evaluate_js("location.reload()")),
             ]),
         ]
+
+    def export(self) -> None:
+        """File → Export Archive…: the open archive as one .fmarchive file, to open on another Mac."""
+        import webview
+
+        if not self.folder:
+            return
+        folder, name = self.folder, _archive_name(self.folder)
+        chosen = self.window.create_file_dialog(webview.FileDialog.SAVE, directory=str(Path.home() / "Desktop"),
+                                                save_filename=f"{name}{move.SUFFIX}")
+        if not chosen:
+            return
+        target = Path(chosen if isinstance(chosen, str) else chosen[0])
+        if self.job_running() and not self.confirm("An import or a news cycle is running",
+                                                   "Export anyway? The file gets the archive as it is now."):
+            return
+        title = "Exporting the archive"
+        try:
+            target = move.export_archive(folder, target, lambda text: self.window.load_html(_page(title, text)))
+        except Exception as error:  # noqa: BLE001 - shown, then the archive again
+            log.exception("The export failed")
+            self.window.load_html(_page("The export failed", str(error)))
+            return
+        size = target.stat().st_size / 1e9
+        self.window.load_html(_page("The archive is exported", f"{target} ({size:.1f} GB).<br><br>On the other Mac, "
+                                    f"double-click the file, or use File → Open Archive File…. Then use the archive "
+                                    f"on one Mac only.<br><br><a href='http://127.0.0.1:{self.port}/' style='color:#e8b04a'>Back to the archive</a>"))
+
+    def _open_file(self) -> None:
+        import webview
+
+        chosen = self.window.create_file_dialog(webview.FileDialog.OPEN, directory=str(Path.home() / "Downloads"),
+                                                file_types=(f"FM Club Archive ({'*' + move.SUFFIX})",))
+        if chosen:
+            self.import_file(Path(chosen[0]))
+
+    def import_file(self, source: Path) -> bool:
+        """Unpack a .fmarchive into the app's archives and open it."""
+        title = f"Opening {source.name}"
+        self.window.load_html(_page(title, "Unpacking the archive. A large archive takes a few minutes…"))
+        try:
+            folder = move.import_archive(source, lambda text: self.window.load_html(_page(title, text)))
+        except Exception as error:  # noqa: BLE001
+            log.exception("The import of %s failed", source)
+            self.window.load_html(_page("The archive file did not open", str(error)))
+            return False
+        log.info("Unpacked %s into %s", source, folder)
+        return self.open(folder)
 
     def _open_folder(self) -> None:
         folder = Bridge(self).choose_folder(str(state.ARCHIVES_DIR))
@@ -268,6 +324,9 @@ class Bridge:
 
     def open_archive(self, path: str) -> bool:
         return self._app.open(Path(path))
+
+    def open_archive_file(self) -> None:
+        self._app._open_file()
 
     def create_archive(self, name: str, fm_user_dir: str, game_dir: str, save_file: str) -> dict:
         """Make a new archive in the app's folder, open it, and start its first import."""

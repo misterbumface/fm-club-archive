@@ -9,6 +9,7 @@ from app import create_app
 
 
 def test_settings_are_written_and_read_back_with_defaults_for_the_rest(tmp_path):
+    (tmp_path / "fm").mkdir()  # a folder this Mac has: kept as written
     settings = config.ArchiveSettings(name="Barcelona 2024", fm_user_dir=str(tmp_path / "fm"), save_file="Barcelona.fm")
     config.write_archive_settings(settings, tmp_path)
     read = config.read_archive_settings(tmp_path)

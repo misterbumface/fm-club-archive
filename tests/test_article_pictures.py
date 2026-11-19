@@ -51,7 +51,8 @@ def test_stories_share_a_competition_pool_each_with_its_own_picture():
 
 def test_a_competition_prompt_has_its_mood_and_not_its_name():
     scene, prompt = article_pictures.competition_prompt("European Champions Cup", "continental", random.Random(1))
-    assert scene in article_pictures.COMPETITION_SCENES and "European Champions Cup" not in prompt and "soccer" in prompt
+    assert article_pictures._template_of(scene, article_pictures.COMPETITION_SCENES) and "European Champions Cup" not in prompt and "soccer" in prompt
+    assert " a the " not in prompt and " the the " not in prompt.lower()  # no teams known: the generic words read well
     _, irish = article_pictures.competition_prompt("Irish Premier Division", "league", random.Random(1), "Ireland", 60)
     assert "In Ireland" in irish and "small ground with one main stand" in irish and "Irish Premier Division" not in irish
     _, top = article_pictures.competition_prompt("English Premier Division", "league", random.Random(1), "England", 190)
@@ -59,9 +60,9 @@ def test_a_competition_prompt_has_its_mood_and_not_its_name():
     _, euro = article_pictures.competition_prompt("UEFA Champions League", "continental", random.Random(1), None, 200)
     assert "In " not in euro.split("European night")[0] and "huge modern stadium" in euro
     scene, _ = article_pictures.competition_prompt("World Cup Asian Qualifying Section", "national_teams", random.Random(1))
-    assert scene in article_pictures.NATIONAL_SCENES
+    assert article_pictures._template_of(scene, article_pictures.NATIONAL_SCENES)
     scene, prompt = article_pictures.competition_prompt("World Cup", "national_teams", random.Random(1))  # the finals: a tournament's scenes
-    assert scene in article_pictures.TOURNAMENT_SCENES and "summer of football" in prompt and "World Cup" not in prompt
+    assert article_pictures._template_of(scene, article_pictures.TOURNAMENT_SCENES) and "summer of football" in prompt and "World Cup" not in prompt
     assert article_pictures.is_finals("European Football Championship", "national_teams") and not article_pictures.is_finals("Under 20 World Cup", "national_teams")
     assert world_images.KINDS_FOR["competition"] == ("trophy", "photograph", "matchday")
 
@@ -133,9 +134,9 @@ def test_the_pools_to_draw_include_a_tournament_in_play(monkeypatch):
 
 @pytest.mark.usefixtures("app")
 def test_a_club_prompt_carries_the_colours_and_never_the_crest(monkeypatch):
-    scene, prompt = article_pictures.club_prompt("Chelsea", random.Random(2))
-    assert scene in [s.format(colours="the colours of Chelsea") for s in article_pictures.CLUB_SCENES]
-    assert "the colours of Chelsea" in prompt and "free of crests and lettering" in prompt and "soccer" in prompt and "no " not in prompt
+    scene, prompt = article_pictures.club_prompt("Chelsea", random.Random(2), teams={"rival": "Arsenal", "country": "England"})
+    assert article_pictures._template_of(scene, article_pictures.CLUB_SCENES) and "Chelsea" in scene
+    assert "soccer" in prompt and "no " not in prompt and "{" not in prompt
     # the followed clubs come first in the clubs to draw for
     from app.services import story_leads
     monkeypatch.setattr(story_leads, "followed_clubs", lambda: (630,))
@@ -165,4 +166,23 @@ def test_a_national_teams_pool_is_drawn_with_international_scenes_in_its_country
     monkeypatch.setattr(world_images, "pictures", lambda ref, kinds=None: [])
     assert article_pictures.draw_club_pictures(765, 1) == 1  # England is a nation in the small world, not a club
     assert added[0][0] == "club:765" and added[0][2].startswith("England: ")
-    assert "In England" in prompts[0] and "international" in prompts[0].lower() and "the colours of" not in prompts[0]
+    assert "In England" in prompts[0] and "international" in prompts[0].lower() and "England" in added[0][2].split(": ", 1)[1]
+
+
+def test_a_pool_takes_every_scene_once_before_it_repeats_one():
+    rng, used, templates = random.Random(5), set(), set()
+    scenes = article_pictures.TOURNAMENT_SCENES
+    for number in range(len(scenes)):  # each picture with other teams: the scene is known by its template
+        teams = {"team": ["Spain", "France", "Wales"][number % 3], "rival": "Italy"}
+        scene, _ = article_pictures.competition_prompt("European Football Championship", "national_teams", rng, used=used, teams=teams)
+        template = article_pictures._template_of(scene, scenes)
+        assert template not in templates and teams["team"] in scene
+        used.add(scene)
+        templates.add(template)
+    assert templates == set(scenes)
+    scene, _ = article_pictures.competition_prompt("European Football Championship", "national_teams", rng, used=used)
+    assert article_pictures._template_of(scene, scenes)  # all used: any one again
+    club_teams = {"team": "Chelsea", "rival": "Arsenal", "country": "England"}
+    taken = {article_pictures.fill(s, club_teams) for s in article_pictures.CLUB_SCENES[1:]}
+    club, _ = article_pictures.club_prompt("Chelsea", random.Random(1), used=taken, teams=club_teams)
+    assert club == article_pictures.fill(article_pictures.CLUB_SCENES[0], club_teams)

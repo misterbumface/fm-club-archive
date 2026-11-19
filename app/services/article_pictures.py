@@ -133,6 +133,38 @@ def _club_of(article: WorldSoccerArticle) -> int | None:
     return None
 
 
+def _rival_of(article: WorldSoccerArticle) -> int | None:
+    """The story's second club (the beaten side, the selling club), when it names one."""
+    clubs = [int(ref.split(":")[1]) for ref in (article.lead or {}).get("refs") or [] if ref.startswith("club:")]
+    return clubs[1] if len(clubs) > 1 else None
+
+
+def _sides(article: WorldSoccerArticle) -> str:
+    """The sentence that names who is in the picture: the story's club in its kit, its opponent in theirs, the country.
+    Without it a scene of players celebrating had shirts of every colour (19 Nov 2026)."""
+    club, rival = _club_of(article), _rival_of(article)
+    team = _team_name(club) if club else None
+    if not team:
+        return ""
+    other = _team_name(rival) if rival else None
+    country = _country_of(club)
+    words = f" The team is {team}: every {team} player, scarf and flag in {team}'s home kit and colours."
+    if other:
+        words += f" Their opponents are {other}, in {other}'s away kit."
+    if country:
+        words += f" In {country}."
+    return words
+
+
+def _country_of(club_uid: int) -> str | None:
+    from app.models import world as world_models
+    from app.services import world_queries as q
+
+    with db.engines[world_models.BIND].connect() as connection:
+        row = q._one(connection, "select n.name from clubs c join nations n on n.fm_uid = c.nation_uid where c.fm_uid = :c", c=club_uid)
+    return row["name"] if row else None
+
+
 # For the writer's own scene, which may be a high street or a burger van as well as a match: the look, not the subject.
 _WRITER_STYLE = ("A documentary press photograph: natural colour, real people and real places, sharp on the subject with the "
                  "background softly out of focus. One single photograph of one moment, the whole image one continuous frame "
@@ -143,18 +175,13 @@ def illustration_prompt(article: WorldSoccerArticle, rng: random.Random | None =
     """The writer's scene when the article has one (it knows the piece's place and moment), else a scene of its kind."""
     rng = rng or random.Random(article.id)
     own = (article.lead or {}).get("picture")
+    sides = _sides(article)
     if own:
-        club = _club_of(article)
-        team = _team_name(club) if club else None
-        kit = f" Any players, scarves and flags are in {team}'s home colours." if team else ""
         own = re.sub(r"\b[Ff]ootball", "soccer", own)  # "football" alone draws the American game
-        return f"{own.rstrip('.')}. {rng.choice(_VIEWS).capitalize()}.{kit} {_WRITER_STYLE}"
+        return f"{own.rstrip('.')}. {rng.choice(_VIEWS).capitalize()}.{sides} {_WRITER_STYLE}"
     kind = (article.lead or {}).get("kind", "")
     scene = rng.choice(_SCENES.get(kind, _DEFAULT_SCENES))
-    club = _club_of(article)
-    team = _team_name(club) if club else None
-    kit = f" The team is {team}: the players, scarves and flags in {team}'s home colours." if team else ""
-    return f"{scene[0].upper()}{scene[1:]}. {rng.choice(_LIGHTS).capitalize()}, {rng.choice(_VIEWS)}.{kit} {_STYLE}"
+    return f"{scene[0].upper()}{scene[1:]}. {rng.choice(_LIGHTS).capitalize()}, {rng.choice(_VIEWS)}.{sides} {_STYLE}"
 
 
 def _draw(prompt: str, seed: int) -> bytes:
@@ -227,53 +254,95 @@ def illustrate_editions(issue_ids: list[int], again: bool = False, progress=log.
 # -- a competition's own pictures: a pool its stories share ----------------------------------------------------------------
 # Without one, every story about a competition showed its logo. A pool of a few pictures in its mood, drawn once and kept in
 # the image library, gives each story one of them: chosen by the story's number, so two stories differ and a story keeps its.
+# Each scene names its teams and its place: {team} the picture's team, {rival} its opponent, {country} where it is. A scene
+# that names nobody gave players of every colour celebrating together and fans of no club (19 Nov 2026): the models fill
+# a gap with anything. The teams come from the competition's own clubs (pool_teams); a team's own kit is named, which the
+# models know for the real clubs.
 COMPETITION_SCENES = (
-    "two teams walking out of the tunnel side by side before kick-off, the captains in front, a full stadium behind, blurred",
-    "fans behind a goal on their feet singing, scarves held up above their heads, one fan in the front row shouting",
-    "a goal celebration, the scorer running towards the camera with his arms out, two team-mates chasing him, the crowd blurred behind",
-    "a goalkeeper diving full stretch to tip a shot round the post, the ball at his fingertips",
-    "a striker rising above a defender to head the ball in the penalty box, both off the ground",
-    "a winger sprinting with the ball at his feet past a defender near the touchline, the dugouts behind",
-    "a manager in a dark jacket shouting instructions from the touchline, one arm pointing, the bench behind him",
-    "fans walking along a street towards a lit stadium at dusk, in their club's scarves, seen from behind",
-    "two players challenging for the ball in midfield, the ball in the air between them, the crowd blurred behind",
-    "a player sinking to his knees at the final whistle, hands on his head, an opponent offering him a hand",
+    "the players of {team} and {rival} walking out of the tunnel side by side before kick-off, {team} in their home kit and "
+    "{rival} in their away kit, the two captains in front",
+    "{team} fans behind a goal on their feet singing, {team} shirts and scarves held up above their heads, one fan in the front row shouting",
+    "a {team} player in the {team} home kit celebrating a goal, running towards the camera with his arms out, two {team} "
+    "team-mates in the same kit chasing him, the crowd blurred behind",
+    "the {team} goalkeeper diving full stretch to tip a shot from a {rival} striker round the post, the ball at his fingertips",
+    "a {team} striker in the {team} home kit rising above a {rival} defender in the {rival} away kit to head the ball in the "
+    "penalty box, both off the ground. The {rival} goalkeeper is standing in goal, facing them",
+    "a {team} winger in the {team} home kit sprinting with the ball at his feet past a {rival} defender near the touchline, the dugouts behind",
+    "the {team} manager in a dark jacket shouting instructions from the touchline, one arm pointing, the {team} bench behind him",
+    "{team} fans in {team} shirts and scarves walking along a street in {country} towards a lit stadium at dusk, seen from behind",
+    "a {team} player and a {rival} player, each in his own team's kit, challenging for the ball in midfield, the ball in the "
+    "air between them, the crowd blurred behind",
+    "a {team} player in the {team} home kit sitting alone on the grass after the final whistle, head bowed, the stand emptying behind him",
 )
 NATIONAL_SCENES = (
-    "one national team in matching kits standing in a line on the pitch for the anthem, players with hands on hearts, a full stadium behind",
-    "fans in their national team's shirts with painted faces singing in the stand, scarves held up",
-    "a national team in a huddle on the pitch before kick-off, arms round each other's shoulders, the stadium blurred behind",
-    "a footballer in his national team's kit celebrating a goal, sliding on his knees towards the corner flag, the crowd on its feet behind",
-    "a crowd seen from behind watching a giant screen on a city square at dusk, arms raised at a goal",
+    "the {team} national team in their home kit standing in a line on the pitch for the anthem, hands on hearts, a full stadium behind",
+    "{team} fans in {team} national team shirts with painted faces singing in the stand, {team} flags and scarves held up",
+    "the {team} national team in their home kit in a huddle on the pitch before kick-off, arms round each other's shoulders, the stadium blurred behind",
+    "a {team} player in the {team} national team's home kit celebrating a goal, sliding on his knees towards the corner flag, "
+    "{team} fans on their feet behind",
+    "{team} fans in {team} shirts seen from behind watching a giant screen on a city square in {country} at dusk, arms raised at a goal",
 )
 # A major tournament's finals (the World Cup, a continental championship): the whole world in one country for a month
 TOURNAMENT_SCENES = (
-    "a footballer in his national team's kit celebrating a goal, sliding on his knees on the grass towards the corner flag, mouth open, arms wide; behind him a packed stand of fans on their feet, blurred",
-    "one national team in matching white kits standing in a line on the pitch for the anthem before a tournament game, players with hands on hearts, a huge stadium full to the roof behind them",
-    "football fans in their national team's shirts with painted faces singing in the stand of a big stadium, scarves held up, one fan in the front row shouting with joy",
-    "a goalkeeper in a bright kit diving full stretch to save a shot, the ball at his fingertips, the net and a blurred crowd behind",
-    "a captain with the armband shouting encouragement to his team-mates in a huddle before kick-off, a huge stadium behind",
-    "a national team coach in a suit on the touchline, arms folded, watching intently, the bench behind him",
-    "fans in national team shirts walking towards a big modern stadium before a game, seen from behind, the stadium rising ahead",
-    "a crowd seen from behind watching a giant screen on a city square at dusk, arms raised at a goal",
-    "a player in his national team's kit sinking to his knees at the final whistle, hands on his face, an opponent consoling him",
-    "a striker in his national team's kit striking the ball on the volley, the ball leaving his boot, defenders closing in",
+    "a {team} player in the {team} national team's home kit celebrating a goal, sliding on his knees on the grass towards "
+    "the corner flag, mouth open, arms wide; behind him a packed stand of {team} fans on their feet, blurred",
+    "the {team} national team in their home kit standing in a line on the pitch for the anthem before a tournament game, "
+    "hands on hearts, a huge stadium full to the roof behind them",
+    "{team} fans in {team} national team shirts with painted faces singing in the stand of a big stadium, {team} scarves "
+    "held up, one fan in the front row shouting with joy",
+    "the {team} goalkeeper in a bright kit diving full stretch to save a shot from a {rival} striker, the ball at his "
+    "fingertips, the net and a blurred crowd behind",
+    "the {team} captain with the armband shouting encouragement to his {team} team-mates in a huddle before kick-off, all "
+    "in the {team} home kit, a huge stadium behind",
+    "the {team} national team coach in a suit on the touchline, arms folded, watching intently, the {team} bench behind him",
+    "{team} fans in {team} shirts walking towards a big modern stadium before a tournament game, seen from behind, the stadium rising ahead",
+    "{team} fans in {team} shirts seen from behind watching a giant screen on a city square at dusk, arms raised at a goal",
+    "a {team} player in the {team} national team's kit sitting alone on the grass after the final whistle, head bowed, "
+    "the stadium emptying behind him",
+    "a {team} striker in the {team} home kit striking the ball on the volley, the ball leaving his boot, {rival} defenders "
+    "in the {rival} away kit closing in",
+    "a {team} striker in the {team} home kit rising above a {rival} defender in the {rival} away kit to head the ball in "
+    "the penalty box, both off the ground. The {rival} goalkeeper is standing in goal, facing them",
 )
-# A club's generic pictures: any week's story about the club can carry one (the club's colours, never its crest or name)
+# A club's generic pictures: any week's story about the club can carry one
 CLUB_SCENES = (
-    "the outside of a football stadium on a matchday morning, turnstiles, fans in {colours} arriving, a programme seller",
-    "fans in {colours} scarves and shirts packed outside the ground before kick-off, flags, a pub on the corner",
-    "a players' tunnel before kick-off, the teams lined up in {colours} and the opponents' kit, the pitch bright beyond",
-    "a training ground on a weekday morning, players in {colours} training bibs, cones, the manager watching with his arms folded",
-    "a dressing room before a game, shirts in {colours} hung above each seat, boots lined up, the floor still clean",
-    "a football pitch under floodlights at night from the stand, the crowd in {colours} below, breath in the cold air",
-    "the away end of a stadium in full voice, fans in {colours} standing, scarves held up, a flare's smoke",
-    "a trophy room with silver cups on shelves, a shirt in {colours} framed on the wall, soft light",
-    "the groundsman's pitch at dawn, dew on the grass, the mower lines, the empty stand in {colours} seats",
-    "a club shop queue on a Saturday, children in {colours} shirts, a father with a scarf, the stadium behind",
-    "a team bus arriving at the stadium, fans in {colours} lining the road with phones up, police on horses",
-    "an old man and a boy in {colours} scarves in their seats before kick-off, the pitch below, the ground filling",
+    "the outside of the {team} stadium in {country} on a matchday morning, turnstiles, {team} fans in {team} shirts arriving, a programme seller",
+    "{team} fans in {team} scarves and shirts packed outside the ground before kick-off, {team} flags, a pub on the corner",
+    "a players' tunnel before kick-off, {team} lined up in their home kit and {rival} in their away kit, the pitch bright beyond",
+    "the {team} training ground on a weekday morning, {team} players in training bibs over their {team} training kit, cones, "
+    "the manager watching with his arms folded",
+    "the {team} dressing room before a game, {team} home shirts hung above each seat, boots lined up, the floor still clean",
+    "a football pitch under floodlights at night seen from the stand, {team} fans in {team} shirts below, breath in the cold air",
+    "the {team} away end of a stadium in full voice, {team} fans in {team} shirts standing, scarves held up, a flare's smoke",
+    "the {team} trophy room with silver cups on shelves, a {team} home shirt framed on the wall, soft light",
+    "the {team} pitch at dawn, dew on the grass, the mower lines, the empty stand behind",
+    "the {team} club shop queue on a Saturday, children in {team} shirts, a father with a {team} scarf, the stadium behind",
+    "the {team} team bus arriving at the stadium, {team} fans in {team} shirts lining the road with phones up, police on horses",
+    "an old man and a boy in {team} scarves in their seats before kick-off, the pitch below, the ground filling",
+    "a {team} striker in the {team} home kit rising above a {rival} defender in the {rival} away kit to head the ball in the "
+    "penalty box, both off the ground. The {rival} goalkeeper is standing in goal, facing them",
+    "a {team} player in the {team} home kit celebrating a goal in front of the {team} fans, two {team} team-mates in the same "
+    "kit running to join him",
 )
+_ANYONE = {"team": "the home team", "rival": "the away team", "country": "their country"}  # no teams known: still one side each
+
+
+def fill(scene: str, teams: dict | None) -> str:
+    """A scene with its teams and country in it (the generic words when they are not known: "a the home team player"
+    becomes "a home team player")."""
+    filled = scene.format(**{**_ANYONE, **{k: v for k, v in (teams or {}).items() if v}})
+    return re.sub(r"\b([Aa]|[Tt]he) the ", r"\1 ", filled)
+
+
+def _template_of(filled: str, scenes: tuple[str, ...]) -> str | None:
+    """The scene a filled scene came from (pool pictures keep the filled scene in their caption)."""
+    for scene in scenes:
+        pattern = re.escape(scene).replace(r"\{team\}", ".+?").replace(r"\{rival\}", ".+?").replace(r"\{country\}", ".+?")
+        if filled == scene or re.fullmatch(pattern, filled):
+            return scene
+    return None
+
+
 POOL_KINDS = ("photograph", "matchday", "stadium")
 TOURNAMENT_POOL = 12  # a tournament in play gets a bigger pool than a competition
 CLUB_POOL = 8
@@ -307,12 +376,31 @@ def _ground_words(reputation: int | None) -> str:
     return "a small ground with one main stand, a few thousand fans, houses or trees behind the far end"
 
 
-def competition_prompt(name: str, scope: str | None, rng: random.Random, nation: str | None = None, reputation: int | None = None) -> tuple[str, str]:
-    """A scene for a competition's pool picture and its prompt (the competition's name stays out: a name invites lettering
-    and invented logos; its kind sets the mood). The country and the size of the ground go in, so an Irish league looks
-    Irish and small. A major tournament's finals have scenes of their own."""
+def _fresh(scenes: tuple[str, ...], used: set[str], rng: random.Random) -> str:
+    """A scene the pool does not have yet; when it has them all, any. Each picture chose by itself before, so a pool of 12
+    from 10 scenes had the same one three or four times (League One's anthem four times, 19 Nov 2026). ``used`` holds the
+    filled scenes of the pool's pictures."""
+    taken = {_template_of(scene, scenes) for scene in used}
+    unused = [scene for scene in scenes if scene not in taken]
+    return rng.choice(unused or list(scenes))
+
+
+def _scenes_in(ref: str) -> set[str]:
+    """The scenes a pool's pictures were drawn from: their captions are "Name: scene"."""
+    from app.services import world_images
+
+    return {image.caption.split(": ", 1)[1] for image in world_images.pictures(ref, POOL_KINDS) if image.caption and ": " in image.caption}
+
+
+def competition_prompt(name: str, scope: str | None, rng: random.Random, nation: str | None = None, reputation: int | None = None,
+                       used: set[str] = frozenset(), teams: dict | None = None) -> tuple[str, str]:
+    """A scene for a competition's pool picture and its prompt. The competition's name stays out (a name invites lettering
+    and invented logos; its kind sets the mood); its teams go in (``teams``: team, rival, country, from pool_teams), so
+    every player and fan belongs to a named side. The country and the size of the ground go in, so an Irish league looks
+    Irish and small. A major tournament's finals have scenes of their own. ``used``: the pool's scenes, left out while
+    others remain."""
     finals = is_finals(name, scope)
-    scene = rng.choice(TOURNAMENT_SCENES if finals else NATIONAL_SCENES if scope == "national_teams" else COMPETITION_SCENES)
+    scene = fill(_fresh(TOURNAMENT_SCENES if finals else NATIONAL_SCENES if scope == "national_teams" else COMPETITION_SCENES, used, rng), teams)
     mood = MOODS["tournament"] if finals else MOODS.get(scope or "", "")
     if nation and not finals and scope != "continental":
         mood = f"{mood} In {nation}: the look of football there, its grounds, fans, light and weather.".strip()
@@ -323,11 +411,52 @@ def competition_prompt(name: str, scope: str | None, rng: random.Random, nation:
     return scene, f"{scene[0].upper()}{scene[1:]}. {light.capitalize()}, {rng.choice(_VIEWS)}. {mood} {_STYLE}".replace("  ", " ")
 
 
-def club_prompt(name: str, rng: random.Random) -> tuple[str, str]:
-    """A scene for a club's pool picture and its prompt: the club's colours from its name, never its crest or lettering."""
-    scene = rng.choice(CLUB_SCENES).format(colours=f"the colours of {name}" if name else "the home colours")
-    return scene, (f"{scene[0].upper()}{scene[1:]}. {rng.choice(_LIGHTS).capitalize()}, {rng.choice(_VIEWS)}. A football club's week. "
-                   f"Plain kits, scarves and flags in those colours, every surface free of crests and lettering. {_STYLE}").replace("  ", " ")
+def club_prompt(name: str, rng: random.Random, used: set[str] = frozenset(), teams: dict | None = None) -> tuple[str, str]:
+    """A scene for a club's pool picture and its prompt: the club by name in its own kit, and its opponent when the scene has one."""
+    scene = fill(_fresh(CLUB_SCENES, used, rng), {"team": name, **(teams or {})})
+    return scene, (f"{scene[0].upper()}{scene[1:]}. {rng.choice(_LIGHTS).capitalize()}, {rng.choice(_VIEWS)}. "
+                   f"A football club's week. {_STYLE}").replace("  ", " ")
+
+
+def pool_teams(connection, rng: random.Random, competition_uid: int | None = None, team_uid: int | None = None) -> dict:
+    """The teams for one pool picture: a competition's club (the bigger ones more often) and another of its clubs as the
+    rival; or the given team and one of its recent opponents. The country is the team's nation."""
+    from app.services import world_queries as q
+
+    def nation_of(row) -> str | None:
+        """A national team's nation, or a club team's club's nation (a club's team rows have none of their own)."""
+        found = q._one(connection, "select n.name from nations n where n.fm_uid = coalesce(:n, (select nation_uid from clubs "
+                       "where fm_uid = :c))", n=row.get("nation_uid"), c=row.get("club_uid"))
+        return found["name"] if found else None
+
+    if competition_uid is not None:
+        clubs = q.league_clubs(connection, competition_uid)
+        if not clubs:
+            return {}
+        team = rng.choices(clubs, weights=[max(1, (c.get("reputation") or 0)) for c in clubs])[0]
+        others = [c for c in clubs if c["fm_uid"] != team["fm_uid"]]
+        rival = rng.choice(others) if others else None
+    else:
+        team = q._one(connection, "select fm_uid, name, nation_uid, club_uid from teams where fm_uid = :t", t=team_uid)
+        if not team:
+            return {}
+        team = dict(team)
+        rivals = q._rows(connection, "select distinct t.name from fixtures f join teams t on t.fm_uid = "
+                         "(case when f.home_uid = :t then f.away_uid else f.home_uid end) where (f.home_uid = :t or f.away_uid = :t) "
+                         "order by f.date desc limit 20", t=team_uid)
+        rival = rng.choice(rivals) if rivals else None
+    return {"team": team["name"], "rival": rival["name"] if rival else None, "country": nation_of(team)}
+
+
+def first_team(connection, club_uid: int, nation: bool = False) -> int | None:
+    """A club's first team (or a nation's senior team): the one with the most reputation and no age limit."""
+    from app.services import world_queries as q
+
+    column = "nation_uid" if nation else "club_uid"
+    extra = " and club_uid is null" if nation else ""
+    row = q._one(connection, f"select fm_uid from teams where {column} = :c{extra} and age_limit is null "
+                 "order by reputation desc limit 1", c=club_uid)
+    return row["fm_uid"] if row else None
 
 
 def draw_club_pictures(club_uid: int, count: int, progress=log.info) -> int:
@@ -346,10 +475,16 @@ def draw_club_pictures(club_uid: int, count: int, progress=log.info) -> int:
     made = 0
     for number in range(have, count):
         seed = random.randrange(2_000_000_000)
+        rng = random.Random(seed)
+        with db.engines[world_models.BIND].connect() as connection:
+            team_uid = first_team(connection, club_uid, nation=bool(nation))
+            teams = pool_teams(connection, rng, team_uid=team_uid) if team_uid else {}
+        teams = {**teams, "team": name}  # the club's or nation's own name, not its team's ("Chelsea", not "Chelsea FC Reserves")
         if nation:  # a national team (its stories link the nation's uid as a club): international scenes in its country
-            scene, prompt = competition_prompt("", "national_teams", random.Random(seed), nation=name)
+            scene, prompt = competition_prompt("", "national_teams", rng, nation=name, used=_scenes_in(f"club:{club_uid}"),
+                                               teams={**teams, "country": name})
         else:
-            scene, prompt = club_prompt(name, random.Random(seed))
+            scene, prompt = club_prompt(name, rng, used=_scenes_in(f"club:{club_uid}"), teams=teams)
         png = _draw(prompt, seed)
         image = Image.open(io.BytesIO(png)).convert("RGB")
         image = image.resize((SAVED_WIDTH, round(image.height * SAVED_WIDTH / image.width)), Image.LANCZOS)
@@ -457,7 +592,11 @@ def draw_competition_pictures(competition_uid: int, count: int, progress=log.inf
     made = 0
     for number in range(have, count):
         seed = random.randrange(2_000_000_000)
-        scene, prompt = competition_prompt(name, comp.get("scope"), random.Random(seed), nation_name, comp.get("reputation"))
+        rng = random.Random(seed)
+        with db.engines[world_models.BIND].connect() as connection:
+            teams = pool_teams(connection, rng, competition_uid=competition_uid)
+        scene, prompt = competition_prompt(name, comp.get("scope"), rng, nation_name, comp.get("reputation"),
+                                           used=_scenes_in(f"competition:{competition_uid}"), teams=teams)
         png = _draw(prompt, seed)
         image = Image.open(io.BytesIO(png)).convert("RGB")
         image = image.resize((SAVED_WIDTH, round(image.height * SAVED_WIDTH / image.width)), Image.LANCZOS)
