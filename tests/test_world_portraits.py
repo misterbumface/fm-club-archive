@@ -253,8 +253,14 @@ def test_an_action_photo_shows_a_goal_a_celebration_an_action_or_a_matchday_from
     assert len({c for p in plans for c in wp._CAMERAS if c in p.prompt}) >= 8  # many points of view
     assert all("colours of Chelsea" in p.prompt and "reference for his face" in p.prompt for p in plans)
     # the scene for the two steps: no picture to refer to, the club's own kit, the same moment and camera
-    assert all("reference" not in p.scene and "Chelsea home kit" in p.scene for p in plans)
-    assert all(p.scene.split(", wearing")[0].removeprefix("A professional footballer ") in p.prompt for p in plans)
+    assert all("reference" not in p.scene and wp.SCENE_LENS in p.scene for p in plans)
+    assert all(p.scene.startswith("A Chelsea striker in the Chelsea home kit, ") for p in plans)  # who he is, first
+    assert all("tie" not in p.scene.split() and "{" not in p.scene for p in plans)  # "a cup tie" drew a necktie
+    assert not any(word in p.scene for p in plans for word in ("net", "teammate", "his back", "into the"))  # nearly alone, no goal
+    goals = [p for p in plans if p.caption.startswith("Scoring")]
+    assert goals and all(any(m.split(", {")[0].split(" {")[0] in p.scene for m in wp._SCENE_SHOTS) for p in goals)
+    acting = [p for p in plans if p.caption.startswith("In action against Arsenal") and "Arsenal" in p.scene]
+    assert acting and all("one Arsenal player in the Arsenal away kit" in p.scene for p in acting)
     assert not any("Scotland" in p.caption for p in plans)  # not his country's games: he wears his club's colours
     in_april = [p for p in plans if "April" in p.caption]
     assert in_april and not any("snow" in p.prompt or "summer evening" in p.prompt for p in in_april)  # the weather of the month
@@ -267,6 +273,7 @@ def test_a_goalkeeper_makes_saves_and_never_celebrates_goals():
     plans = [wp.action_photo_plan(world, 6, _player(6, "GK"), random.Random(seed)) for seed in range(40)]
     assert not any(p.caption.startswith(("Scoring", "Celebrating")) for p in plans)
     saves = [p for p in plans if any(a in p.prompt for a in wp._ACTIONS["GK"])]
+    assert all(p.scene.startswith("A Chelsea goalkeeper in the Chelsea goalkeeper kit") for p in plans)
     assert len(saves) > len(plans) / 2 and len({a for p in saves for a in wp._ACTIONS["GK"] if a in p.prompt}) >= 8
 
 

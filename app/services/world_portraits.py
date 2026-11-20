@@ -831,12 +831,58 @@ _CAMERAS = ("shot from pitch level with a long lens from thirty metres, slightly
 _DISTANCE = "his whole body in the frame with pitch around him, no larger than a third of the picture's height, no close-up of his face"
 _SCENES = ("a night match under floodlights in a packed stadium", "an afternoon match in bright sunshine, the stands full",
            "a match in heavy rain, the pitch wet and shining", "an evening match, the crowd a blur of colour behind him",
-           "golden hour, low sun casting long shadows across the pitch", "a cup tie in an old, tightly packed ground",
+           "golden hour, low sun casting long shadows across the pitch", "a cup match in an old, tightly packed ground",
            "a European night, flares glowing in the away end", "a muddy pitch on a grey afternoon")
 _WINTER_SCENES = ("a winter match in falling snow, the pitch lines cleared", "a foggy night, the floodlights haloed in mist",
                   "a cold, clear winter afternoon, breath visible")  # November to March
 _SUMMER_SCENES = ("a summer evening, the sky still bright above the stadium",)  # May to September
 WINTER, SUMMER = {11, 12, 1, 2, 3}, {5, 6, 7, 8, 9}
+
+
+# The scene model's moments (the two steps): side-on or facing the camera, one opponent at most, no goal frame.
+SCENE_LENS = ("Telephoto photograph from the touchline with a long sports lens, the pitch around him sharp, the crowd in the "
+              "stand behind him a soft blur, sports agency photograph, photorealistic, natural motion, no text.")
+_SCENE_SHOTS = ("striking the ball hard with his right foot, his body leaning over the ball, eyes on the shot",
+                "striking a low shot with his left foot, the ball just leaving his boot",
+                "volleying the ball, both feet off the ground, eyes on the ball",
+                "rising to head the ball, neck muscles tense, eyes open",
+                "curling a shot with the inside of his foot, arms out for balance",
+                "shooting past {opponent} sliding in to block, too late")
+_SCENE_CELEBRATIONS = ("running towards the camera after scoring, arms spread wide, mouth open in a shout of joy",
+                       "kissing the badge on his shirt after scoring, eyes closed",
+                       "leaping in the air after scoring, one fist punching the sky",
+                       "sliding on his knees across the grass after scoring, arms wide",
+                       "cupping his ear to the crowd after scoring, grinning",
+                       "pointing to the sky after scoring, smiling",
+                       "roaring with both fists clenched after scoring, veins in his neck")
+_SCENE_AROUND = ("walking onto the pitch before kick-off, focused", "warming up before the match, jogging along the touchline",
+                 "applauding the fans at the final whistle, hands above his head", "standing with his hand on his heart before kick-off",
+                 "wiping sweat from his face during a break in play", "walking off at half-time, deep in thought")
+_SCENE_ACTIONS = {
+    "GK": ("diving full stretch to his left, gloves reaching for the ball", "leaping to catch a high ball, one knee raised",
+           "shouting instructions to his defenders, arms spread wide", "launching a long kick from his hands, body twisted",
+           "rolling the ball out along the grass, crouched low", "punching the ball clear, his body stretched"),
+    "D": ("sliding in to win the ball from {opponent}", "heading the ball clear, both feet off the ground",
+          "striding forward with the ball at his feet", "jockeying {opponent} near the touchline, low and balanced",
+          "playing a long pass out of defence, his body leaning back", "blocking a shot from {opponent} with his outstretched leg"),
+    "WB": ("sprinting down the wing with the ball at his feet", "whipping in a cross, his body leaning back",
+           "sliding in to tackle {opponent}", "cutting inside past {opponent}", "taking a long throw-in, the ball behind his head"),
+    "DM": ("winning the ball with a tackle on {opponent}", "playing a long pass across the pitch, his body side-on",
+           "shielding the ball from {opponent}, side-on", "intercepting a pass, stretching out a leg",
+           "striking a shot from distance, the ball leaving his boot"),
+    "M": ("driving forward with the ball at his feet, {opponent} chasing a step behind", "controlling a high ball on his chest, arms out for balance",
+          "playing a pass with the outside of his boot", "taking a corner kick, one arm raised", "hitting a volley, eyes on the ball",
+          "turning away from {opponent} with the ball"),
+    "AM": ("dribbling past {opponent} at speed", "curling a shot with the inside of his foot", "threading a pass, his head up",
+           "flicking the ball past {opponent}", "skipping past a sliding tackle from {opponent}", "taking a free kick, his body leaning over the ball"),
+    "ST": ("striking the ball hard towards goal", "rising to head the ball, both feet off the ground",
+           "sprinting onto a through ball, {opponent} a step behind", "holding off {opponent} with his arm, side-on, the ball at his feet",
+           "turning away from {opponent} with the ball", "volleying the ball, both feet off the ground"),
+}
+
+
+_ROLES = {"GK": "goalkeeper", "D": "defender", "WB": "wing-back", "DM": "midfielder", "M": "midfielder", "AM": "midfielder",
+          "ST": "striker"}
 
 
 @dataclass(frozen=True)
@@ -894,15 +940,34 @@ def action_photo_plan(world: sqlite3.Connection, uid: int, facts: PortraitFacts,
     rival = f", the opponents in the colours of {opponent}" if opponent else ""
     month = date.fromisoformat(str(day)[:10]).month if day else None
     scenes = _SCENES + (_WINTER_SCENES if month in WINTER or month is None else ()) + (_SUMMER_SCENES if month in SUMMER or month is None else ())
-    moment, camera = f"in {rng.choice(scenes)}, {action}{rival}", f"{rng.choice(_CAMERAS)}, {_DISTANCE}"
+    place = rng.choice(scenes)
+    moment, camera = f"in {place}, {action}{rival}", f"{rng.choice(_CAMERAS)}, {_DISTANCE}"
     style = "editorial sports photography, photorealistic, natural motion, sharp focus on him"
     prompt = ", ".join([
         "Use the man in the picture as the reference for his face, hair, skin and build, and keep him recognisably the same person",
         f"show him as a footballer {moment}", kit, f"{camera}, {style}, no text, no logos",
     ])
-    # The scene model draws real kits well (19 Nov 2026: the user likes the clubs' own kits and sponsors)
-    own_kit = f"wearing the {facts.club} home kit" if facts.club else "wearing his team's home kit"
-    scene = ", ".join([f"A professional footballer {moment}", own_kit, f"{camera}, {style}, no text"])
+    # The scene for the two steps (20 Nov 2026, the user's way): who he is first (his club, his role, its kit), seen with
+    # a long lens from the touchline, nearly alone. The scene model makes a hash of crowds of players and of the goal
+    # area, and the face swap then puts his face on two men; a goal is shown as the shot or the celebration, never the
+    # ball in the net; and never his back (the swap turns the face to the front).
+    team = facts.club or "his team's"
+    kit_name = "goalkeeper kit" if key == "GK" else "home kit"
+    if caption.startswith("Scoring"):
+        moment = rng.choice(_SCENE_SHOTS)
+    elif caption.startswith("Celebrating"):
+        moment = rng.choice(_SCENE_CELEBRATIONS)
+    elif caption.startswith("Matchday"):
+        moment = rng.choice(_SCENE_AROUND)
+    else:
+        moment = rng.choice(_SCENE_ACTIONS[key])
+    rival_player = f"one {opponent} player in the {opponent} away kit" if opponent else "one opponent"
+    if "{opponent}" in moment:
+        moment, near = moment.format(opponent=rival_player), ""
+    else:
+        near = " No other player is near him."
+    scene = (f"A {facts.club + ' ' if facts.club else ''}{_ROLES[key]} in the {team} {kit_name}, {moment}, in {place}.{near} "
+             f"He fills about half of the picture's height. {SCENE_LENS}")
     return ActionPhoto(prompt, caption, scene)
 
 
@@ -959,7 +1024,11 @@ SWAP_MODEL = os.environ.get("DRAW_THINGS_SWAP_MODEL", "flux_2_klein_9b_q8p.ckpt"
 FACE_SWAP = ("Replace the face of the main football player in image 1, the one in focus with the ball, with the person's face "
              "and hair in image 2. Change only that one player: every other person in image 1 keeps their own face and hair "
              "exactly as it is. Preserve the main player's body, uniform and pose, and the background. Match the lighting "
-             "and perspective naturally.")
+             "and perspective naturally. Take only the face and hair from image 2, never its clothes: the main player keeps "
+             "the kit he wears in image 1.")
+# (20 Nov 2026: a portrait in his country's shirt must not put that shirt on him among his club teammates)
+SCENE_SIZE = (1344, 768)  # 16:9, a long lens from the touchline (20 Nov 2026)
+SCENE_STEPS, SWAP_STEPS = 8, 4  # 20 Nov 2026: as good as 16 and 8, in half the time (Krea 11 s, Klein 21 s on the Studio)
 # (19 Nov 2026: "the football player" alone put his face and hair on an opponent in the background too)
 SWAP_ROOM = 0.9  # his head and shoulders fill the moodboard picture: the face is what it gives
 
@@ -982,12 +1051,13 @@ def _can_swap() -> bool:
 def _scene_and_swap(plan: ActionPhoto, uid: int, seed: int) -> bytes:
     from app.services import draw_things_grpc, picture_makers
 
-    url, (width, height) = picture_makers.draw_things_url(), ACTION_SIZE
-    face = reference_picture(uid, room=SWAP_ROOM, size=ACTION_SIZE)
+    url, (width, height) = picture_makers.draw_things_url(), SCENE_SIZE
+    face = reference_picture(uid, room=SWAP_ROOM, size=SCENE_SIZE)
     try:
-        scene = draw_things_grpc.generate(url, plan.scene, picture_makers.draw_things_illustration_model(), seed, width, height)
-        return draw_things_grpc.generate(url, FACE_SWAP, SWAP_MODEL, seed, width, height, image=scene, references=[face],
-                                         timeout=1800)
+        scene = draw_things_grpc.generate(url, plan.scene, picture_makers.draw_things_illustration_model(), seed, width, height,
+                                          steps=SCENE_STEPS)
+        return draw_things_grpc.generate(url, FACE_SWAP, SWAP_MODEL, seed, width, height, steps=SWAP_STEPS, image=scene,
+                                         references=[face], timeout=1800)
     except draw_things_grpc.DrawThingsError as exc:
         raise PortraitError(str(exc)) from exc
 

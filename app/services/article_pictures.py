@@ -349,7 +349,7 @@ CLUB_POOL = 8
 
 
 MOODS = {"continental": "A European night between two big clubs.", "national_teams": "An international match.",
-         "cup": "A cup tie.", "league": "A league match.", "tournament": "A major international tournament, a summer of football."}
+         "cup": "A cup match.", "league": "A league match.", "tournament": "A major international tournament, a summer of football."}
 
 
 def is_finals(name: str | None, scope: str | None) -> bool:
