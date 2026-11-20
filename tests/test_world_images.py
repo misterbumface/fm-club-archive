@@ -53,3 +53,18 @@ def test_an_uploaded_trophy_comes_before_the_shipped_one(pages, small_world, pic
     page = pages.get(f"/competitions/{FA_CUP}").get_data(as_text=True)
     assert f"/static/generated/world/trophies/competition-{FA_CUP}-" in page
     assert ENGLAND
+
+
+def test_several_pictures_go_up_at_once(pages, small_world, pictures):
+    upload = {"kind": "photograph", "image": [(io.BytesIO(b"a"), "one.jpg"), (io.BytesIO(b"b"), "two.png"), (io.BytesIO(b"c"), "three.webp"),
+                                              (io.BytesIO(b"x"), "notes.txt")]}
+    text = pages.post(f"/person/{MYERS}/images", data=upload, content_type="multipart/form-data", follow_redirects=True).get_data(as_text=True)
+    assert "3 pictures added." in text and "No picture added: notes.txt: The picture must be a PNG, JPG or WebP file." in text
+    assert db.session.query(ArchiveImage).count() == 3
+    assert 'multiple' in pages.get(f"/people/{MYERS}").get_data(as_text=True)
+
+
+def test_no_file_chosen_says_so(pages, small_world, pictures):
+    text = pages.post(f"/club/{CHELSEA}/images", data={"kind": "stadium"}, content_type="multipart/form-data",
+                      follow_redirects=True).get_data(as_text=True)
+    assert "No picture added: Choose a picture to upload." in text

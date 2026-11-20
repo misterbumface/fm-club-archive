@@ -995,13 +995,20 @@ _IMAGE_PAGES = {"person": "world.person", "club": "world.club", "competition": "
 
 @world_bp.post("/<any(person, club, competition):entity>/<int:uid>/images")
 def add_world_image(entity: str, uid: int):
-    try:
-        world_images.add_image(f"{entity}:{uid}", request.form.get("kind", ""), request.files.get("image"), request.form.get("caption"))
-    except world_images.ImageError as exc:
-        flash(f"No picture added: {exc}", "error")
-    else:
-        flash("Picture added.", "success")
+    """One or many pictures of one kind (the file field takes several files at once), the caption on each."""
+    uploads = [upload for upload in request.files.getlist("image") if upload and upload.filename] or [None]
+    added, refused = 0, []
+    for upload in uploads:
+        try:
+            world_images.add_image(f"{entity}:{uid}", request.form.get("kind", ""), upload, request.form.get("caption"))
+            added += 1
+        except world_images.ImageError as exc:
+            refused.append(f"{upload.filename}: {exc}" if upload and len(uploads) > 1 else str(exc))
+    if added:
+        flash("Picture added." if added == 1 else f"{added} pictures added.", "success")
         _forget_pictures()
+    for reason in refused:
+        flash(f"No picture added: {reason}", "error")
     return redirect(url_for(_IMAGE_PAGES[entity], uid=uid))
 
 

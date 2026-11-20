@@ -856,7 +856,7 @@ _SCENE_CELEBRATIONS = ("running towards the camera after scoring, arms spread wi
                        "pointing to the sky after scoring, smiling",
                        "roaring with both fists clenched after scoring, veins in his neck")
 _SCENE_AROUND = ("walking onto the pitch before kick-off, focused", "warming up before the match, jogging along the touchline",
-                 "applauding the fans at the final whistle, hands above his head", "standing with his hand on his heart before kick-off",
+                 "applauding the fans at the final whistle, hands above his head", "drinking from a water bottle on the touchline during a break",
                  "wiping sweat from his face during a break in play", "walking off at half-time, deep in thought")
 _SCENE_ACTIONS = {
     "GK": ("diving full stretch to his left, gloves reaching for the ball", "leaping to catch a high ball, one knee raised",
@@ -1021,16 +1021,69 @@ def make_action_photo(world_db: Path, uid: int) -> tuple[bytes, str]:
 # from his picture as a moodboard picture. One edit model drawing the whole scene from his portrait gave a stiff man.
 # (Klein's i8x file gives only noise over gRPC; the q8p file works.)
 SWAP_MODEL = os.environ.get("DRAW_THINGS_SWAP_MODEL", "flux_2_klein_9b_q8p.ckpt")
-FACE_SWAP = ("Replace the face of the main football player in image 1, the one in focus with the ball, with the person's face "
-             "and hair in image 2. Change only that one player: every other person in image 1 keeps their own face and hair "
-             "exactly as it is. Preserve the main player's body, uniform and pose, and the background. Match the lighting "
-             "and perspective naturally. Take only the face and hair from image 2, never its clothes: the main player keeps "
-             "the kit he wears in image 1.")
-# (20 Nov 2026: a portrait in his country's shirt must not put that shirt on him among his club teammates)
+# Klein takes the head's angle and the expression from the picture it is given, unless told not to: "replace the face"
+# pasted his portrait's straight stare on a man looking up and smiling (20 Nov 2026: "look at the way the AI added his
+# face"). So it is told to take only who he is, and it is given his head alone: with his shirt in the picture it put that
+# shirt on the opponent beside him.
+FACE_SWAP = ("Make the main football player in image 1, the one in focus, the same person as the man in image 2: give him "
+             "that man's facial features, skin tone and hair. Keep everything else of image 1 exactly: the angle of his head, "
+             "where he is looking, his facial expression and open or closed mouth, the light and shadows on his face, his "
+             "body, kit and pose, and every other person and the background. Image 2 only tells who he is; its pose, "
+             "expression, lighting and clothes are not used.")
 SCENE_SIZE = (1344, 768)  # 16:9, a long lens from the touchline (20 Nov 2026)
 SCENE_STEPS, SWAP_STEPS = 8, 4  # 20 Nov 2026: as good as 16 and 8, in half the time (Krea 11 s, Klein 21 s on the Studio)
 # (19 Nov 2026: "the football player" alone put his face and hair on an opponent in the background too)
-SWAP_ROOM = 0.9  # his head and shoulders fill the moodboard picture: the face is what it gives
+
+
+def head_picture(uid: int, size: tuple[int, int]) -> bytes:
+    """His head alone on grey, from his picture: cut below the chin, the neck faded out, so no shirt goes with it. When
+    Vision finds no face, his head and shoulders."""
+    from PIL import Image, ImageDraw
+
+    png = reference_picture(uid)
+    box = face_box(png)
+    if box is None:
+        return reference_picture(uid, room=0.9, size=size)
+    x, y, w, h = box
+    top, bottom = max(0, y - 1.1 * h), y + 1.15 * h  # the hair above the brows, the chin and a little neck below
+    half = (bottom - top) * 0.55
+    head = Image.open(io.BytesIO(png)).convert("RGB").crop((round(x + w / 2 - half), round(top), round(x + w / 2 + half), round(bottom)))
+    scale = size[1] * 0.85 / head.height
+    head = head.resize((max(1, round(head.width * scale)), max(1, round(head.height * scale))), Image.LANCZOS)
+    mask, fade = Image.new("L", head.size, 255), max(1, round(0.12 * head.height))
+    draw = ImageDraw.Draw(mask)
+    for i in range(fade):
+        draw.line([(0, head.height - 1 - i), (head.width, head.height - 1 - i)], fill=round(255 * i / fade))
+    canvas = Image.new("RGB", size, (128, 128, 128))
+    canvas.paste(head, ((size[0] - head.width) // 2, (size[1] - head.height) // 2), mask)
+    buffer = io.BytesIO()
+    canvas.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+# His head with a calm face, for the swap: Klein carries a portrait's grin into every moment, even a shot or a drink of
+# water (20 Nov 2026: Woolley's laugh was "a bit insane"), and telling it to ignore the smile did not help. Made once per
+# portrait (one more Klein step, about 20 s) and kept in the archive folder.
+CALM_HEADS = GENERATED_DIR / "calm-heads"
+CALM_HEAD = ("Keep this exact man, the same face, skin, hair and head, on the same grey background, but with a calm, relaxed, "
+             "neutral expression: mouth closed, no smile, eyes relaxed.")
+
+
+def calm_head(uid: int, url: str) -> bytes:
+    from app.services import draw_things_grpc
+
+    path = picture_of(uid, face_pack_index(), old_portraits())
+    stamp = path.stat().st_mtime_ns if path else 0
+    kept = CALM_HEADS / f"{uid}-{stamp}.png"
+    if kept.is_file():
+        return kept.read_bytes()
+    head = draw_things_grpc.generate(url, CALM_HEAD, SWAP_MODEL, uid, *SCENE_SIZE, steps=SWAP_STEPS,
+                                     references=[head_picture(uid, SCENE_SIZE)])
+    CALM_HEADS.mkdir(parents=True, exist_ok=True)
+    for old in CALM_HEADS.glob(f"{uid}-*.png"):  # from an earlier portrait
+        old.unlink()
+    kept.write_bytes(head)
+    return head
 
 
 def _can_swap() -> bool:
@@ -1052,10 +1105,10 @@ def _scene_and_swap(plan: ActionPhoto, uid: int, seed: int) -> bytes:
     from app.services import draw_things_grpc, picture_makers
 
     url, (width, height) = picture_makers.draw_things_url(), SCENE_SIZE
-    face = reference_picture(uid, room=SWAP_ROOM, size=SCENE_SIZE)
     try:
         scene = draw_things_grpc.generate(url, plan.scene, picture_makers.draw_things_illustration_model(), seed, width, height,
                                           steps=SCENE_STEPS)
+        face = calm_head(uid, url)  # after the scene: the swap model is loaded for it and the swap
         return draw_things_grpc.generate(url, FACE_SWAP, SWAP_MODEL, seed, width, height, steps=SWAP_STEPS, image=scene,
                                          references=[face], timeout=1800)
     except draw_things_grpc.DrawThingsError as exc:

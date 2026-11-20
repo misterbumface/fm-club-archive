@@ -86,10 +86,11 @@
 {%- endmacro %}
 
 {% macro upload(entity, uid, kinds) -%}
-<details class="upload"><summary class="muted">Add a picture</summary>
+<details class="upload"><summary class="muted">Add pictures</summary>
 <form method="post" enctype="multipart/form-data" action="{{ url_for('world.add_world_image', entity=entity, uid=uid) }}">
   <select name="kind">{% for value, label in kinds %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
-  <input type="file" name="image" accept=".png,.jpg,.jpeg,.webp" required> <input type="text" name="caption" placeholder="Caption (optional)">
+  <input type="file" name="image" accept=".png,.jpg,.jpeg,.webp" multiple required title="Choose one picture, or several at once (Cmd-click or Shift-click)">
+  <input type="text" name="caption" placeholder="Caption (optional, on each picture)">
   <button class="btn" type="submit">Upload</button></form></details>
 {%- endmacro %}
 

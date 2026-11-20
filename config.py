@@ -164,7 +164,7 @@ class Config:
         else {}
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    MAX_CONTENT_LENGTH = 32 * 1024 * 1024  # 32 MB upload limit
+    MAX_CONTENT_LENGTH = 512 * 1024 * 1024  # 512 MB a request: a batch of photos from a phone (20 Nov 2026)
     # The AI model chosen in Settings writes bios, stories and match reports. Never commit
     # a real key -- set it in the environment or .env.
     DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")

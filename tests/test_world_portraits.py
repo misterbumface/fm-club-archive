@@ -331,7 +331,7 @@ def test_an_action_photo_on_draw_things_is_a_scene_then_a_face_swap(monkeypatch)
     monkeypatch.setattr(picture_makers, "draw_things_url", lambda: "https://studio:7859")
     monkeypatch.setattr(picture_makers, "draw_things_illustration_model", lambda: "krea_2_turbo_i8x.ckpt")
     monkeypatch.setattr(draw_things_grpc, "models", lambda url: ["krea_2_turbo_i8x.ckpt", wp.SWAP_MODEL])
-    monkeypatch.setattr(wp, "reference_picture", lambda uid, room=None, size=None: b"face")
+    monkeypatch.setattr(wp, "calm_head", lambda uid, url: b"face")
     monkeypatch.setattr(draw_things_grpc, "generate", lambda url, prompt, model, seed, w, h, **k: calls.append((prompt, model, k)) or b"png")
     plan = wp.ActionPhoto("edit prompt", "In action", "A professional footballer in the rain")
     assert wp._can_swap() and wp._scene_and_swap(plan, 5, 7) == b"png"
@@ -341,3 +341,38 @@ def test_an_action_photo_on_draw_things_is_a_scene_then_a_face_swap(monkeypatch)
     assert not wp._can_swap()  # without the swap model: the one edit, as before
     monkeypatch.setattr(draw_things_grpc, "models", lambda url: [])
     assert wp._can_swap()  # a server that does not list its files
+
+
+def test_the_face_swap_gets_his_head_without_his_shirt(monkeypatch):
+    import io
+    from PIL import Image
+
+    portrait = Image.new("RGB", (400, 400), (200, 180, 40))  # a yellow shirt below
+    portrait.paste((90, 60, 40), (150, 80, 250, 200))  # the face
+    buffer = io.BytesIO()
+    portrait.save(buffer, format="PNG")
+    monkeypatch.setattr(wp, "reference_picture", lambda uid, room=None, size=None: buffer.getvalue())
+    monkeypatch.setattr(wp, "face_box", lambda png: (160, 110, 80, 90))
+    head = Image.open(io.BytesIO(wp.head_picture(5, (1344, 768)))).convert("RGB")
+    assert head.size == (1344, 768)
+    assert head.getpixel((672, 384)) == (90, 60, 40)  # his face in the middle
+    assert head.getpixel((672, 760)) == (128, 128, 128) and head.getpixel((10, 384)) == (128, 128, 128)  # grey, no shirt below
+    assert "Image 2 only tells who he is" in wp.FACE_SWAP and "expression" in wp.FACE_SWAP
+
+
+def test_his_calm_head_is_made_once_per_portrait(monkeypatch, tmp_path):
+    from app.services import draw_things_grpc
+
+    portrait = tmp_path / "5.png"
+    portrait.write_bytes(b"x")
+    made = []
+    monkeypatch.setattr(wp, "CALM_HEADS", tmp_path / "calm")
+    monkeypatch.setattr(wp, "picture_of", lambda uid, faces, old: portrait)
+    monkeypatch.setattr(wp, "face_pack_index", lambda: {})
+    monkeypatch.setattr(wp, "old_portraits", lambda: {})
+    monkeypatch.setattr(wp, "head_picture", lambda uid, size: b"grin")
+    monkeypatch.setattr(draw_things_grpc, "generate", lambda url, prompt, model, seed, w, h, **k: made.append(k["references"]) or b"calm")
+    assert wp.calm_head(5, "u") == b"calm" and wp.calm_head(5, "u") == b"calm" and made == [[b"grin"]]  # kept
+    import os
+    os.utime(portrait, ns=(1, 2))  # a new portrait: a new calm head, the old one gone
+    assert wp.calm_head(5, "u") == b"calm" and len(made) == 2 and len(list((tmp_path / "calm").glob("5-*.png"))) == 1
