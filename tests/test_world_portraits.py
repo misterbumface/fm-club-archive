@@ -252,6 +252,9 @@ def test_an_action_photo_shows_a_goal_a_celebration_an_action_or_a_matchday_from
     assert len({p.prompt for p in plans}) >= 75  # hardly two alike
     assert len({c for p in plans for c in wp._CAMERAS if c in p.prompt}) >= 8  # many points of view
     assert all("colours of Chelsea" in p.prompt and "reference for his face" in p.prompt for p in plans)
+    # the scene for the two steps: no picture to refer to, the club's own kit, the same moment and camera
+    assert all("reference" not in p.scene and "Chelsea home kit" in p.scene for p in plans)
+    assert all(p.scene.split(", wearing")[0].removeprefix("A professional footballer ") in p.prompt for p in plans)
     assert not any("Scotland" in p.caption for p in plans)  # not his country's games: he wears his club's colours
     in_april = [p for p in plans if "April" in p.caption]
     assert in_april and not any("snow" in p.prompt or "summer evening" in p.prompt for p in in_april)  # the weather of the month
@@ -311,3 +314,23 @@ def test_a_league_whose_new_season_has_just_begun_counts_the_last_one(monkeypatc
     found = wp.leagues_without_pictures(world, faces={3: Path("face.png")}, old={})
     assert found[7]["players"] == 10 and len(found[7]["missing"]) == 9
     assert wp.league_without_pictures(world, 7, faces={}, old={})[0] == (1, 1)
+
+
+def test_an_action_photo_on_draw_things_is_a_scene_then_a_face_swap(monkeypatch):
+    from app.services import draw_things_grpc, picture_makers
+
+    calls = []
+    monkeypatch.setattr(picture_makers, "draw_things_grpc", lambda: True)
+    monkeypatch.setattr(picture_makers, "draw_things_url", lambda: "https://studio:7859")
+    monkeypatch.setattr(picture_makers, "draw_things_illustration_model", lambda: "krea_2_turbo_i8x.ckpt")
+    monkeypatch.setattr(draw_things_grpc, "models", lambda url: ["krea_2_turbo_i8x.ckpt", wp.SWAP_MODEL])
+    monkeypatch.setattr(wp, "reference_picture", lambda uid, room=None, size=None: b"face")
+    monkeypatch.setattr(draw_things_grpc, "generate", lambda url, prompt, model, seed, w, h, **k: calls.append((prompt, model, k)) or b"png")
+    plan = wp.ActionPhoto("edit prompt", "In action", "A professional footballer in the rain")
+    assert wp._can_swap() and wp._scene_and_swap(plan, 5, 7) == b"png"
+    assert [(c[0], c[1]) for c in calls] == [("A professional footballer in the rain", "krea_2_turbo_i8x.ckpt"), (wp.FACE_SWAP, wp.SWAP_MODEL)]
+    assert calls[1][2]["image"] == b"png" and calls[1][2]["references"] == [b"face"]
+    monkeypatch.setattr(draw_things_grpc, "models", lambda url: ["krea_2_turbo_i8x.ckpt"])
+    assert not wp._can_swap()  # without the swap model: the one edit, as before
+    monkeypatch.setattr(draw_things_grpc, "models", lambda url: [])
+    assert wp._can_swap()  # a server that does not list its files

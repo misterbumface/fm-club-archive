@@ -841,8 +841,9 @@ WINTER, SUMMER = {11, 12, 1, 2, 3}, {5, 6, 7, 8, 9}
 
 @dataclass(frozen=True)
 class ActionPhoto:
-    prompt: str
+    prompt: str  # one edit from his picture (the edit model draws the scene and keeps his face)
     caption: str
+    scene: str = ""  # the same scene without him, for the two steps (SWAP_MODEL): a text-to-image model draws it
 
 
 def _when(day) -> str:
@@ -893,13 +894,16 @@ def action_photo_plan(world: sqlite3.Connection, uid: int, facts: PortraitFacts,
     rival = f", the opponents in the colours of {opponent}" if opponent else ""
     month = date.fromisoformat(str(day)[:10]).month if day else None
     scenes = _SCENES + (_WINTER_SCENES if month in WINTER or month is None else ()) + (_SUMMER_SCENES if month in SUMMER or month is None else ())
+    moment, camera = f"in {rng.choice(scenes)}, {action}{rival}", f"{rng.choice(_CAMERAS)}, {_DISTANCE}"
+    style = "editorial sports photography, photorealistic, natural motion, sharp focus on him"
     prompt = ", ".join([
         "Use the man in the picture as the reference for his face, hair, skin and build, and keep him recognisably the same person",
-        f"show him as a footballer in {rng.choice(scenes)}, {action}{rival}", kit,
-        f"{rng.choice(_CAMERAS)}, {_DISTANCE}, editorial sports photography, photorealistic, natural motion, sharp focus on him, "
-        "no text, no logos",
+        f"show him as a footballer {moment}", kit, f"{camera}, {style}, no text, no logos",
     ])
-    return ActionPhoto(prompt, caption)
+    # The scene model draws real kits well (19 Nov 2026: the user likes the clubs' own kits and sponsors)
+    own_kit = f"wearing the {facts.club} home kit" if facts.club else "wearing his team's home kit"
+    scene = ", ".join([f"A professional footballer {moment}", own_kit, f"{camera}, {style}, no text"])
+    return ActionPhoto(prompt, caption, scene)
 
 
 def reference_picture(uid: int, room: float | None = None, size: tuple[int, int] = (1024, 1024)) -> bytes:
@@ -942,7 +946,50 @@ def make_action_photo(world_db: Path, uid: int) -> tuple[bytes, str]:
     plan = action_photo_plan(world, uid, facts, random.Random(seed))
     from app.services import picture_makers  # the chosen maker: Draw Things' editing model, or WaveSpeed's
 
+    if _can_swap():
+        return _scene_and_swap(plan, uid, seed), plan.caption
     return picture_makers.edit(plan.prompt, reference_picture(uid, room=ACTION_ROOM, size=ACTION_SIZE), seed, *ACTION_SIZE), plan.caption
+
+
+# Two steps on Draw Things (19 Nov 2026, the user's way in the Draw Things app): the scene model (Krea 2 Turbo) draws the
+# match, with the pitch, the kits and the players in their places; then FLUX.2 Klein 9B puts his face on the footballer,
+# from his picture as a moodboard picture. One edit model drawing the whole scene from his portrait gave a stiff man.
+# (Klein's i8x file gives only noise over gRPC; the q8p file works.)
+SWAP_MODEL = os.environ.get("DRAW_THINGS_SWAP_MODEL", "flux_2_klein_9b_q8p.ckpt")
+FACE_SWAP = ("Replace the face of the main football player in image 1, the one in focus with the ball, with the person's face "
+             "and hair in image 2. Change only that one player: every other person in image 1 keeps their own face and hair "
+             "exactly as it is. Preserve the main player's body, uniform and pose, and the background. Match the lighting "
+             "and perspective naturally.")
+# (19 Nov 2026: "the football player" alone put his face and hair on an opponent in the background too)
+SWAP_ROOM = 0.9  # his head and shoulders fill the moodboard picture: the face is what it gives
+
+
+def _can_swap() -> bool:
+    """Draw Things over gRPC, with a scene model chosen and the swap model on it. A server that does not list its files
+    (Draw Things' model browsing off: an empty list, 19 Nov 2026) is taken to have it; without this check the old edit
+    ran, and Kontext drew Woolley with three legs."""
+    from app.services import draw_things_grpc, picture_makers
+
+    if not (picture_makers.draw_things_grpc() and picture_makers.draw_things_illustration_model()):
+        return False
+    try:
+        files = draw_things_grpc.models(picture_makers.draw_things_url())
+    except draw_things_grpc.DrawThingsError:
+        return False
+    return not files or SWAP_MODEL in files
+
+
+def _scene_and_swap(plan: ActionPhoto, uid: int, seed: int) -> bytes:
+    from app.services import draw_things_grpc, picture_makers
+
+    url, (width, height) = picture_makers.draw_things_url(), ACTION_SIZE
+    face = reference_picture(uid, room=SWAP_ROOM, size=ACTION_SIZE)
+    try:
+        scene = draw_things_grpc.generate(url, plan.scene, picture_makers.draw_things_illustration_model(), seed, width, height)
+        return draw_things_grpc.generate(url, FACE_SWAP, SWAP_MODEL, seed, width, height, image=scene, references=[face],
+                                         timeout=1800)
+    except draw_things_grpc.DrawThingsError as exc:
+        raise PortraitError(str(exc)) from exc
 
 
 
