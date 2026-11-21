@@ -22,7 +22,7 @@ from app.extensions import db
 from app.models import world as world_models
 from app.models.outlet import Outlet
 from app.services import moods, story_notebooks, world_queries as q
-from app.services.ai_settings import get_checker_model, get_papers_model, resolve_ai_api_key
+from app.services.ai_settings import get_checker_model, get_papers_model, get_top_model, resolve_ai_api_key, text_checks_on
 from app.services import archive_questions, fact_check, story_leads_title
 from app.services.story_leads import Lead
 from app.services.story_writer import ARTICLE_RULES, StoryError, hard_faults, request_json, request_with_questions, text_faults
@@ -31,7 +31,9 @@ from app.services.story_writer import ARTICLE_RULES, StoryError, hard_faults, re
 PROMINENCE = {
     "lead": "the front-page lead: 450-700 words",
     "standard": "a standard article: 250-400 words",
-    "brief": "a brief: 60-120 words, one or two paragraphs",
+    "brief": "a brief for the paper's In Brief column, read as one entry of the day's log: 60-120 words, one or two "
+             "paragraphs, the news itself in the first sentence (who, what, the score or the fee), then the one detail that "
+             "matters; no scene-setting opening",
     "feature": "a long feature: 700-1000 words, with two to four short section headings, each on its own line",
     "column": "a long column: 1100-1500 words, with three to five short section headings, each on its own line",
     "matchday": "a long match-day article: 800-1200 words, with a short section heading on its own line for each big game or group of games",
@@ -334,6 +336,15 @@ KIND_NOTES = {
                         "the strength of their squads (described in words, never as numbers), the holders, the groups and the group of death, the best-known players to watch, and our clubs' "
                         "players in the squads. Set the scene like the first page of a tournament special. No game has been "
                         "played: do not invent results, line-ups, injuries or quotes.",
+    "tournament_team_guide": "This is the paper's guide to one side before a major international tournament starts: where its "
+                             "squad ranks in the field (in words, never as a number), the manager, the best-known players and one "
+                             "young one to watch, the form coming in, its record at this tournament when given, its group and games, "
+                             "and our clubs' players in the squad. Close with what would count as a good tournament for them. No "
+                             "game of the tournament has been played: invent no result, line-up or injury.",
+    "tournament_bracket": "This is the road to the final of a major international tournament: the knockout rounds so far, the "
+                          "ties to come, who is still in it and the path each side took. Lead with the biggest story of the "
+                          "knockout rounds (a giant out, a shoot-out, a favourite's easy road). Report only the ties given, and do "
+                          "not say who meets whom after the ties to come unless the facts say so.",
     "player_of_the_tournament": "This is the piece after the final of a major international tournament: who won it and how, the "
                                 "best-rated players over the tournament, the top scorers, and how our clubs' players did. Name a "
                                 "player of the tournament from the ratings and goals given, and say why. Report only what is given.",
@@ -808,9 +819,11 @@ def deal_forms(count: int, rng: random.Random | None = None) -> list[dict]:
 
 
 def write_article(outlet: Outlet, lead: Lead, published: date, prominence: str = "standard", writer: dict | None = None,
-                  form: dict | None = None, earlier: list[dict] | None = None, related: list[dict] | None = None) -> dict:
+                  form: dict | None = None, earlier: list[dict] | None = None, related: list[dict] | None = None,
+                  top: bool = False) -> dict:
     """A checked article by one of the outlet's writers (a random one when none is given), in one form:
-    headline, standfirst, body, the byline, the model and the notebook it was written from."""
+    headline, standfirst, body, the byline, the model and the notebook it was written from. A ``top`` story (the editor's
+    biggest of the cycle) is written with the top stories' model from Settings, when it has a key."""
     if prominence not in PROMINENCE:
         raise StoryError(f"Unknown article length: {prominence}.")
     with db.engines[world_models.BIND].connect() as connection:
@@ -824,6 +837,8 @@ def write_article(outlet: Outlet, lead: Lead, published: date, prominence: str =
     if related:
         notebook["related_stories"] = related
     model = get_papers_model()
+    if top and (stronger := get_top_model()) and resolve_ai_api_key(None, model=stronger):
+        model = stronger
     key = resolve_ai_api_key(None, model=model)
     if not key:
         raise StoryError("No API key is set for the papers' AI model chosen in Settings.")
@@ -831,6 +846,8 @@ def write_article(outlet: Outlet, lead: Lead, published: date, prominence: str =
     form = form or pick_form()
     if lead.kind in COLUMN_OPENINGS:  # a column opens its own way, not as a news story (27 Oct 2026: "Four." opened a trip)
         form = {**form, "opening": COLUMN_OPENINGS[lead.kind]}
+    elif prominence == "brief":  # an In Brief entry opens on the news (21 Nov 2026), not on a scene
+        form = {**form, "opening": "Open on the news itself."}
     prompt = PROMPT.format(writer=writer["name"], name=outlet.name, tagline=f" ({outlet.tagline})" if outlet.tagline else "",
                            persona=_persona(writer), voice=outlet.voice, length=PROMINENCE[prominence],
                            published=published.strftime("%-d %B %Y"), opening=form["opening"], headline_form=form["headline"])
@@ -839,6 +856,10 @@ def write_article(outlet: Outlet, lead: Lead, published: date, prominence: str =
     if lead.facts.get("in_crisis"):
         prompt += (" in_crisis (in the story facts) names a team in crisis by the papers' reading: let it colour the piece "
                    "(a crisis-hit side, a manager under strain) in a phrase or two; it is not the story.")
+    if any(notebook_has(notebook, k) for k in ("our_players_in_it", "our_players", "our_clubs_players_in_the_squads")):
+        prompt += (" The notebook names the followed club's players (our_players...): mention one only where he did something "
+                   "that matters to this story (a goal, an assist, a save, a red card, player of the match, a big miss); "
+                   "never a line only to say he played (21 Nov 2026: 'Mačkić, the Chelsea player, completed the full 90 minutes').")
     if notebook.get("connections"):
         prompt += (" connections lists players now at one side who once played for the other: weave these stories in "
                    "where they add to the story (an old boy deciding a final against his former club is magic).")
@@ -870,9 +891,67 @@ def write_article(outlet: Outlet, lead: Lead, published: date, prominence: str =
         if faults:
             raise StoryError("The AI model's second draft still had faults: " + "; ".join(faults[:5]))
     article = _fact_checked(model, key, prompt, notebook, article, lead, published)
+    if text_checks_on():
+        article = polished(article)
     if article.get("picture") and not picture_is_clean(article["picture"], notebook):
         article.pop("picture")  # the fixed scenes of its kind serve instead
     return {**article, "byline": writer["name"], "writer_id": writer.get("id"), "model": model, "notebook": notebook}
+
+
+def notebook_has(notebook, key: str) -> bool:
+    """Whether a key is anywhere in the notebook (it may sit in a nested part)."""
+    if isinstance(notebook, dict):
+        return (key in notebook and notebook[key] not in (None, [], "")) or any(notebook_has(v, key) for v in notebook.values())
+    if isinstance(notebook, list):
+        return any(notebook_has(v, key) for v in notebook)
+    return False
+
+
+# -- the checks after the writing (21 Nov 2026: "Hilgers" said the same sentence twice; headlines came in two cases) --------
+_SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[\"“‘'A-Z0-9£])")
+
+
+def _plain(sentence: str) -> str:
+    return re.sub(r"[^a-z0-9£ ]", "", sentence.lower()).strip()
+
+
+def without_repeats(body: str) -> str:
+    """The body with any sentence that already came earlier (word for word, case and marks aside) left out."""
+    seen: set[str] = set()
+    paragraphs = []
+    for paragraph in body.split("\n"):
+        kept = []
+        for sentence in _SENTENCE.split(paragraph):
+            plain = _plain(sentence)
+            if len(plain) > 30 and plain in seen:
+                continue
+            seen.add(plain)
+            kept.append(sentence)
+        paragraphs.append(" ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(paragraphs)).strip()
+
+
+def sentence_case(headline: str, body: str) -> str:
+    """A Title Case headline in sentence case: a capitalised word goes to lower case when the article writes it in lower
+    case (so names, which the body capitalises, stay). A headline already in sentence case is left alone."""
+    words = headline.split()
+    long = [w for w in words[1:] if len(w.strip("“”‘’'\":,.?!")) > 3]
+    if not long or sum(w[:1].isupper() for w in long) / len(long) < 0.7:
+        return headline
+    lower = set(re.findall(r"\b[a-z][a-z'’-]*\b", body))
+    out = [words[0]]
+    for word in words[1:]:
+        core = word.strip("“”‘’'\":,.?!()")
+        if core[:1].isupper() and core.lower() in lower and not core.isupper():
+            word = word.replace(core, core.lower(), 1)
+        out.append(word)
+    return " ".join(out)
+
+
+def polished(article: dict) -> dict:
+    """The article after the checks: no repeated sentence, the headline in sentence case."""
+    body = without_repeats(article["body"])
+    return {**article, "body": body, "headline": sentence_case(article["headline"], body)}
 
 
 _PERSON_KEYS = ("name", "person", "player", "manager", "scorer")

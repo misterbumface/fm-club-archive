@@ -450,10 +450,17 @@ TOURNAMENT_LEAD_DAYS, TOURNAMENT_TAIL_DAYS = 14, 3  # the mode starts two weeks 
 
 def major_tournament(c: Connection) -> dict | None:
     """The senior international tournament the site is in the middle of (the World Cup, a continental championship...), from
-    its finals' fixtures: in play from a week before the first game to three days after the last. None when there is none."""
+    its finals' fixtures: in play from a week before the first game to three days after the last. None when there is none.
+    When two are on, the bigger one."""
+    found = major_tournaments(c)
+    return found[0] if found else None
+
+
+def major_tournaments(c: Connection) -> list[dict]:
+    """Every senior international tournament in play, the biggest first (21 Nov 2026: the Euro and the Copa América together)."""
     today = today_of(c)
     if today is None:
-        return None
+        return []
     since, until = str(today - timedelta(days=TOURNAMENT_TAIL_DAYS + 60)), str(today + timedelta(days=TOURNAMENT_LEAD_DAYS + 60))
     found = []
     for comp in q._rows(c, "select fm_uid, name, reputation from competitions where scope = 'national_teams' and name not like '%Qualif%' "
@@ -473,7 +480,7 @@ def major_tournament(c: Connection) -> dict | None:
                       "day": day if phase == "in play" else None, "days_to_go": (first - today).days if phase == "about to start" else None,
                       "phase": phase, "played": span["played"], "games": span["games"],
                       "order": international_order({"name": comp["name"], "prestige": comp["reputation"]})})
-    return min(found, key=lambda t: t["order"]) if found else None
+    return sorted(found, key=lambda t: t["order"])
 
 
 def our_players_at(c: Connection, uid: int, start: str, end: str) -> list[dict]:

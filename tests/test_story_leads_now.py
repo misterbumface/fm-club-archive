@@ -293,7 +293,20 @@ def test_a_world_cup_in_play_gets_reports_previews_a_round_up_and_our_players(sm
         assert (t["name"], t["year"], t["phase"], t["played"], t["games"]) == ("World Cup", 2063, "in play", 4, 7)
         leads = tournament_leads.tournament_coverage(w)
     kinds = {lead.kind: [x for x in leads if x.kind == lead.kind] for lead in leads}
-    assert {k: len(v) for k, v in kinds.items()} == {"tournament_report": 4, "tournament_preview": 2, "tournament_round_up": 1, "our_players_at_tournament": 1}
+    assert {k: len(v) for k, v in kinds.items()} == {"tournament_report": 4, "tournament_preview": 2, "tournament_round_up": 1, "our_players_at_tournament": 1,
+                                                     "tournament_group_now": 1, "tournament_camp": 4, "tournament_fans": 4, "tournament_crowds": 1}
+    # 21 Nov 2026: the group as it stands (England 4, Brazil 4, Spain 3, Japan 0, two games left), a camp for each side, the fans
+    (group,) = kinds["tournament_group_now"]
+    assert group.headline.startswith("World Cup 2063, Group stage after 4 of ") and group.facts["the_table"][0].startswith("1. ")
+    assert "Japan: can no longer finish in the top two" in group.facts["where_each_side_stands"]
+    assert "England: a top-two place still open" in group.facts["where_each_side_stands"]  # a defeat and a tie on points: not sure
+    assert "not known here" in group.facts["about_third_place"] and group.facts["games_left"][:2] == ["2063-09-06: England v Japan", "2063-09-06: Spain v Brazil"]
+    camp = next(x for x in kinds["tournament_camp"] if x.facts["side"] == "England")
+    assert camp.headline == "World Cup 2063: in the England camp" and len(camp.facts["their_games_so_far"]) == 2
+    assert camp.facts["their_next_games"][0] == "Group stage, 2063-09-06: England v Japan" and "colour" in camp.facts["the_reporter"]
+    assert {b.split(":")[0] for b in camp.beats} == {"nation"}  # its own country's paper only, not the tournament's
+    assert any(b.startswith("tournament:") for b in kinds["tournament_crowds"][0].beats)
+    assert "add no number" in kinds["tournament_fans"][0].facts["the_piece"]
     report = next(x for x in kinds["tournament_report"] if "Spain" in x.headline and "England" in x.headline)
     assert report.headline == "World Cup 2063, Group stage: England 2-1 Spain" and report.facts["our_players_in_it"] == ["Sam Scorer (Chelsea, England): 1 game, 90 minutes, 2 goals, rated 8.20"]
     assert report.facts["groups_now"][0].startswith("Group stage: ") and "England 4" in report.facts["groups_now"][0]
@@ -330,12 +343,18 @@ def test_two_weeks_before_a_tournament_each_group_and_the_field_get_a_preview(sm
         assert tournament_leads.major_tournament(w)["phase"] == "about to start"
         leads = tournament_leads.tournament_coverage(w)
     kinds = {lead.kind: [x for x in leads if x.kind == lead.kind] for lead in leads}
-    assert set(kinds) == {"tournament_group", "tournament_field", "tournament_preview"}  # the opening games' previews; no empty round-up
+    assert set(kinds) == {"tournament_group", "tournament_field", "tournament_preview", "tournament_camp", "tournament_team_guide"}  # no empty round-up
+    (guide,) = kinds["tournament_team_guide"]  # 21 Nov 2026: a guide to each side with a squad (only England has one here)
+    assert guide.headline == "European Football Championship 2063 team guide: England" and guide.facts["their_group_games"][0] == "2063-09-15: England v Spain"
+    assert guide.facts["our_clubs_players_in_the_squad"] == ["Sam Scorer (Chelsea, England)"] and "their_record_at_this_tournament" not in guide.facts
+    assert {b.split(":")[0] for b in guide.beats} == {"nation", "tournament"} and guide.slug == f"1301388:2063:{ENGLAND}"
+    assert not any(k in kinds for k in ("tournament_group_now", "tournament_fans", "tournament_crowds"))  # nothing played yet
     (group,) = kinds["tournament_group"]
     assert "not known yet" in group.facts["after_the_groups"] and "not known yet" in kinds["tournament_field"][0].facts["after_the_groups"]
     assert len(group.facts["the_games"]) == 6 and group.facts["our_clubs_players_in_the_squads"] == ["Sam Scorer (Chelsea, England)"]
     (field,) = kinds["tournament_field"]
-    assert field.facts["sides"] == 4 and field.slug == "1301388:2063" and all("tournament" in x.beats for x in leads)
+    assert field.facts["sides"] == 4 and field.slug == "1301388:2063" and all(f"tournament:{field.facts['tournament']}" in x.beats for x in leads
+                                                                if x.kind != "tournament_camp")
 
 
 def test_a_squad_is_rated_by_its_best_eleven_in_words():
@@ -989,3 +1008,26 @@ def test_the_likely_bracket_comes_from_the_pairings_of_the_last_editions(small_w
         lines = tournament_leads.past_bracket(w, t, tournament_leads._groups(w, t))
     assert len(lines) == 2 and all(line.endswith("as in 2 of the last 2 editions") for line in lines)
     assert lines[0].startswith("Semi-finals: the winner of Group A (") and "against the runner-up of Group B (" in lines[0]
+
+
+def test_the_knockout_rounds_get_the_road_to_the_final(small_world):
+    """21 Nov 2026: once the knockout rounds are on, one piece on the ties, who is still in it and each side's path."""
+    from app.services import tournament_leads
+    from tests.test_world_pages import ENGLAND
+
+    _season(small_world)
+    with small_world.begin() as c:
+        c.execute(world.WorldCompetition.__table__.insert(), [{"fm_uid": 1301385, "name": "World Cup", "short_name": "World Cup", "abbreviation": "WC",
+                                                                "scope": "national_teams", "level": None, "reputation": 200}])
+        c.execute(world.WorldTeam.__table__.insert(), [{"fm_uid": 900 + n, "club_uid": None, "nation_uid": None, "name": name, "age_limit": None, "as_of": AS_OF}
+                                                       for n, name in ((1, "Spain"), (2, "Brazil"), (3, "Japan"))])
+        c.execute(world.WorldFixture.__table__.insert(), [
+            _fixture("2063-08-28", ENGLAND, 901, (2, 1), 1301385, 5), _fixture("2063-08-29", 902, 903, (1, 1), 1301385, 5, home_penalties=4, away_penalties=2),
+            _fixture("2063-09-08", ENGLAND, 902, None, 1301385, 6)])
+    with small_world.connect() as c:
+        leads = tournament_leads.tournament_coverage(_World(c, SINCE, UNTIL, (CHELSEA,)))
+    (road,) = [x for x in leads if x.kind == "tournament_bracket"]
+    assert road.headline == "World Cup 2063: the road to the final" and road.facts["still_in_it"] and "Japan" not in road.facts["still_in_it"]
+    assert road.facts["the_knockout_rounds"][0] == "Semi-finals: 2063-08-28: England 2-1 Spain, England through; 2063-08-29: Brazil 1-1 Japan, Brazil through on penalties (4-2)"
+    assert road.facts["the_knockout_rounds"][1] == "Final: 2063-09-08: England v Brazil" and "about_the_draw" not in road.facts
+    assert set(road.facts["out_in_the_knockout_rounds"]) == {"Spain", "Japan"} and any(b.startswith("tournament:") for b in road.beats)

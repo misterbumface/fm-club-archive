@@ -1,0 +1,12 @@
+{% extends "public/base.html" %}
+{% import "public/_parts.html" as p with context %}
+{% block title %}In brief, {{ page.day.strftime('%-d %B %Y') }} · {{ site_name }}{% endblock %}
+{% block body %}
+<h1 class="page">In brief <small>{{ page.day.strftime('%A %-d %B %Y') }}</small></h1>
+<nav class="day-step brief-step">
+  {% if page.before %}<a href="{{ url_for('public.in_brief', day=page.before.isoformat()) }}">‹ {{ page.before.strftime('%a %-d %b') }}</a>{% else %}<span></span>{% endif %}
+  <b>{{ page['items']|length }} {{ 'story' if page['items']|length == 1 else 'stories' }}</b>
+  {% if page.after %}<a href="{{ url_for('public.in_brief', day=page.after.isoformat()) }}">{{ page.after.strftime('%a %-d %b') }} ›</a>{% else %}<span></span>{% endif %}
+</nav>
+{{ p.brief_log(page) }}
+{% endblock %}

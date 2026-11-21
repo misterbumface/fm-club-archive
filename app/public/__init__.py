@@ -361,6 +361,9 @@ def site():
 @public_bp.get("/")
 def front():
     everything = stories()
+    briefs = [a for a in everything if a.prominence == "brief"]
+    in_brief = in_brief_day(briefs)
+    everything = [a for a in everything if a.prominence != "brief"] or briefs
     reach = story_reach(everything)
     top = sorted(everything, key=lambda a: front_order(a, reach))[:5]
     shown = {a.id for a in top}
@@ -377,7 +380,39 @@ def front():
         box = football.league_box(c, leagues[0]) if leagues else None
         results = football.top_results(c)
         hub = football.tournament_hub(c)
-    return render_template("public/front.html", top=top, rows=rows, latest=latest, box=box, results=results, hub=hub, active=None)
+    return render_template("public/front.html", top=top, rows=rows, latest=latest, box=box, results=results, hub=hub,
+                           in_brief=in_brief, active=None)
+
+
+IN_BRIEF_FRONT = 10  # the briefs the front page shows of the newest day
+
+
+def in_brief_day(briefs: list, day: date | None = None) -> dict | None:
+    """One day's briefs as the In Brief log (21 Nov 2026: "a log format for a day with paragraph length stories for results
+    and short updates"): the day (the newest, unless given), its briefs, the football first and the bigger story first."""
+    days = sorted({a.issue.publication_date for a in briefs}, reverse=True)
+    if not days:
+        return None
+    day = day or days[0]
+    items = sorted((a for a in briefs if a.issue.publication_date == day),
+                   key=lambda a: (not is_football(a), -float((a.lead or {}).get("score") or 0)))
+    at = days.index(day) if day in days else None
+    return {"day": day, "items": items, "before": days[at + 1] if at is not None and at + 1 < len(days) else None,
+            "after": days[at - 1] if at else None}
+
+
+@public_bp.get("/in-brief")
+@public_bp.get("/in-brief/<day>")
+def in_brief(day: str | None = None):
+    """The whole of one day's In Brief, to step through day by day."""
+    try:
+        when = date.fromisoformat(day) if day else None
+    except ValueError:
+        abort(404)
+    page = in_brief_day([a for a in stories() if a.prominence == "brief"], when)
+    if page is None or not page["items"]:
+        abort(404)
+    return render_template("public/in_brief.html", page=page, active=None)
 
 
 @public_bp.get("/uefa")

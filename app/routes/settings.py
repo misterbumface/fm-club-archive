@@ -24,6 +24,7 @@ from app.services.ai_settings import (
     set_papers_model,
     set_stored_key,
 )
+from app.services import ai_settings
 
 settings_bp = Blueprint("settings", __name__, url_prefix="/settings")
 
@@ -75,6 +76,8 @@ def index():
         automatic_watch=auto_pilot.watching(),
         voices=writing_voices.VOICES, selected_voice=writing_voices.default_voice(), social_on=social_feed.enabled(),
         slow_on=social_fans.slow_enabled(), papers_model=get_papers_model(), checker_model=get_checker_model(),
+        editor_model=ai_settings.get_editor_model(), top_model=ai_settings.get_top_model(), top_count=ai_settings.get_top_count(),
+        text_checks=ai_settings.text_checks_on(),
         checker_chosen=bool(AppSetting.query.filter_by(key=CHECKER_MODEL_SETTING_KEY).first()),
         app_version=_app_version(), followed=_followed_rows(), tunnel=public_site.status(), site_offline=public_site.offline(),
         cloudflare_token_configured=bool(stored_key(site_publish.TOKEN_KEY)), publish_hostname=site_publish.setting(site_publish.HOSTNAME_SETTING) or "",
@@ -95,6 +98,25 @@ def papers_model_settings():
     else:
         flash(f"The papers are now written with {deepseek_model_label(get_papers_model())}.", "success")
     return redirect(url_for("settings.index", _anchor="papers"))
+
+
+@settings_bp.post("/newsroom")
+def newsroom_settings():
+    """The papers' editor, their top stories (model and number) and the checks after the writing."""
+    try:
+        ai_settings.set_newsroom(request.form.get("editor_model"), request.form.get("top_model"), request.form.get("top_count"),
+                                 request.form.get("text_checks") == "1")
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "error")
+    else:
+        editor = ai_settings.get_editor_model()
+        top, count = ai_settings.get_top_model(), ai_settings.get_top_count()
+        flash(f"Editor: {'off' if editor == 'off' else deepseek_model_label(editor) if editor else 'automatic'}. "
+              + (f"Top stories: {count}, with {deepseek_model_label(top)}. " if top and count else "Top stories: none. ")
+              + f"Checks after the writing: {'on' if ai_settings.text_checks_on() else 'off'}.", "success")
+    return redirect(url_for("settings.index", _anchor="newsroom"))
 
 
 @settings_bp.post("/checker-model")

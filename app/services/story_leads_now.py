@@ -337,9 +337,10 @@ def _how_goals_went_in(w, f: dict) -> list[str] | None:
         rebound = any(o["person_uid"] == shot["person_uid"] and o["outcome"] in ("blocked", "saved")
                       and 0 <= at - (o["minute"] * 60 + o["second"]) <= REBOUND_SECONDS for o in shots)
         height, across = shot["height"], abs(shot["across"])
-        where = ("along the ground" if height < 0.25 else "low" if height < 0.8 else "at mid height" if height < 1.6
-                 else "high, just under the bar" if height >= 2.1 else "high")
-        where += ", through the middle" if across < 1.2 else ", near a post" if across >= 3.0 else ""
+        # Only what tells a goal apart (21 Nov 2026: "a low shot through the middle", "headed in at mid height" in every
+        # report read like the data it came from): along the ground, high, under the bar, near a post; not the plain ones.
+        where = ("along the ground" if height < 0.25 else "high, just under the bar" if height >= 2.1 else "high" if height >= 1.6 else "")
+        where += (", " if where else "") + "near a post" if across >= 3.0 else ""
         kind = {"header": "a header", "volley": "a volley", "drive": "a drive (struck low and hard)", "finish": "a shot with the foot"}.get(
             shot["kind"] or "", "the kind of shot is not recorded")
         if shot["range"] == "close":
@@ -347,12 +348,14 @@ def _how_goals_went_in(w, f: dict) -> list[str] | None:
         elif shot["outside_box"] == 1:
             kind += " from outside the box"
         team = w.name(f["home_uid"] if shot["side"] == 0 else f["away_uid"])
-        lines.append(f"{shot['name'] or 'unknown'} ({team}), {shot['minute'] + 1}' on the match clock: {kind}, {where}"
+        lines.append(f"{shot['name'] or 'unknown'} ({team}), {shot['minute'] + 1}' on the match clock: {kind}" + (f", {where}" if where else "")
                      + ("; from the rebound of his own blocked or saved shot" if rebound else ""))
     if not lines:
         return None
     return lines + ["From the match's shot records: say only these about how a goal went in (the kind of shot, close range or "
-                    "outside the box when given, its height, the middle or a post). No exact distance in metres or yards, and "
+                    "outside the box when given, its height, a post), and only for a goal where it adds something (a header, a "
+                    "volley, a strike from distance, the top corner); never describe every goal the same way. No exact distance "
+                    "in metres or yards, and "
                     "the build-up (a cross, a free kick) is not recorded: never tell them. A goal with no range given: say "
                     "nothing of its range."]
 

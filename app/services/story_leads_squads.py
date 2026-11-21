@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from app.services import firepower, tactics
 from app.services import world_queries as q
 from app.services.story_leads_now import _comp_name, _manager, _result_line
+from app.services.tournament_leads import tournament_beat
 
 STANDING = 5500  # the nations well known enough for a story when none of the followed clubs' players is in it
 SHEETS, SHEET_DAYS = 10, 730  # the last competitive internationals with a team sheet that count towards "a regular"
@@ -181,7 +182,7 @@ def _what_for(w, team: int, before: str, now: str) -> tuple[dict, float, float]:
     comp, days = w.comp(coming[0]["competition_uid"]), (date.fromisoformat(str(coming[0]["date"])[:10]) - w.until).days
     name = comp.get("name") or ""
     if "Qualif" not in name and "Playoff" not in name and (comp.get("reputation") or 0) >= FINALS_REPUTATION and days <= FINALS_DAYS:
-        return {**words, "the_finals_squad_for": name}, FINALS, w.weight(coming[0]["competition_uid"])
+        return {**words, "the_finals_squad_for": f"{name} {str(coming[0]['date'])[:4]}"}, FINALS, w.weight(coming[0]["competition_uid"])
     return words, COMPETITIVE, w.weight(coming[0]["competition_uid"])
 
 
@@ -248,7 +249,7 @@ def squads(w) -> list:
                  "the_old_captain": people[captain_was]["name"] if captain_changed and people.get(captain_was) else None,
                  "the_shape": shape}
         refs = [f"club:{team}", f"nation:{w.team(team).get('nation_uid') or team}"]
-        beats = w.beats_for(team) | ({"home"} if followed else set()) | ({"tournament"} if matters == FINALS else set())  # the tournament paper's too
+        beats = w.beats_for(team) | ({"home"} if followed else set()) | ({tournament_beat(next_words["the_finals_squad_for"])} if matters == FINALS else set())  # its tournament's paper too
         boost = 1.3 if followed else 1.0
         score = weight * 10 * SQUAD_SIZE * fame * matters * boost * (1 + len(known) / 20)
         headline = f"{name}: the new squad, {len(came)} in and {len(went)} out" + (f", {known[0]['name']} left out" if known else "")

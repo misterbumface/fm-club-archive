@@ -500,3 +500,71 @@ def check_ollama_answer(answer: dict, payload: dict) -> None:
     used, context = answer.get("prompt_eval_count"), (payload.get("options") or {}).get("num_ctx")
     if used and context and used >= context - (payload["options"].get("num_predict") or 0) - 256 and has_app_context():
         current_app.logger.warning("local model prompt of %s tokens in a %s context: its start may have been cut", used, context)
+
+
+# The papers' editor and their top stories (21 Nov 2026: "give me these options in settings so we can change them later").
+EDITOR_SETTING_KEY = "news_editor_model"  # "off", a cheap hosted model, or "" for the first cheap model with a key
+TOP_MODEL_SETTING_KEY = "top_stories_model"  # the model of the cycle's biggest stories; "" for the papers' own model
+DEFAULT_TOP_MODEL = "deepseek-v4-pro"
+TOP_COUNT_SETTING_KEY = "top_stories"
+DEFAULT_TOP_COUNT, MAX_TOP_COUNT = 3, 10
+TEXT_CHECKS_SETTING_KEY = "text_checks"  # "1": the checks after the writing (repeats, the headline's case)
+EDITOR_MODELS = ("gpt-6-luna", "deepseek-flash")
+
+
+def _setting(key: str, default: str) -> str:
+    if not has_app_context():
+        return default
+    setting = AppSetting.query.filter_by(key=key).first()
+    return setting.value if setting is not None and setting.value is not None else default
+
+
+def _put(key: str, value: str) -> None:
+    setting = AppSetting.query.filter_by(key=key).first()
+    if setting is None:
+        db.session.add(AppSetting(key=key, value=value))
+    else:
+        setting.value = value
+
+
+def get_editor_model() -> str:
+    """'off', '' (the first cheap model with a key) or one of EDITOR_MODELS."""
+    value = _setting(EDITOR_SETTING_KEY, "")
+    return value if value in ("off", "", *EDITOR_MODELS) else ""
+
+
+def get_top_model() -> str:
+    """The model of the cycle's top stories: '' means the papers' own model (no stronger model)."""
+    value = RENAMED_MODELS.get(_setting(TOP_MODEL_SETTING_KEY, DEFAULT_TOP_MODEL), _setting(TOP_MODEL_SETTING_KEY, DEFAULT_TOP_MODEL))
+    return value if value == "" or _papers_model(value) else DEFAULT_TOP_MODEL
+
+
+def get_top_count() -> int:
+    try:
+        return max(0, min(MAX_TOP_COUNT, int(_setting(TOP_COUNT_SETTING_KEY, str(DEFAULT_TOP_COUNT)))))
+    except ValueError:
+        return DEFAULT_TOP_COUNT
+
+
+def text_checks_on() -> bool:
+    return _setting(TEXT_CHECKS_SETTING_KEY, "1") == "1"
+
+
+def set_newsroom(editor: str | None, top_model: str | None, top_count: str | int | None, checks: bool) -> None:
+    """Keep the editor's model, the top stories' model and number, and the checks after the writing."""
+    editor = (editor or "").strip()
+    if editor not in ("off", "", *EDITOR_MODELS):
+        raise ValueError("Choose GPT-6 Luna, DeepSeek V4.1 Flash, automatic or off for the editor.")
+    top_model = RENAMED_MODELS.get((top_model or "").strip(), (top_model or "").strip())
+    if top_model and not _papers_model(top_model):
+        raise ValueError("Choose a hosted model, an LM Studio or oMLX model, or the papers' own model for the top stories.")
+    try:
+        count = int(top_count if top_count not in (None, "") else DEFAULT_TOP_COUNT)
+    except (TypeError, ValueError):
+        raise ValueError("The number of top stories is a whole number.") from None
+    if not 0 <= count <= MAX_TOP_COUNT:
+        raise ValueError(f"The number of top stories is between 0 and {MAX_TOP_COUNT}.")
+    _put(EDITOR_SETTING_KEY, editor)
+    _put(TOP_MODEL_SETTING_KEY, top_model)
+    _put(TOP_COUNT_SETTING_KEY, str(count))
+    _put(TEXT_CHECKS_SETTING_KEY, "1" if checks else "0")

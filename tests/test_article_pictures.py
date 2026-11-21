@@ -128,8 +128,8 @@ def test_the_pools_to_draw_include_a_tournament_in_play(monkeypatch):
     from app.public import football
 
     assert article_pictures.tournaments_in_play() == []  # no world yet: none in play, and no error
-    monkeypatch.setattr(football, "major_tournament", lambda c: {"uid": 1301385})
-    assert article_pictures.tournaments_in_play() == [1301385]
+    monkeypatch.setattr(football, "major_tournaments", lambda c: [{"uid": 1301385}, {"uid": 78}])
+    assert article_pictures.tournaments_in_play() == [1301385, 78]  # the Euro and the Copa América together
 
 
 @pytest.mark.usefixtures("app")

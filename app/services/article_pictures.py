@@ -571,8 +571,7 @@ def tournaments_in_play() -> list[int]:
     from app.public import football
 
     with db.engines[world_models.BIND].connect() as connection:
-        found = football.major_tournament(connection)
-    return [found["uid"]] if found else []
+        return [t["uid"] for t in football.major_tournaments(connection)]
 
 
 def draw_competition_pictures(competition_uid: int, count: int, progress=log.info) -> int:

@@ -716,3 +716,16 @@ def test_the_front_puts_football_before_flavour_then_the_bigger_competition_then
              story(5, "transfer_rumour", 99), story(6, "derby", 99), story(7, "expected_points", 95)]
     reach[7] = (HOME, 184)
     assert [a.id for a in sorted(found, key=lambda a: front_order(a, reach))] == [3, 2, 4, 5, 7, 1, 6]
+
+
+def test_the_briefs_are_the_days_in_brief_log(site):
+    """21 Nov 2026: the briefs read as a log of the day, not as cards of their own."""
+    pages = site.test_client()
+    front = pages.get("/").data.decode()
+    log = front.split("In brief", 1)[1]
+    assert "English clubs in Europe" in log and "<p>First paragraph.</p>" in log  # the brief's own text, on the front page
+    assert "English clubs in Europe" not in front.split("In brief", 1)[0]  # not also a card at the top
+    day = pages.get("/in-brief/2063-10-27").data.decode()
+    assert "English clubs in Europe" in day and "/in-brief/2063-10-19" not in day  # that brief became the 27th's lead: shown once
+    assert pages.get("/in-brief").status_code == 200 and pages.get("/in-brief/2063-10-19").status_code == 404
+    assert pages.get("/in-brief/nonsense").status_code == 404

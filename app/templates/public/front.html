@@ -20,6 +20,10 @@
 <div class="row-title"><h2>{{ name }}</h2><a href="{{ url_for('public.section', key=key) }}">More {{ name|lower }} ›</a></div>
 <div class="grid4">{% for a in items %}<a class="card" href="{{ story_url(a) }}">{{ p.image(a) }}<h3>{{ a.headline }}</h3>{{ p.tag(a) }}</a>{% endfor %}</div>
 {% endfor %}
+{% if in_brief and in_brief['items'] %}
+<div class="row-title"><h2>In brief <small>{{ in_brief.day.strftime('%A %-d %B') }}</small></h2>{% if in_brief['items']|length > 10 or in_brief.before %}<a href="{{ url_for('public.in_brief', day=in_brief.day.isoformat()) }}">All the briefs ›</a>{% endif %}</div>
+{{ p.brief_log(in_brief, 10) }}
+{% endif %}
 </div>
 <aside class="aside">
   {% if results %}<div class="block"><h2>Latest scores <a href="{{ url_for('public.scores_day', day=results.day.isoformat()) }}">All ›</a></h2>

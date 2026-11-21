@@ -95,3 +95,12 @@
   </div>
 </section>
 {%- endmacro %}
+
+{# In Brief: one day's short stories as a log, each a bold headline and its paragraph (21 Nov 2026) #}
+{% macro brief_log(page, limit=None) -%}
+<ol class="brief-log">{% for a in (page['items'][:limit] if limit else page['items']) %}
+  <li id="brief-{{ a.id }}"><span class="brief-section">{{ a.section or 'News' }}</span>
+    <h3><a href="{{ story_url(a) }}">{{ a.headline }}</a></h3>
+    <div class="brief-body">{{ paragraphs(a.body|replace('**', '')) }}</div></li>
+{% endfor %}</ol>
+{%- endmacro %}

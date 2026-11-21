@@ -77,7 +77,7 @@ def test_it_is_the_finals_squad_only_when_no_game_was_played_with_it(small_world
         c.execute(world.WorldFixture.__table__.insert(), [_fixture("2064-06-13", NATION, OTHER, None, 78, 111)])
     with small_world.connect() as c:
         (finals, *_) = squads(_World(c, date(2064, 3, 15), NOW, ()))
-    assert finals.facts["the_finals_squad_for"] == "Copa América"
+    assert finals.facts["the_finals_squad_for"] == "Copa América 2064" and "tournament:Copa América 2064" in finals.beats  # its own paper
     with small_world.begin() as c:
         c.execute(world.WorldFixture.__table__.insert(), [_fixture("2064-03-29", NATION, OTHER, (1, 0), 77, 111)])
     with small_world.connect() as c:

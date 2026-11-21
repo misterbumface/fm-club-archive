@@ -109,7 +109,7 @@ def test_how_the_goals_went_in_tells_the_kind_the_height_and_a_rebound(small_wor
     with small_world.connect() as c:
         w = _World(c, UNTIL, UNTIL, (CHELSEA,))
         lines = now._how_goals_went_in(w, {"id": 15, "home_uid": LIVERPOOL, "away_uid": CHELSEA})
-    assert lines[0] == "Sam Scorer (Chelsea), 81' on the match clock: a header, low, near a post; from the rebound of his own blocked or saved shot"
+    assert lines[0] == "Sam Scorer (Chelsea), 81' on the match clock: a header, near a post; from the rebound of his own blocked or saved shot"
     assert "never tell them" in lines[-1]
 
 

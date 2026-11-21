@@ -23,7 +23,7 @@ def _lead(kind: str, score: float, beats: set[str], key: int = 0) -> Lead:
 def fake_writer(monkeypatch):
     written = []
 
-    def write(outlet, lead, published, prominence="standard", writer=None, form=None, earlier=None, related=None):
+    def write(outlet, lead, published, prominence="standard", writer=None, form=None, earlier=None, related=None, top=False):
         written.append((outlet.name, lead.kind, prominence, writer and writer["name"], form and form["opening"], earlier))
         if lead.kind == "refused":
             raise article_writer.StoryError("twice wrong")
@@ -55,7 +55,7 @@ def test_the_tournament_paper_prints_its_stories_and_other_papers_carry_chelsea_
 
     outlets.ensure_outlets()
     paper = outlets.tournament_paper("European Football Championship 2064")
-    assert (paper.name, paper.beats, paper.active, len(paper.staff)) == ("Euro 2064", ["tournament"], True, 3)
+    assert (paper.name, paper.beats, paper.active, len(paper.staff)) == ("Euro 2064", ["tournament", "tournament:European Football Championship 2064"], True, 3)
     paper.name = "The Euro Daily"  # a curator's name stays for the same tournament...
     db.session.commit()
     assert outlets.tournament_paper("European Football Championship 2064").name == "The Euro Daily"
@@ -112,7 +112,10 @@ def test_editions_are_published_at_once_and_corrected_on_the_desk(app, small_wor
     assert db.session.get(WorldSoccerArticle, first.id).headline == "A better headline"
     published = client.post(f"/desk/editions/{issue.id}/publish")
     assert published.status_code == 302 and db.session.get(WorldSoccerIssue, issue.id).status == "published"
-    assert "A better headline" in client.get(f"/news/{outlet.slug}").data.decode()
+    paper = client.get(f"/news/{outlet.slug}").data.decode()
+    assert "A better headline" in paper
+    briefs = [a for a in issue.articles if a.prominence == "brief"]
+    assert briefs and paper.count('class="ws-in-brief"') == 1 and paper.index(briefs[0].headline) > paper.index("ws-in-brief")
     linked = next(link.world_ref for link in db.session.get(WorldSoccerArticle, first.id).entity_links if link.world_ref.startswith("club:"))
     page = client.get("/clubs/" + linked.split(":")[1]).data.decode()
     assert "In the news" in page and "A better headline" in page
@@ -465,3 +468,18 @@ def test_the_papers_come_every_week_while_a_major_tournament_is_near(app, small_
     week = AS_OF + timedelta(days=7)
     assert editions.cycle_window(week, editions.CYCLE_DAYS) == (AS_OF, week)
     assert editions.cycle_window(week - timedelta(days=1), editions.CYCLE_DAYS) is None
+
+
+def test_two_tournaments_at_once_get_a_paper_each(app):
+    """21 Nov 2026: the Euro and the Copa América were on together, and the Copa had no article at all."""
+    outlets.ensure_outlets()
+    euro, copa = outlets.tournament_papers(["European Football Championship 2064", "Copa América 2064"])
+    assert (euro.name, copa.name, copa.slug, copa.active) == ("Euro 2064", "Copa América 2064", "tournament-special-2", True)
+    assert len(copa.staff) == 3 and {w.name for w in copa.staff}.isdisjoint({w.name for w in euro.staff})  # its own desk
+    all_outlets = outlets.ensure_outlets()
+    euro_games = [_lead("tournament_report", 200 - i, {"world", "tournament:European Football Championship 2064"}, i) for i in range(3)]
+    copa_games = [_lead("tournament_report", 190 - i, {"world", "tournament:Copa América 2064"}, 10 + i) for i in range(3)]
+    plans = {plan.outlet.slug: plan for plan in editions.plan_editions(euro_games + copa_games, all_outlets, {})}
+    assert [lead.key for lead, _ in plans["tournament-special"].items] == [lead.key for lead in euro_games]
+    assert [lead.key for lead, _ in plans["tournament-special-2"].items] == [lead.key for lead in copa_games]
+    assert outlets.tournament_papers(["World Cup 2066"])[0].name == "World Cup 2066" and not db.session.get(Outlet, copa.id).active

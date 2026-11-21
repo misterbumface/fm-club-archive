@@ -71,8 +71,9 @@ def ensure_outlets() -> list[Outlet]:
     staffed = {outlet_id for (outlet_id,) in db.session.query(Writer.outlet_id).distinct()}
     added = False
     for outlet in outlets:
-        if outlet.id not in staffed and outlet.slug in FIRST_STAFF:
-            for order, row in enumerate(FIRST_STAFF[outlet.slug]):
+        staff = FIRST_STAFF.get(outlet.slug) or (FIRST_STAFF["tournament-special-2"] if outlet.slug.startswith(TOURNAMENT_SLUG) else None)
+        if outlet.id not in staffed and staff:
+            for order, row in enumerate(staff):
                 db.session.add(Writer(outlet=outlet, sort_order=order, active=True, **row))
             added = True
     if added:
@@ -93,30 +94,47 @@ _TOURNAMENT_VOICE = ("The daily paper of the {name}, from the build-up to the fi
 
 
 def tournament_paper(label: str | None) -> Outlet | None:
-    """The tournament's paper for this cycle (``label``: "European Football Championship 2064"), active only while a tournament
-    is in play; None when none is."""
-    outlet = Outlet.query.filter_by(slug=TOURNAMENT_SLUG).first()
-    if label is None:
-        if outlet is not None and outlet.active:
+    """The paper of the one tournament in play (``label``: "European Football Championship 2064"); None, and the papers
+    put away, when none is."""
+    papers = tournament_papers([label] if label else [])
+    return papers[0] if papers else None
+
+
+def tournament_papers(labels: list[str]) -> list[Outlet]:
+    """A paper for each tournament in play, the biggest first (21 Nov 2026: the Euro and the Copa América together). The
+    first keeps the slug the papers always had; the others get one of their own. Each takes its tournament's beat; the
+    first also the plain "tournament" beat. A paper whose tournament is over is put away."""
+    papers = [_tournament_paper(index, label) for index, label in enumerate(labels)]
+    for outlet in Outlet.query.filter(Outlet.slug.like(f"{TOURNAMENT_SLUG}%")).all():
+        if outlet not in papers and outlet.active:
             outlet.active = False
-            db.session.commit()
-        return None
+    db.session.commit()
+    if papers:
+        ensure_outlets()  # their first staff
+    return papers
+
+
+def _tournament_paper(index: int, label: str) -> Outlet:
+    slug = TOURNAMENT_SLUG if index == 0 else f"{TOURNAMENT_SLUG}-{index + 1}"
+    key = TOURNAMENT_NAME_SETTING if index == 0 else f"{TOURNAMENT_NAME_SETTING}-{index + 1}"
+    beats = (["tournament"] if index == 0 else []) + [f"tournament:{label}"]
+    outlet = Outlet.query.filter_by(slug=slug).first()
     name = next((label.replace(long, short, 1) for long, short in SHORT_NAMES.items() if label.startswith(long)), label)
     if outlet is None:
         last = db.session.query(db.func.max(Outlet.sort_order)).scalar() or 0
-        outlet = Outlet(slug=TOURNAMENT_SLUG, name=name, tagline="Every group, every squad, every game", voice=_TOURNAMENT_VOICE.format(name=name),
-                        beats=["tournament"], byline=f"{name} desk", articles_per_edition=8, min_score=30, sort_order=last + 1, active=True)
+        outlet = Outlet(slug=slug, name=name, tagline="Every group, every squad, every game", voice=_TOURNAMENT_VOICE.format(name=name),
+                        beats=beats, byline=f"{name} desk", articles_per_edition=8, min_score=30, sort_order=last + 1, active=True)
         db.session.add(outlet)
-    setting = AppSetting.query.filter_by(key=TOURNAMENT_NAME_SETTING).first()
+    setting = AppSetting.query.filter_by(key=key).first()
     if setting is None or setting.value != label:  # a new tournament: its own name
         outlet.name, outlet.byline, outlet.voice = name, f"{name} desk", _TOURNAMENT_VOICE.format(name=name)
         if setting is None:
-            db.session.add(AppSetting(key=TOURNAMENT_NAME_SETTING, value=label))
+            db.session.add(AppSetting(key=key, value=label))
         else:
             setting.value = label
+    outlet.beats = beats
     outlet.active = True
-    db.session.commit()
-    ensure_outlets()  # its first staff
+    db.session.flush()
     return outlet
 
 
@@ -134,4 +152,5 @@ def set_followed_clubs(uids: list[int]) -> None:
         setting.value = value
 
 
-__all__ = ["DEFAULT_FOLLOWED", "DEFAULT_OUTLETS", "ensure_outlets", "followed_clubs", "outlets_for", "set_followed_clubs", "tournament_paper"]
+__all__ = ["DEFAULT_FOLLOWED", "DEFAULT_OUTLETS", "ensure_outlets", "followed_clubs", "outlets_for", "set_followed_clubs", "tournament_paper",
+           "tournament_papers"]

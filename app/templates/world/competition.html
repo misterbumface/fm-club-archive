@@ -6,7 +6,7 @@
 {{ m.trail(crumbs('competition', comp.fm_uid)) }}
 <div class="hero">{% if trophy_url(comp.fm_uid) %}<img class="crest" src="{{ trophy_url(comp.fm_uid) }}" alt="">{% endif %}<div>
   <h1>{{ comp.name }}</h1><div class="sub">{{ editions|length }} editions · FM uid {{ comp.fm_uid }}</div></div></div>
-{{ m.upload('competition', comp.fm_uid, (('trophy', 'Trophy'),)) }}
+{{ m.upload('competition', comp.fm_uid, (('photograph', 'Photo'), ('matchday', 'Matchday photo'), ('trophy', 'Trophy'))) }}
 {% set tab_items = [('now', 'Table' if now.is_league else ('Groups' if now.groups else 'Now'), now.season)] %}
 {% if clubs %}{% set tab_items = tab_items + [('clubs', 'Clubs', clubs|length)] %}{% endif %}
 {{ m.tabs(tab_items + [('history', 'History', editions|length ~ ' editions' if editions else None)]) }}

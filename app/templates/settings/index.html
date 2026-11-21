@@ -82,6 +82,29 @@
                 {% for option in model_options if option.provider not in ('ollama', 'lmstudio', 'omlx') %}<option value="{{ option.value }}" {{ 'selected' if checker_chosen and checker_model == option.value }}>{{ option.label }}</option>{% endfor %}
             </select>
         </form>
+        <form method="post" action="{{ url_for('settings.newsroom_settings') }}" id="newsroom">
+            <div class="setting-row">
+                <span>Editor <small>a cheap model chooses each paper's stories and its lead; off: the points decide</small></span>
+                <select name="editor_model" class="auto-save">
+                    <option value="" {{ 'selected' if editor_model == '' }}>Automatic (the cheapest model with a key)</option>
+                    <option value="gpt-6-luna" {{ 'selected' if editor_model == 'gpt-6-luna' }}>GPT-6 Luna</option>
+                    <option value="deepseek-flash" {{ 'selected' if editor_model == 'deepseek-flash' }}>DeepSeek V4.1 Flash</option>
+                    <option value="off" {{ 'selected' if editor_model == 'off' }}>Off</option>
+                </select>
+            </div>
+            <div class="setting-row">
+                <span>Top stories <small>the editor's biggest stories of each cycle, written with a stronger model</small></span>
+                <select name="top_model" class="auto-save">
+                    <option value="" {{ 'selected' if not top_model }}>None: the papers' own model</option>
+                    {% for option in model_options if option.provider != 'ollama' %}<option value="{{ option.value }}" {{ 'selected' if top_model == option.value }}>{{ option.label }}</option>{% endfor %}
+                </select>
+                <label class="inline-field">how many <input type="number" name="top_count" min="0" max="10" value="{{ top_count }}" class="auto-save" style="width:4em"></label>
+            </div>
+            <div class="setting-row">
+                <span>Checks after the writing <small>leave out a repeated sentence; put a Title Case headline in sentence case</small></span>
+                <label class="inline-field"><input type="checkbox" name="text_checks" value="1" class="auto-save" {{ 'checked' if text_checks }}> on</label>
+            </div>
+        </form>
         <form method="post" action="{{ url_for('settings.voice_settings') }}" class="setting-row" id="voice">
             <span>Voice <small>what every “Write” button proposes; never the facts</small></span>
             <select name="voice" class="auto-save">
@@ -280,7 +303,7 @@ window.addEventListener('pywebviewready', () => {
     let saved = null;
     try { saved = localStorage.getItem('settings-tab'); } catch (e) {}
     show(named?.closest('.settings-tab')?.dataset.tab || (document.querySelector(`.settings-tab[data-tab="${saved}"]`) ? saved : 'club'));
-    document.querySelectorAll('select.auto-save').forEach((select) => select.addEventListener('change', () => select.form.submit()));
+    document.querySelectorAll('select.auto-save, input.auto-save').forEach((field) => field.addEventListener('change', () => field.form.submit()));
 })();
 </script>
 {% endblock %}

@@ -68,3 +68,14 @@ def test_no_file_chosen_says_so(pages, small_world, pictures):
     text = pages.post(f"/club/{CHELSEA}/images", data={"kind": "stadium"}, content_type="multipart/form-data",
                       follow_redirects=True).get_data(as_text=True)
     assert "No picture added: Choose a picture to upload." in text
+
+
+def test_a_competition_takes_photos_for_its_pool_as_well_as_its_trophy(pages, small_world, pictures):
+    page = pages.get(f"/competitions/{FA_CUP}").get_data(as_text=True)
+    assert all(f'value="{kind}"' in page for kind in ("photograph", "matchday", "trophy"))
+    upload = {"kind": "photograph", "image": [(io.BytesIO(b"a"), "header.jpg"), (io.BytesIO(b"b"), "save.jpg")]}
+    pages.post(f"/competition/{FA_CUP}/images", data=upload, content_type="multipart/form-data")
+    from app.services import article_pictures
+
+    assert len(world_images.pictures(f"competition:{FA_CUP}", article_pictures.POOL_KINDS)) == 2  # in its picture pool
+    assert world_images.uploaded_trophy_url(FA_CUP) is None  # and never shown as its trophy

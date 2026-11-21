@@ -31,7 +31,13 @@ TOURNAMENT_BEAT = "tournament"  # the beat of the tournament's own paper (outlet
 
 
 def major_tournament(w) -> dict | None:
-    """The tournament in play at the cycle's end: its competition, its first and last game, its phase."""
+    """The biggest tournament in play at the cycle's end: its competition, its first and last game, its phase."""
+    found = _in_play(w)
+    return min(found, key=lambda t: t["tier"]) if found else None
+
+
+def _in_play(w) -> list[dict]:
+    """The major tournaments in play at the cycle's end."""
     today = w.until
     since, until = str(today - timedelta(days=TAIL_DAYS + 60)), str(today + timedelta(days=LEAD_DAYS + 60))
     found = []
@@ -49,10 +55,28 @@ def major_tournament(w) -> dict | None:
         first, last = (date.fromisoformat(str(span[k])[:10]) for k in ("first", "last"))
         if not (first - timedelta(days=LEAD_DAYS) <= today <= last + timedelta(days=TAIL_DAYS)):
             continue
-        tier = 0 if name == "World Cup" else 1 if name == "European Football Championship" else 2
         found.append({"uid": uid, "name": name, "year": first.year, "first": first, "last": last, "played": span["played"], "games": span["games"],
-                      "phase": "about to start" if today < first else "over" if today > last else "in play", "tier": (tier, -(comp.get("reputation") or 0))})
-    return min(found, key=lambda t: t["tier"]) if found else None
+                      "phase": "about to start" if today < first else "over" if today > last else "in play", "tier": (tier(name), -(comp.get("reputation") or 0))})
+    return found
+
+
+def major_tournaments(w) -> list[dict]:
+    """Every major tournament in play at the cycle's end, the biggest first (21 Nov 2026: the Euro and the Copa América
+    were on together, and only the Euro had a word written about it)."""
+    return sorted(_in_play(w), key=lambda t: t["tier"])
+
+
+def tournament_beat(label: str) -> str:
+    """The beat of one tournament's stories and of its own paper ("tournament:Copa América 2064")."""
+    return f"{TOURNAMENT_BEAT}:{label}"
+
+
+def is_tournament_beat(beat: str) -> bool:
+    return beat == TOURNAMENT_BEAT or beat.startswith(TOURNAMENT_BEAT + ":")
+
+
+def tier(name: str) -> int:
+    return 0 if name.startswith("World Cup") else 1 if name.startswith("European Football Championship") else 2
 
 
 def _rounds(w, t: dict) -> dict[int, str]:
@@ -170,9 +194,11 @@ def tournament_coverage(w) -> list:
     from app.services.story_leads import Lead
     from app.services.story_leads_now import _how_goals_went_in
 
-    t = major_tournament(w)
-    if t is None:
-        return []
+    return [lead for t in major_tournaments(w) for lead in _coverage(w, t, Lead, _how_goals_went_in)]
+
+
+def _coverage(w, t: dict, Lead, _how_goals_went_in) -> list:
+    """Every lead of one tournament in play this cycle, on its own beat (its own paper)."""
     rounds = _rounds(w, t)
     played = w.rows("select * from fixtures where competition_uid = :c and home_goals is not null and date > :s and date <= :u order by date, id",
                     c=t["uid"], s=str(w.since), u=str(w.until))
@@ -261,9 +287,16 @@ def tournament_coverage(w) -> list:
         leads.append(Lead("player_of_the_tournament", f"The {label}: the players who made it", date.fromisoformat(str(final["date"])[:10]),
                           weight * 10 * BEST_SIZE, {k: v for k, v in facts.items() if v is not None}, [f"competition:{t['uid']}", f"club:{winner}"],
                           {"world"}, slug=f"{t['uid']}:{t['year']}"))
+    from app.services import tournament_stories as more  # the groups as they stand, the camps, the fans (21 Nov 2026)
+
+    leads += more.groups_now(w, t, label, weight, Lead) + more.road_to_the_final(w, t, label, weight, Lead)
     for lead in leads:
-        lead.beats.add(TOURNAMENT_BEAT)
-    return leads
+        lead.beats.add(tournament_beat(label))
+    # a side's camp and its fans are for its own country's paper only: three dozen of them would crowd the games out of the
+    # tournament's paper (the crowds piece is the tournament's)
+    return leads + more.camps(w, t, label, weight, rounds, coming, Lead) + [
+        lead.__class__(**{**lead.__dict__, "beats": lead.beats | ({tournament_beat(label)} if lead.kind == "tournament_crowds" else set())})
+        for lead in more.fans(w, t, label, weight, Lead)]
 
 
 def _groups(w, t: dict) -> list[tuple[str, list[dict]]]:
@@ -408,4 +441,6 @@ def build_up(w, t: dict, weight: float, label: str) -> list:
     leads.append(Lead("tournament_field", f"{label}: the field, the favourites and the groups", w.until, weight * 10 * FIELD_SIZE,
                       {k: v for k, v in facts.items() if v is not None}, [f"competition:{t['uid']}"] + [f"club:{x}" for x in ranked[:4]],
                       {"world", "home"} if facts["our_clubs_players_in_the_squads"] else {"world"}, slug=f"{t['uid']}:{t['year']}"))
-    return leads
+    from app.services.tournament_stories import team_guides
+
+    return leads + team_guides(w, t, label, weight, Lead, groups, squads, side, ours)

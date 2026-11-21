@@ -430,6 +430,30 @@
     grid-column: span 3;
 }
 
+.ws-in-brief {
+    border-top: 5px solid var(--ws-ink);
+    column-gap: 2rem;
+    column-rule: 1px solid #aaa393;
+    columns: 3 18rem;
+    padding: 1rem 0 1.5rem;
+}
+
+.ws-in-brief .ws-kicker {
+    column-span: all;
+}
+
+.ws-in-brief article {
+    border-bottom: 1px solid #aaa393;
+    break-inside: avoid;
+    padding: .5rem 0 .75rem;
+}
+
+.ws-in-brief h3 {
+    font-size: 1.05rem;
+    line-height: 1.25;
+    margin: .2rem 0 .4rem;
+}
+
 .ws-story figure {
     margin: 0 0 1rem;
 }
