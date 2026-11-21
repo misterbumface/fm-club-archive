@@ -283,6 +283,8 @@ def test_a_world_cup_in_play_gets_reports_previews_a_round_up_and_our_players(sm
             _fixture("2063-08-29", ENGLAND, 902, (0, 0), 1301385, 1), _fixture("2063-08-29", 901, 903, (1, 0), 1301385, 1),
             _fixture("2063-09-06", ENGLAND, 903, None, 1301385, 1), _fixture("2063-09-06", 901, 902, None, 1301385, 1),
             _fixture("2063-09-20", ENGLAND, 902, None, 1301385, 2)])
+        c.execute(world.WorldEdition.__table__.insert(), [{"competition_uid": 1301385, "year": 2059, "season_label": "2059", "decided_on": date(2059, 7, 13)}])
+        c.execute(world.WorldEditionPlace.__table__.insert(), [{"competition_uid": 1301385, "year": 2059, "place": 1, "team_uid": 902}])
         played = c.exec_driver_sql("select id from fixtures where date = '2063-08-25' and home_uid = %d" % ENGLAND).scalar()
         c.execute(world.WorldPlayerGame.__table__.insert(), [{"person_uid": SCORER, "team_uid": ENGLAND, "played_on": date(2063, 8, 25), "opponent_uid": 901,
                                                               "fixture_id": played, "status": "played", "minutes": 90, "rating": 8.2, "xg": 1.1, "goals": 2,
@@ -307,6 +309,12 @@ def test_a_world_cup_in_play_gets_reports_previews_a_round_up_and_our_players(sm
     assert {b.split(":")[0] for b in camp.beats} == {"nation"}  # its own country's paper only, not the tournament's
     assert any(b.startswith("tournament:") for b in kinds["tournament_crowds"][0].beats)
     assert "add no number" in kinds["tournament_fans"][0].facts["the_piece"]
+    # 21 Nov 2026: the holders are named wherever they play (Brazil won the last World Cup, 2059)
+    brazil = next(x for x in kinds["tournament_report"] if "Brazil 3-0 Japan" in x.headline)
+    assert brazil.headline.endswith("(Brazil: the holders (World Cup 2059))") and "news" in brazil.facts["reigning_champions"][-1]
+    assert kinds["tournament_round_up"][0].facts["reigning_champions"][0] == "Brazil: the holders (World Cup 2059)"
+    assert "reigning_champions" in next(x for x in kinds["tournament_camp"] if x.facts["side"] == "Brazil").facts
+    assert "reigning_champions" not in camp.facts
     report = next(x for x in kinds["tournament_report"] if "Spain" in x.headline and "England" in x.headline)
     assert report.headline == "World Cup 2063, Group stage: England 2-1 Spain" and report.facts["our_players_in_it"] == ["Sam Scorer (Chelsea, England): 1 game, 90 minutes, 2 goals, rated 8.20"]
     assert report.facts["groups_now"][0].startswith("Group stage: ") and "England 4" in report.facts["groups_now"][0]

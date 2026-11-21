@@ -1,10 +1,10 @@
 {% macro image(a, classes='') -%}
 {%- set src = picture(a) -%}
 {%- if src %}<img class="pic {{ 'contain' if '/faces/' in src or '/logos/' in src or '/trophies/' in src }} {{ classes }}" src="{{ src }}" alt="" loading="lazy">
-{%- else %}<div class="pic empty {{ classes }}">{{ section_name(section_of(a.section)) }}</div>{% endif -%}
+{%- else %}<div class="pic empty {{ classes }}">{{ section_name(section_of(paper_section(a))) }}</div>{% endif -%}
 {%- endmacro %}
 {% macro tag(a) -%}
-<span class="tag"><b>{{ a.section or 'News' }}</b>{{ a.issue.publication_date.strftime('%-d %b %Y') }}</span>
+<span class="tag"><b>{{ paper_section(a) }}</b>{{ a.issue.publication_date.strftime('%-d %b %Y') }}</span>
 {%- endmacro %}
 {% macro game(g, show_competition=False) -%}
 <li class="game">
@@ -99,7 +99,7 @@
 {# In Brief: one day's short stories as a log, each a bold headline and its paragraph (21 Nov 2026) #}
 {% macro brief_log(page, limit=None) -%}
 <ol class="brief-log">{% for a in (page['items'][:limit] if limit else page['items']) %}
-  <li id="brief-{{ a.id }}"><span class="brief-section">{{ a.section or 'News' }}</span>
+  <li id="brief-{{ a.id }}"><span class="brief-section">{{ paper_section(a) }}</span>
     <h3><a href="{{ story_url(a) }}">{{ a.headline }}</a></h3>
     <div class="brief-body">{{ paragraphs(a.body|replace('**', '')) }}</div></li>
 {% endfor %}</ol>

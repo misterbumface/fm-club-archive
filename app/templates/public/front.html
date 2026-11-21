@@ -6,14 +6,13 @@
 {% if not top %}<h1 class="page">No stories yet</h1><p>The first editions are being written.</p>{% else %}
 <div class="front"><div>
 <section class="top">
-  {% for a in top %}
-  <a class="card {{ 'lead' if loop.first }}" href="{{ story_url(a) }}">
-    {{ p.image(a) }}
-    {% if loop.first %}<h2>{{ a.headline }}</h2>{% else %}<h3>{{ a.headline }}</h3>{% endif %}
-    {% if a.standfirst and loop.index <= 3 %}<p>{{ a.standfirst }}</p>{% endif %}
-    {{ p.tag(a) }}
-  </a>
-  {% endfor %}
+  {% set a = top[0] %}
+  <div class="top-lead"><a class="card lead" href="{{ story_url(a) }}">
+    {{ p.image(a) }}<h2>{{ a.headline }}</h2>{% if a.standfirst %}<p>{{ a.standfirst }}</p>{% endif %}{{ p.tag(a) }}</a>
+    {% if top|length > 3 %}<ul class="top-more">{% for a in top[3:] %}<li><a href="{{ story_url(a) }}">{{ a.headline }}</a>{{ p.tag(a) }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  <div class="top-side">{% for a in top[1:3] %}<a class="card" href="{{ story_url(a) }}">
+    {{ p.image(a) }}<h3>{{ a.headline }}</h3>{% if a.standfirst %}<p>{{ a.standfirst }}</p>{% endif %}{{ p.tag(a) }}</a>{% endfor %}</div>
 </section>
 
 {% for key, name, items in rows %}

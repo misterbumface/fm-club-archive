@@ -13,7 +13,7 @@ from collections import OrderedDict
 from datetime import date
 from pathlib import Path
 
-from flask import Blueprint, Flask, abort, render_template, send_file, send_from_directory, url_for
+from flask import Blueprint, Flask, abort, current_app, render_template, send_file, send_from_directory, url_for
 from markupsafe import Markup, escape
 
 from app.extensions import db
@@ -38,6 +38,7 @@ SECTIONS = OrderedDict([
 # page's latest list only, no row and no page. tests/test_public.py checks the map stays complete.
 FRONT_ROWS = tuple(SECTIONS)
 PER_ROW = 4
+MAX_ROW = 12  # a row grows by fours to hold the newest day's stories of its section, up to three lines
 PROMINENCE = {"lead": 0, "major": 1, "standard": 2, "brief": 3}
 SECTION_PAGE = 30
 IMAGE_TYPES = (".jpg", ".jpeg", ".png", ".webp")
@@ -80,10 +81,22 @@ def section_of(paper_section: str | None) -> str:
     return next((key for key, (_, names) in SECTIONS.items() if paper_section in names), "news")
 
 
+@public_bp.app_template_global()
+def paper_section(article) -> str:
+    """The article's paper section; a story printed under the plain "News" (a kind that had no section yet when it was
+    written: the tournament camps of 21 Nov 2026 sat in no row of the front page) takes its kind's section now."""
+    from app.services.editions import SECTIONS as KIND_SECTIONS
+
+    if article.section and article.section != "News":
+        return article.section
+    kind = (article.lead_key or "").split(":")[0]  # a story's key starts with its kind (the plain rows of stories() have no lead)
+    return KIND_SECTIONS.get(kind, article.section or "News")
+
+
 def in_section(article, key: str, european: set[int]) -> bool:
     """An article is in its paper's section, and Europe also takes every story of a European competition (a Champions
     League preview is in Coming up and in Europe)."""
-    return section_of(article.section) == key or (key == "europe" and article.id in european)
+    return section_of(paper_section(article)) == key or (key == "europe" and article.id in european)
 
 
 def european_articles() -> set[int]:
@@ -350,9 +363,35 @@ def _major_tournament() -> dict | None:
 _MAJOR_CACHE: tuple | None = None
 
 
+TICKER_STORIES, TICKER_SCORES = 14, 10
+TOP_STORIES = 8  # the lead, two cards beside it, and five one-line links under it (21 Nov 2026: the space under the lead was empty)
+
+
+def ticker() -> list[dict]:
+    """The news ticker at the top of every page (21 Nov 2026): the latest day's results, then the newest day's headlines,
+    each a link. Asked for by the page only when it is drawn."""
+    if not current_app.config.get("PUBLIC_TICKER", True):  # the page tests read whole pages
+        return []
+    items = []
+    try:
+        with football.connect() as c:
+            results = football.top_results(c)
+    except Exception:  # noqa: BLE001 - a page without its ticker rather than no page
+        return []
+    for comp in (results or {}).get("competitions", []):
+        for g in comp["games"]:
+            if g.get("score") and len(items) < TICKER_SCORES:
+                items.append({"label": comp["name"], "text": f"{g['home']['name']} {g['score']} {g['away']['name']}", "url": match_url(g)})
+    found = stories(TICKER_STORIES * 2)
+    newest = found[0].issue.publication_date if found else None
+    for article in [a for a in found if a.issue.publication_date == newest][:TICKER_STORIES]:
+        items.append({"label": paper_section(article), "text": article.headline, "url": story_url(article)})
+    return items
+
+
 @public_bp.app_context_processor
 def site():
-    return {"site_name": SITE_NAME, "sections": [(key, name) for key, (name, _) in SECTIONS.items()], "picture": picture,
+    return {"ticker": ticker, "site_name": SITE_NAME, "sections": [(key, name) for key, (name, _) in SECTIONS.items()], "picture": picture,
             "followed_teams": football.followed(), "picture_of": face_url, "slug": slug, "major_tournament": _major_tournament(),
             "section_of": section_of, "section_name": section_name, "paragraphs": paragraphs}
 
@@ -365,21 +404,27 @@ def front():
     in_brief = in_brief_day(briefs)
     everything = [a for a in everything if a.prominence != "brief"] or briefs
     reach = story_reach(everything)
-    top = sorted(everything, key=lambda a: front_order(a, reach))[:5]
-    shown = {a.id for a in top}
-    rows = []
-    european = european_articles()
-    for key in FRONT_ROWS:
-        items = [a for a in everything if in_section(a, key, european) and a.id not in shown][:PER_ROW]
-        shown |= {a.id for a in items}
-        if items:
-            rows.append((key, section_name(key), items))
-    latest = [a for a in everything if a.id not in shown][:8]
     with football.connect() as c:
         leagues = football.main_leagues(c)
         box = football.league_box(c, leagues[0]) if leagues else None
         results = football.top_results(c)
         hub = football.tournament_hub(c)
+    top = sorted(everything, key=lambda a: front_order(a, reach))[:TOP_STORIES]
+    shown = {a.id for a in top}
+    rows = []
+    european = european_articles()
+    newest = everything[0].issue.publication_date if everything else None
+    order = FRONT_ROWS
+    if hub:  # a major tournament on: its row comes first (21 Nov 2026: a Euro camp story had to be dug up)
+        order = ("international",) + tuple(key for key in FRONT_ROWS if key != "international")
+    for key in order:
+        found = [a for a in everything if in_section(a, key, european) and a.id not in shown]
+        fresh = sum(1 for a in found if a.issue.publication_date == newest)  # the newest day's stories all get a card
+        items = found[:min(MAX_ROW, max(PER_ROW, -(-fresh // PER_ROW) * PER_ROW))]
+        shown |= {a.id for a in items}
+        if items:
+            rows.append((key, section_name(key), items))
+    latest = [a for a in everything if a.id not in shown][:8]
     return render_template("public/front.html", top=top, rows=rows, latest=latest, box=box, results=results, hub=hub,
                            in_brief=in_brief, active=None)
 
@@ -701,7 +746,7 @@ def story(article_id: int, name: str | None = None):
     article = db.session.get(WorldSoccerArticle, article_id)
     if article is None or article.issue.status != "published":
         abort(404)
-    key = section_of(article.section)
+    key = section_of(paper_section(article))
     more = [a for a in stories(SECTION_PAGE, key) if a.id != article.id][:6]
     return render_template("public/story.html", a=article, more=more, active=key, related=related_stories(article))
 

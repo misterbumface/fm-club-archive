@@ -294,9 +294,36 @@ def _coverage(w, t: dict, Lead, _how_goals_went_in) -> list:
         lead.beats.add(tournament_beat(label))
     # a side's camp and its fans are for its own country's paper only: three dozen of them would crowd the games out of the
     # tournament's paper (the crowds piece is the tournament's)
-    return leads + more.camps(w, t, label, weight, rounds, coming, Lead) + [
+    leads += more.camps(w, t, label, weight, rounds, coming, Lead) + [
         lead.__class__(**{**lead.__dict__, "beats": lead.beats | ({tournament_beat(label)} if lead.kind == "tournament_crowds" else set())})
         for lead in more.fans(w, t, label, weight, Lead)]
+    return _with_champions(w, t, leads, weight)
+
+
+WHOLE_TOURNAMENT = {"tournament_round_up", "tournament_bracket", "tournament_field", "tournament_crowds", "player_of_the_tournament"}
+CHAMPION_BONUS = 0.5
+CHAMPION_HEADLINED = {"tournament_report", "tournament_preview", "tournament_group_now", "tournament_group"}
+
+
+def _with_champions(w, t: dict, leads: list, weight: float) -> list:
+    """Each story names the titles its sides hold (21 Nov 2026: the world champions went out of the Euro unremarked): the
+    world champions, the continental champions, this tournament's holders. A game or a group with one in it counts for
+    more, and its headline says so, so the editor sees it."""
+    from app.services import tournament_stories as more
+
+    every = {int(r.split(":")[1]) for lead in leads for r in lead.refs if r.startswith("club:")}
+    every |= {x for f in w.rows("select home_uid, away_uid from fixtures where competition_uid = :c and date between :s and :e",
+                                c=t["uid"], s=str(t["first"]), e=str(t["last"])) for x in (f["home_uid"], f["away_uid"])}
+    for lead in leads:
+        teams = every if lead.kind in WHOLE_TOURNAMENT else {int(r.split(":")[1]) for r in lead.refs if r.startswith("club:")}
+        found = more.champions_in(w, t, teams)
+        if not found:
+            continue
+        lead.facts["reigning_champions"] = found + [more.CHAMPIONS_NOTE]
+        if lead.kind in CHAMPION_HEADLINED:
+            lead.score += weight * 10 * CHAMPION_BONUS
+            lead.headline += f" ({'; '.join(found)})"
+    return leads
 
 
 def _groups(w, t: dict) -> list[tuple[str, list[dict]]]:

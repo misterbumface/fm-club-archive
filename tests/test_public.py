@@ -13,6 +13,7 @@ from app.public import create_public_app, section_of, stories
 @pytest.fixture()
 def site():
     app = create_public_app("testing")
+    app.config["PUBLIC_TICKER"] = False  # the ticker repeats headlines and scores; its own test turns it on
     with app.app_context():
         db.create_all()
 
@@ -729,3 +730,33 @@ def test_the_briefs_are_the_days_in_brief_log(site):
     assert "English clubs in Europe" in day and "/in-brief/2063-10-19" not in day  # that brief became the 27th's lead: shown once
     assert pages.get("/in-brief").status_code == 200 and pages.get("/in-brief/2063-10-19").status_code == 404
     assert pages.get("/in-brief/nonsense").status_code == 404
+
+
+def test_a_story_filed_under_news_takes_its_kinds_section_and_the_newest_day_gets_cards(site):
+    """21 Nov 2026: a Euro camp story printed under "News" sat in no row of the front page and had to be dug up; a row
+    of four could not hold the day's tournament stories."""
+    with site.app_context():
+        made = WorldSoccerIssue(publication_date=date(2063, 10, 28), knowledge_cutoff=date(2063, 10, 28), status="published", edition_name="x")
+        for n in range(7):
+            kind = "tournament_camp" if n == 0 else "tournament_report"
+            made.articles.append(WorldSoccerArticle(headline=f"Euro story {n}", section="News" if n == 0 else "Tournament",
+                                                    lead_key=f"{kind}:1:{n}", prominence="standard", body="x", byline="Desk",
+                                                    article_type="report", sort_order=n))
+        db.session.add(made)
+        db.session.commit()
+        assert [a.headline for a in stories(section="international")][0] == "Euro story 0"
+    page = site.test_client().get("/").data.decode()
+    cards = page.split("Also in the news")[0]
+    assert all(f"Euro story {n}" in cards for n in range(7))  # five at the top at most, the rest in a row that grows
+    assert "<b>Tournament</b>" in page and "Euro story 0" in site.test_client().get("/section/international").data.decode()
+
+
+def test_the_ticker_and_the_links_under_the_lead(site):
+    """21 Nov 2026: a news ticker at the top; the top stories after the first three are one-line links under the lead (the
+    fourth and fifth were hidden on a wide screen, and counted as shown)."""
+    site.config["PUBLIC_TICKER"] = True
+    page = site.test_client().get("/").data.decode()
+    ticker = page.split('class="ticker"', 1)[1].split("</div></div></div></div>", 1)[0]
+    assert "Chelsea&#39;s run goes on" in ticker and "<b>Form</b>" in ticker and ticker.count("aria-hidden") == 1  # one copy for the loop
+    assert "nth-child(n+4) { display: none" not in page
+    assert 'class="ticker"' in site.test_client().get("/section/europe").data.decode()  # on every page

@@ -39,6 +39,50 @@ FANS_NOTE = ("A piece about the fans who follow this side: the songs, the flags,
              "are your colour. The crowds, the travelling support and the grounds come from the notebook alone; add no number.")
 
 
+TITLE_WORDS = {"World Cup": "the world champions", "European Football Championship": "the European champions",
+               "Copa América": "the South American champions", "Africa Cup of Nations": "the African champions",
+               "Asian Cup": "the Asian champions", "Gold Cup": "the Gold Cup holders", "Confederations Cup": "the Confederations Cup holders",
+               "Nations League Finals": "the Nations League holders"}
+CHAMPIONS_NOTE = ("A champion's result is part of the story: the world champions or the holders held, beaten or knocked out "
+                  "is news, and the piece says who they are.")
+
+
+def champions(w, t: dict) -> dict[int, str]:
+    """The titles each national side holds as the tournament starts (21 Nov 2026: "Italy got knocked out of the Euro ...
+    but no mention that they're THE WORLD CHAMPIONS"): the winner of the last decided edition of each major tournament,
+    in words ("Italy: the world champions (World Cup 2062)"), and the holders of this tournament ("the holders")."""
+    from app.services.tournament_leads import MAJOR_TOURNAMENTS
+
+    cache = getattr(w, "_champions", None)
+    if cache is None:
+        cache = w._champions = {}
+    if t["uid"] in cache:
+        return cache[t["uid"]]
+    held: dict[int, list[str]] = defaultdict(list)
+    for uid, comp in w.competitions.items():
+        name = comp.get("name") or ""
+        if comp.get("scope") != "national_teams" or "Qualif" in name or name.startswith(("Under", "U1", "U2")) or "Youth" in name:
+            continue
+        base = next((m for m in MAJOR_TOURNAMENTS if name == m or name.startswith(m)), None)
+        if base is None:
+            continue
+        last = w.rows("select e.year, p.team_uid from competition_editions e join edition_places p using (competition_uid, year) "
+                      "where e.competition_uid = :c and p.place = 1 and e.decided_on < :d order by e.decided_on desc limit 1",
+                      c=uid, d=str(t["first"]))
+        if not last:
+            continue
+        words = "the holders" if uid == t["uid"] else TITLE_WORDS.get(base, f"the {name} holders")
+        held[last[0]["team_uid"]].append(f"{words} ({name} {last[0]['year']})")
+    cache[t["uid"]] = {team: f"{w.name(team)}: {' and '.join(titles)}" for team, titles in held.items()}
+    return cache[t["uid"]]
+
+
+def champions_in(w, t: dict, teams) -> list[str] | None:
+    """The champions among these sides, for a story's facts; None when there is none."""
+    held = champions(w, t)
+    return [held[team] for team in sorted(set(teams), key=lambda x: -(w.rep(x) or 0)) if team in held] or None
+
+
 def _groups(w, t: dict) -> list[tuple[str, list[dict]]]:
     from app.services.tournament_leads import _groups as groups
 
