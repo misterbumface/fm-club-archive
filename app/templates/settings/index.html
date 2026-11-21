@@ -275,7 +275,8 @@ window.addEventListener('pywebviewready', () => {
     };
     nav.hidden = false;
     nav.addEventListener('click', (event) => { if (event.target.dataset.tab) show(event.target.dataset.tab); });
-    const named = location.hash && document.querySelector(location.hash.replace(/[^#\w-]/g, ''));
+    // Without a #part, the old "hash and query" test gave "", and ""?.closest() threw: the lists below never saved (21 Nov 2026)
+    const named = location.hash.length > 1 ? document.querySelector(location.hash.replace(/[^#\w-]/g, '')) : null;
     let saved = null;
     try { saved = localStorage.getItem('settings-tab'); } catch (e) {}
     show(named?.closest('.settings-tab')?.dataset.tab || (document.querySelector(`.settings-tab[data-tab="${saved}"]`) ? saved : 'club'));
